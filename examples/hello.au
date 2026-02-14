@@ -1,0 +1,4 @@
+fn main(): int64 {
+  print_str("Hello Aurum\n");
+  return 0;
+}

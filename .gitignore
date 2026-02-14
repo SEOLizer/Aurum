@@ -1,0 +1,29 @@
+# IDE
+.idea/
+
+# FreePascal Compiler-Output
+*.ppu
+*.o
+*.exe
+*.res
+*.compiled
+*.bak
+
+# Unit-Output
+lib/
+
+# Compiler-Binary
+aurumc
+
+# Test-Binaries
+tests/test_bytes
+tests/test_diag
+tests/test_lexer
+tests/test_parser
+tests/test_sema
+tests/test_ir
+tests/test_elf
+tests/test_codegen
+
+# Erzeugte Aurum-Binaries
+/tmp/*.au.out
