@@ -10,7 +10,7 @@ DEBUG_FLAGS   = -g -gl -Ci -Cr -Co -gh
 TEST_SOURCES = $(wildcard tests/test_*.pas)
 TESTS        = $(TEST_SOURCES:.pas=)
 
-.PHONY: build debug test clean
+.PHONY: build debug test clean e2e
 
 build:
 	@mkdir -p lib
@@ -33,6 +33,16 @@ test: $(TESTS)
 tests/test_%: tests/test_%.pas
 	@mkdir -p lib
 	$(FPC) $(FPCFLAGS) $(DEBUG_FLAGS) $< -o$@
+
+# End-to-end smoke tests for examples
+e2e: build
+	@echo "=== E2E: hello.au ==="
+	@./aurumc examples/hello.au -o /tmp/hello || exit 1
+	@/tmp/hello || exit 1
+	@echo "=== E2E: print_int.au ==="
+	@./aurumc examples/print_int.au -o /tmp/print_int || exit 1
+	@/tmp/print_int || exit 1
+	@echo "=== E2E passed ==="
 
 clean:
 	rm -f aurumc
