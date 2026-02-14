@@ -417,15 +417,36 @@ function TParser.ParseUnaryExpr: TAstExpr;
 var
   op: TTokenKind;
   operand: TAstExpr;
+  span: TSourceSpan;
+  value: Int64;
 begin
-  if Check(tkNot) or Check(tkMinus) then
+  if Check(tkMinus) then
   begin
-    op := FCurTok.Kind; Advance;
+    span := FCurTok.Span;
+    Advance;
+    if Check(tkIntLit) then
+    begin
+      // fold unary minus applied directly to literal
+      value := -StrToInt64Def(FCurTok.Value, 0);
+      span := FCurTok.Span;
+      Advance;
+      Exit(TAstIntLit.Create(value, span));
+    end;
+    operand := ParseUnaryExpr;
+    Result := TAstUnaryOp.Create(tkMinus, operand, operand.Span);
+    Exit;
+  end;
+
+  if Check(tkNot) then
+  begin
+    op := FCurTok.Kind;
+    Advance;
     operand := ParseUnaryExpr;
     Result := TAstUnaryOp.Create(op, operand, operand.Span);
-  end
-  else
-    Result := ParsePrimary;
+    Exit;
+  end;
+
+  Result := ParsePrimary;
 end;
 
 function TParser.ParsePrimary: TAstExpr;

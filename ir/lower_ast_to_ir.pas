@@ -245,6 +245,22 @@ begin
     end
     else if TAstCall(expr).Name = 'print_int' then
     begin
+      // constant-fold print_int(x) -> print_str("...") when x is literal
+      if (Length(TAstCall(expr).Args) >= 1) and (TAstCall(expr).Args[0] is TAstIntLit) then
+      begin
+        si := FModule.InternString(IntToStr(TAstIntLit(TAstCall(expr).Args[0]).Value));
+        t1 := NewTemp;
+        instr.Op := irConstStr;
+        instr.Dest := t1;
+        instr.ImmStr := IntToStr(si);
+        Emit(instr);
+        instr.Op := irCallBuiltin;
+        instr.ImmStr := 'print_str';
+        instr.Src1 := t1;
+        Emit(instr);
+        Exit(-1);
+      end;
+
       t1 := LowerExpr(TAstCall(expr).Args[0]);
       instr.Op := irCallBuiltin;
       instr.ImmStr := 'print_int';
