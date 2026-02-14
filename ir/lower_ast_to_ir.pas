@@ -8,6 +8,13 @@ uses
   ast, ir, diag, lexer;
 
 type
+  TConstValue = class
+  public
+    IsStr: Boolean;
+    IntVal: Int64;
+    StrVal: string;
+  end;
+
   TIRLowering = class
   private
     FModule: TIRModule;
@@ -16,6 +23,7 @@ type
     FTempCounter: Integer;
     FLabelCounter: Integer;
     FLocalMap: TStringList; // name -> local index (as object integer)
+    FConstMap: TStringList; // name -> TConstValue (compile-time constants)
 
     function NewTemp: Integer;
     function NewLabel(const prefix: string): string;
@@ -57,11 +65,18 @@ begin
   FLabelCounter := 0;
   FLocalMap := TStringList.Create;
   FLocalMap.Sorted := False;
+  FConstMap := TStringList.Create;
+  FConstMap.Sorted := False;
 end;
 
 destructor TIRLowering.Destroy;
+var
+  i: Integer;
 begin
   FLocalMap.Free;
+  for i := 0 to FConstMap.Count - 1 do
+    TObject(FConstMap.Objects[i]).Free;
+  FConstMap.Free;
   inherited Destroy;
 end;
 
@@ -102,13 +117,12 @@ end;
 { Lowering main entry }
 
 function TIRLowering.Lower(prog: TAstProgram): TIRModule;
-  var
+var
   i: Integer;
   fn: TIRFunction;
   node: TAstNode;
   j: Integer;
-  dump: TStringList;
-  rf: TextFile;
+  cv: TConstValue;
 begin
   // iterate top-level decls, create functions
   for i := 0 to High(prog.Decls) do
@@ -121,31 +135,46 @@ begin
       FCurrentFunc := fn;
       FLocalMap.Clear;
       FTempCounter := 0;
+      fn.ParamCount := Length(TAstFuncDecl(node).Params);
+      fn.LocalCount := fn.ParamCount;
+      for j := 0 to fn.ParamCount - 1 do
+        FLocalMap.AddObject(TAstFuncDecl(node).Params[j].Name, IntToObj(j));
       // lower statements sequentially
-       for j := 0 to High(TAstFuncDecl(node).Body.Stmts) do
-       begin
-         LowerStmt(TAstFuncDecl(node).Body.Stmts[j]);
-       end;
-       // write IR text directly to /tmp/ir_lower.txt (append)
-        AssignFile(rf, '/tmp/ir_lower.txt');
-       if FileExists('/tmp/ir_lower.txt') then Append(rf) else Rewrite(rf);
-       try
-         Writeln(rf, 'Function: ' + fn.Name + ' locals=' + IntToStr(fn.LocalCount));
-         for j := 0 to High(fn.Instructions) do
-         begin
-           Writeln(rf, Format(' %d: op=%d dest=%d s1=%d s2=%d imm=%d immstr=%s label=%s', [j, Ord(fn.Instructions[j].Op), fn.Instructions[j].Dest, fn.Instructions[j].Src1, fn.Instructions[j].Src2, fn.Instructions[j].ImmInt, fn.Instructions[j].ImmStr, fn.Instructions[j].LabelName]));
-         end;
-       finally
-         CloseFile(rf);
-       end;
-       FCurrentFunc := nil;
-     end
-
-
+      for j := 0 to High(TAstFuncDecl(node).Body.Stmts) do
+      begin
+        LowerStmt(TAstFuncDecl(node).Body.Stmts[j]);
+      end;
+      FCurrentFunc := nil;
+    end
     else if node is TAstConDecl then
     begin
-      // constants can be lowered to module strings/consts if needed
-      // skip for now
+      // register compile-time constant for inline substitution
+      cv := TConstValue.Create;
+      if TAstConDecl(node).InitExpr is TAstIntLit then
+      begin
+        cv.IsStr := False;
+        cv.IntVal := TAstIntLit(TAstConDecl(node).InitExpr).Value;
+      end
+      else if TAstConDecl(node).InitExpr is TAstStrLit then
+      begin
+        cv.IsStr := True;
+        cv.StrVal := TAstStrLit(TAstConDecl(node).InitExpr).Value;
+      end
+      else if TAstConDecl(node).InitExpr is TAstBoolLit then
+      begin
+        cv.IsStr := False;
+        if TAstBoolLit(TAstConDecl(node).InitExpr).Value then
+          cv.IntVal := 1
+        else
+          cv.IntVal := 0;
+      end
+      else
+      begin
+        FDiag.Error('con initializer must be a literal', TAstConDecl(node).Span);
+        cv.Free;
+        Continue;
+      end;
+      FConstMap.AddObject(TAstConDecl(node).Name, TObject(cv));
     end;
   end;
   Result := FModule;
@@ -171,7 +200,10 @@ var
   si: Integer;
   argTemps: array of Integer;
   ai: Integer;
+  ci: Integer;
+  cv2: TConstValue;
 begin
+  instr := Default(TIRInstr);
   if expr is TAstIntLit then
   begin
     t1 := NewTemp;
@@ -191,8 +223,43 @@ begin
     Emit(instr);
     Exit(t1);
   end;
+  if expr is TAstBoolLit then
+  begin
+    t1 := NewTemp;
+    instr.Op := irConstInt;
+    instr.Dest := t1;
+    if TAstBoolLit(expr).Value then
+      instr.ImmInt := 1
+    else
+      instr.ImmInt := 0;
+    Emit(instr);
+    Exit(t1);
+  end;
   if expr is TAstIdent then
   begin
+    // check if this is a compile-time constant (con)
+    ci := FConstMap.IndexOf(TAstIdent(expr).Name);
+    if ci >= 0 then
+    begin
+      cv2 := TConstValue(FConstMap.Objects[ci]);
+      t1 := NewTemp;
+      if cv2.IsStr then
+      begin
+        si := FModule.InternString(cv2.StrVal);
+        instr.Op := irConstStr;
+        instr.Dest := t1;
+        instr.ImmStr := IntToStr(si);
+      end
+      else
+      begin
+        instr.Op := irConstInt;
+        instr.Dest := t1;
+        instr.ImmInt := cv2.IntVal;
+      end;
+      Emit(instr);
+      Exit(t1);
+    end;
+    // otherwise load from local variable
     t1 := NewTemp;
     instr.Op := irLoadLocal;
     instr.Dest := t1;
@@ -249,80 +316,74 @@ begin
       Exit(instr.Dest);
     end;
   end;
-    if expr is TAstCall then
+  if expr is TAstCall then
+  begin
+    // handle builtins: print_str, print_int, exit
+    if TAstCall(expr).Name = 'print_str' then
     begin
-      // handle builtins: print_str, print_int, exit
-      if TAstCall(expr).Name = 'print_str' then
+      t1 := LowerExpr(TAstCall(expr).Args[0]);
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'print_str';
+      instr.Src1 := t1;
+      Emit(instr);
+      Exit(-1); // void
+    end
+    else if TAstCall(expr).Name = 'print_int' then
+    begin
+      // constant-fold print_int(x) -> print_str("...") when x is literal
+      if (Length(TAstCall(expr).Args) >= 1) and (TAstCall(expr).Args[0] is TAstIntLit) then
       begin
-        t1 := LowerExpr(TAstCall(expr).Args[0]);
+        si := FModule.InternString(IntToStr(TAstIntLit(TAstCall(expr).Args[0]).Value));
+        t1 := NewTemp;
+        instr.Op := irConstStr;
+        instr.Dest := t1;
+        instr.ImmStr := IntToStr(si);
+        Emit(instr);
         instr.Op := irCallBuiltin;
         instr.ImmStr := 'print_str';
         instr.Src1 := t1;
         Emit(instr);
-        Exit(-1); // void
-      end
-      else if TAstCall(expr).Name = 'print_int' then
-      begin
-        // constant-fold print_int(x) -> print_str("...") when x is literal
-        if (Length(TAstCall(expr).Args) >= 1) and (TAstCall(expr).Args[0] is TAstIntLit) then
-        begin
-          si := FModule.InternString(IntToStr(TAstIntLit(TAstCall(expr).Args[0]).Value));
-          t1 := NewTemp;
-          instr.Op := irConstStr;
-          instr.Dest := t1;
-          instr.ImmStr := IntToStr(si);
-          Emit(instr);
-          instr.Op := irCallBuiltin;
-          instr.ImmStr := 'print_str';
-          instr.Src1 := t1;
-          Emit(instr);
-          Exit(-1);
-        end;
-
-        t1 := LowerExpr(TAstCall(expr).Args[0]);
-        instr.Op := irCallBuiltin;
-        instr.ImmStr := 'print_int';
-        instr.Src1 := t1;
-        Emit(instr);
         Exit(-1);
-      end
-      else if TAstCall(expr).Name = 'exit' then
-      begin
-        t1 := LowerExpr(TAstCall(expr).Args[0]);
-        instr.Op := irCallBuiltin;
-        instr.ImmStr := 'exit';
-        instr.Src1 := t1;
-        Emit(instr);
-        Exit(-1);
-      end
-      else
-      begin
-        // generic call
-        // lower args and collect their temp indices
-        SetLength(argTemps, Length(TAstCall(expr).Args));
-        for t1 := 0 to High(TAstCall(expr).Args) do
-        begin
-          argTemps[t1] := LowerExpr(TAstCall(expr).Args[t1]);
-        end;
-        instr.Op := irCall;
-        instr.ImmStr := TAstCall(expr).Name;
-        instr.ImmInt := Length(argTemps);
-        if instr.ImmInt > 0 then instr.Src1 := argTemps[0] else instr.Src1 := -1;
-        if instr.ImmInt > 1 then instr.Src2 := argTemps[1] else instr.Src2 := -1;
-        // serialize remaining temps (from index 2) into LabelName as CSV
-        instr.LabelName := '';
-        for t1 := 2 to High(argTemps) do
-        begin
-          if instr.LabelName <> '' then instr.LabelName := instr.LabelName + ',';
-          instr.LabelName := instr.LabelName + IntToStr(argTemps[t1]);
-        end;
-        // create temp for return value
-        instr.Dest := NewTemp;
-        Emit(instr);
-        Result := instr.Dest;
-        Exit(Result);
       end;
+
+      t1 := LowerExpr(TAstCall(expr).Args[0]);
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'print_int';
+      instr.Src1 := t1;
+      Emit(instr);
+      Exit(-1);
+    end
+    else if TAstCall(expr).Name = 'exit' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'exit';
+      instr.Src1 := t1;
+      Emit(instr);
+      Exit(-1);
+    end
+    else
+    begin
+      // generic call
+      SetLength(argTemps, Length(TAstCall(expr).Args));
+      for ai := 0 to High(argTemps) do
+        argTemps[ai] := LowerExpr(TAstCall(expr).Args[ai]);
+      instr.Op := irCall;
+      instr.ImmStr := TAstCall(expr).Name;
+      instr.ImmInt := Length(argTemps);
+      if instr.ImmInt > 0 then instr.Src1 := argTemps[0] else instr.Src1 := -1;
+      if instr.ImmInt > 1 then instr.Src2 := argTemps[1] else instr.Src2 := -1;
+      instr.LabelName := '';
+      for ai := 2 to High(argTemps) do
+      begin
+        if instr.LabelName <> '' then instr.LabelName := instr.LabelName + ',';
+        instr.LabelName := instr.LabelName + IntToStr(argTemps[ai]);
+      end;
+      instr.Dest := NewTemp;
+      Emit(instr);
+      Exit(instr.Dest);
     end;
+  end;
 
   // fallback
   FDiag.Error('lowering: unsupported expr', expr.Span);
@@ -340,6 +401,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     startLabel, bodyLabel, exitLabel: string;
     i: Integer;
 begin
+  instr := Default(TIRInstr);
   Result := True;
   if stmt is TAstVarDecl then
   begin
@@ -456,7 +518,5 @@ begin
   FDiag.Error('lowering: unsupported statement', stmt.Span);
   Result := False;
 end;
-
-end.
 
 end.

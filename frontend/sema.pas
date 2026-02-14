@@ -296,6 +296,7 @@ var
   vtype, ctype, rtype: TAurumType;
 begin
   if stmt = nil then Exit;
+
   case stmt.Kind of
     nkVarDecl:
       begin

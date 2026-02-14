@@ -244,10 +244,10 @@ begin
     Expect(tkLParen);
     cond := ParseExpr;
     Expect(tkRParen);
-    thenStmt := ParseStmt;
+    thenStmt := Self.ParseStmt;
     elseStmt := nil;
     if Accept(tkElse) then
-      elseStmt := ParseStmt;
+      elseStmt := Self.ParseStmt;
     Exit(TAstIf.Create(cond, thenStmt, elseStmt, cond.Span));
   end;
 
@@ -257,7 +257,7 @@ begin
     Expect(tkLParen);
     cond := ParseExpr;
     Expect(tkRParen);
-    bodyStmt := ParseStmt;
+    bodyStmt := Self.ParseStmt;
     Exit(TAstWhile.Create(cond, bodyStmt, cond.Span));
   end;
 

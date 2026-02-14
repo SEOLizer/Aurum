@@ -33,6 +33,7 @@ type
     procedure EmitFromIR(module: TIRModule);
     function GetCodeBuffer: TByteBuffer;
     function GetDataBuffer: TByteBuffer;
+    function GetFunctionOffset(const name: string): Integer;
   end;
 
 implementation
@@ -41,30 +42,102 @@ uses
   Math;
 
 const
-  RAX = 0; RCX = 1; RDX = 2; RBX = 3; RSP = 4; RBP = 5; RSI = 6; RDI = 7;
+  RAX = 0; RCX = 1; RDX = 2; RBX = 3; RSP = 4; RBP = 5; RSI = 6; RDI = 7; R8 = 8; R9 = 9;
+  ParamRegs: array[0..5] of Byte = (RDI, RSI, RDX, RCX, R8, R9);
 
 procedure EmitU8(b: TByteBuffer; v: Byte); begin b.WriteU8(v); end;
 procedure EmitU32(b: TByteBuffer; v: Cardinal); begin b.WriteU32LE(v); end;
 procedure EmitU64(b: TByteBuffer; v: UInt64); begin b.WriteU64LE(v); end;
 
+procedure EmitRex(buf: TByteBuffer; w, r, x, b: Integer);
+var
+  rex: Byte;
+begin
+  rex := $40 or (Byte(w and 1) shl 3) or (Byte(r and 1) shl 2) or (Byte(x and 1) shl 1) or Byte(b and 1);
+  EmitU8(buf, rex);
+end;
+
+
 procedure WriteMovRegImm64(buf: TByteBuffer; reg: Byte; imm: UInt64);
 begin
-  EmitU8(buf, $48); EmitU8(buf, $B8 + reg); EmitU64(buf, imm);
+  // mov r64, imm64 : REX.W + B8+rd
+  EmitRex(buf, 1, 0, 0, (reg shr 3) and 1);
+  EmitU8(buf, $B8 + (reg and $7));
+  EmitU64(buf, imm);
 end;
 procedure WriteMovRegReg(buf: TByteBuffer; dst, src: Byte);
-begin EmitU8(buf,$48); EmitU8(buf,$89); EmitU8(buf,$C0 or ((src shl 3) and $38) or (dst and $7)); end;
-procedure WriteMovRegMem(buf: TByteBuffer; reg, base: Byte; disp: Cardinal);
-begin EmitU8(buf,$48); EmitU8(buf,$8B); EmitU8(buf,$80 or ((reg shl 3) and $38) or (base and $7)); EmitU32(buf, disp); end;
-procedure WriteMovMemReg(buf: TByteBuffer; base: Byte; disp: Cardinal; reg: Byte);
-begin EmitU8(buf,$48); EmitU8(buf,$89); EmitU8(buf,$80 or ((reg shl 3) and $38) or (base and $7)); EmitU32(buf, disp); end;
+var rexR, rexB: Integer;
+begin
+  // mov r/m64, r64 : REX.W + 89 /r  (encode reg=src, rm=dst)
+  rexR := (src shr 3) and 1;
+  rexB := (dst shr 3) and 1;
+  EmitRex(buf, 1, rexR, 0, rexB);
+  EmitU8(buf, $89);
+  EmitU8(buf, $C0 or (((src and 7) shl 3) and $38) or (dst and $7));
+end;
+procedure WriteMovRegMem(buf: TByteBuffer; reg, base: Byte; disp: Integer);
+var rexR, rexB: Integer;
+begin
+  // mov r64, r/m64 : REX.W + 8B /r   (reg=reg, rm=mem)
+  rexR := (reg shr 3) and 1;
+  rexB := (base shr 3) and 1;
+  EmitRex(buf, 1, rexR, 0, rexB);
+  EmitU8(buf, $8B);
+  EmitU8(buf, $80 or (((reg and 7) shl 3) and $38) or (base and $7));
+  EmitU32(buf, Cardinal(disp));
+end;
+procedure WriteMovMemReg(buf: TByteBuffer; base: Byte; disp: Integer; reg: Byte);
+var rexR, rexB: Integer;
+begin
+  // mov r/m64, r64 : REX.W + 89 /r   (reg=reg, rm=mem)
+  rexR := (reg shr 3) and 1;
+  rexB := (base shr 3) and 1;
+  EmitRex(buf, 1, rexR, 0, rexB);
+  EmitU8(buf, $89);
+  EmitU8(buf, $80 or (((reg and 7) shl 3) and $38) or (base and $7));
+  EmitU32(buf, Cardinal(disp));
+end;
 procedure WriteAddRegReg(buf: TByteBuffer; dst, src: Byte);
-begin EmitU8(buf,$48); EmitU8(buf,$01); EmitU8(buf,$C0 or ((src shl 3) and $38) or (dst and $7)); end;
+var rexR, rexB: Integer;
+begin
+  // add r/m64, r64 : REX.W + 01 /r  (reg=src, rm=dst)
+  rexR := (src shr 3) and 1;
+  rexB := (dst shr 3) and 1;
+  EmitRex(buf, 1, rexR, 0, rexB);
+  EmitU8(buf, $01);
+  EmitU8(buf, $C0 or (((src and 7) shl 3) and $38) or (dst and $7));
+end;
 procedure WriteSubRegReg(buf: TByteBuffer; dst, src: Byte);
-begin EmitU8(buf,$48); EmitU8(buf,$29); EmitU8(buf,$C0 or ((src shl 3) and $38) or (dst and $7)); end;
+var rexR, rexB: Integer;
+begin
+  // sub r/m64, r64 : REX.W + 29 /r
+  rexR := (src shr 3) and 1;
+  rexB := (dst shr 3) and 1;
+  EmitRex(buf, 1, rexR, 0, rexB);
+  EmitU8(buf, $29);
+  EmitU8(buf, $C0 or (((src and 7) shl 3) and $38) or (dst and $7));
+end;
 procedure WriteImulRegReg(buf: TByteBuffer; dst, src: Byte);
-begin EmitU8(buf,$48); EmitU8(buf,$0F); EmitU8(buf,$AF); EmitU8(buf,$C0 or ((dst shl 3) and $38) or (src and $7)); end;
+var rexR, rexB: Integer;
+begin
+  // imul r64, r/m64 : REX.W 0F AF /r  (reg=dst, rm=src)
+  rexR := (dst shr 3) and 1;
+  rexB := (src shr 3) and 1;
+  EmitRex(buf, 1, rexR, 0, rexB);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $AF);
+  EmitU8(buf, $C0 or (((dst and 7) shl 3) and $38) or (src and $7));
+end;
 procedure WriteCqo(buf: TByteBuffer); begin EmitU8(buf,$48); EmitU8(buf,$99); end;
-procedure WriteIdivReg(buf: TByteBuffer; src: Byte); begin EmitU8(buf,$48); EmitU8(buf,$F7); EmitU8(buf,$F8 or (src and $7)); end;
+procedure WriteIdivReg(buf: TByteBuffer; src: Byte);
+var rexB: Integer;
+begin
+  // idiv r/m64 : REX.W + F7 /7 ; modrm = 0xF8 | rm (with mod=11)
+  rexB := (src shr 3) and 1;
+  EmitRex(buf, 1, 0, 0, rexB);
+  EmitU8(buf, $F7);
+  EmitU8(buf, $F8 or (src and $7));
+end;
 procedure WriteTestRaxRax(buf: TByteBuffer); begin EmitU8(buf,$48); EmitU8(buf,$85); EmitU8(buf,$C0); end;
 procedure WriteSyscall(buf: TByteBuffer); begin EmitU8(buf,$0F); EmitU8(buf,$05); end;
 procedure WriteLeaRsiRipDisp(buf: TByteBuffer; disp32: Cardinal); begin EmitU8(buf,$48); EmitU8(buf,$8D); EmitU8(buf,$35); EmitU32(buf, disp32); end;
@@ -90,12 +163,12 @@ begin
   EmitU8(buf, $48); EmitU8(buf, $FF); EmitU8(buf, $C0 or (reg and $7));
 end;
 
-procedure WriteMovMemRegByte(buf: TByteBuffer; base: Byte; disp: Cardinal; reg8: Byte);
+procedure WriteMovMemRegByte(buf: TByteBuffer; base: Byte; disp: Integer; reg8: Byte);
 begin
   // mov byte ptr [base + disp32], r8 -> 88 /0 with mod=10 (disp32)
   EmitU8(buf, $88);
   EmitU8(buf, $80 or ((reg8 and $7) shl 3) or (base and $7));
-  EmitU32(buf, disp);
+  EmitU32(buf, Cardinal(disp));
 end;
 
 procedure WriteMovMemRegByteNoDisp(buf: TByteBuffer; base: Byte; reg8: Byte);
@@ -105,35 +178,38 @@ begin
   EmitU8(buf, ((reg8 and $7) shl 3) or (base and $7));
 end;
 
-procedure WriteMovMemImm8(buf: TByteBuffer; base: Byte; disp: Cardinal; value: Byte);
+procedure WriteMovMemImm8(buf: TByteBuffer; base: Byte; disp: Integer; value: Byte);
 begin
   // mov byte ptr [base+disp32], imm8 => C6 80 disp32 imm8
   EmitU8(buf, $C6);
   EmitU8(buf, $80 or (base and $7));
-  EmitU32(buf, disp);
+  EmitU32(buf, Cardinal(disp));
   EmitU8(buf, value);
 end;
 
-procedure WriteSetccMem8(buf: TByteBuffer; ccOpcode: Byte; baseReg: Byte; disp32: Cardinal);
+procedure WriteSetccMem8(buf: TByteBuffer; ccOpcode: Byte; baseReg: Byte; disp32: Integer);
 begin
   // setcc r/m8 : opcode 0F ccOpcode modrm(mod=10) rm=base
   EmitU8(buf, $0F);
   EmitU8(buf, ccOpcode);
   EmitU8(buf, $80 or ((0 shl 3) and $38) or (baseReg and $7));
-  EmitU32(buf, disp32);
+  EmitU32(buf, Cardinal(disp32));
 end;
 
-procedure WriteMovzxRegMem8(buf: TByteBuffer; dstReg: Byte; baseReg: Byte; disp32: Cardinal);
+procedure WriteMovzxRegMem8(buf: TByteBuffer; dstReg: Byte; baseReg: Byte; disp32: Integer);
 begin
   // movzx r64, r/m8 : rex.w 0F B6 /r with reg=dst, rm=mem
   EmitU8(buf, $48);
   EmitU8(buf, $0F);
   EmitU8(buf, $B6);
   EmitU8(buf, $80 or ((dstReg shl 3) and $38) or (baseReg and $7));
-  EmitU32(buf, disp32);
+  EmitU32(buf, Cardinal(disp32));
 end;
 
-function SlotOffset(slot: Integer): Cardinal; begin Result := Cardinal(8*(slot+1)); end;
+function SlotOffset(slot: Integer): Integer;
+begin
+  Result := -8 * (slot + 1);
+end;
 
 constructor TX86_64Emitter.Create;
 begin
@@ -176,23 +252,23 @@ var
   argTemps: array of Integer;
   sParse: string;
   ppos, ai: Integer;
+  // for call extra
+  extraCount: Integer;
   // function context
   isEntryFunction: Boolean;
-  // logging
-  logf: TextFile;
-  tmpLog: string;
   // debug IO
   fs: TFileStream;
   meta: TStringList;
-  procedure Log(const s: string);
-  begin
-    AssignFile(logf, '/tmp/emitter_log.txt');
-    if FileExists('/tmp/emitter_log.txt') then Append(logf) else Rewrite(logf);
-    WriteLn(logf, s);
-    CloseFile(logf);
-  end;
+  frameBytes: Integer;
+  framePad: Integer;
+  callPad: Integer;
+  pushBytes: Integer;
+  restoreBytes: Integer;
+  // patch logging locals
+  lf: TextFile;
+  startOff, endOff, off: Integer;
+  sBytes: string;
 begin
-  WriteLn('EMITTER: EmitFromIR begin');
   // reset patch arrays
   SetLength(FLeaPositions, 0);
   SetLength(FLeaStrIndex, 0);
@@ -235,18 +311,45 @@ begin
       end;
       if maxTemp < 0 then maxTemp := 0 else Inc(maxTemp);
       totalSlots := localCnt + maxTemp;
-
-      // prologue
-      EmitU8(FCode, $55); // push rbp
-      EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $E5); // mov rbp,rsp
-      if totalSlots > 0 then
+      // sanity cap to avoid huge stack allocations from bad IR
+      if totalSlots < 0 then totalSlots := 0;
+      if totalSlots > 1024 then
       begin
-        EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $EC);
-        EmitU32(FCode, Cardinal(totalSlots * 8));
+        WriteLn('EMITTER: warning: totalSlots too large, capping. localCnt=', localCnt, ' maxTemp=', maxTemp, ' totalSlotsRaw=', localCnt+maxTemp);
+        totalSlots := 1024;
       end;
 
-    SetLength(tempStrIndex, maxTemp);
-    for k := 0 to maxTemp - 1 do tempStrIndex[k] := -1;
+      // compute prologue stack adjustment (frame + padding for alignment)
+      frameBytes := totalSlots * 8;
+      framePad := (16 - ((frameBytes + 8) mod 16)) mod 16; // +8 because return address after push rbp
+      EmitU8(FCode, $55); // push rbp
+      EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $E5); // mov rbp,rsp
+      if frameBytes + framePad > 0 then
+      begin
+        EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $EC);
+        EmitU32(FCode, Cardinal(frameBytes + framePad));
+      end;
+
+      // spill incoming parameters into slots
+      if module.Functions[i].ParamCount > 0 then
+      begin
+        for k := 0 to module.Functions[i].ParamCount - 1 do
+        begin
+          slotIdx := k;
+          if k < Length(ParamRegs) then
+            WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), ParamRegs[k])
+          else
+          begin
+            disp32 := 16 + (k - Length(ParamRegs)) * 8;
+            WriteMovRegMem(FCode, RAX, RBP, Integer(disp32));
+            WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
+          end;
+        end;
+      end;
+
+      SetLength(tempStrIndex, maxTemp);
+      for k := 0 to maxTemp - 1 do tempStrIndex[k] := -1;
+
 
     for j := 0 to High(module.Functions[i].Instructions) do
     begin
@@ -272,9 +375,7 @@ begin
             begin
               // load pointer from slot into RSI
               WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + instr.Src1));
-              // syscall write(1, rsi, len)
-              WriteMovRegImm64(FCode, RAX, 1);
-              WriteMovRegImm64(FCode, RDI, 1);
+              // try static length from interned string
               len := 0;
               if (instr.Src1 >= 0) and (instr.Src1 < Length(tempStrIndex)) then
               begin
@@ -282,7 +383,37 @@ begin
                 if (sidx >= 0) and (sidx < module.Strings.Count) then
                   len := Length(module.Strings[sidx]);
               end;
-              WriteMovRegImm64(FCode, RDX, Cardinal(len));
+              if len > 0 then
+              begin
+                // static length known: use immediate
+                WriteMovRegImm64(FCode, RDX, Cardinal(len));
+              end
+              else
+              begin
+                // runtime strlen: scan for \0 starting at RSI
+                // rcx = rsi (save start pointer)
+                WriteMovRegReg(FCode, RCX, RSI);
+                // strlen_loop: cmp byte [rcx], 0
+                // je strlen_done
+                // inc rcx
+                // jmp strlen_loop
+                // strlen_done: rdx = rcx - rsi
+                //   strlen_loop:
+                EmitU8(FCode, $80); EmitU8(FCode, $39); EmitU8(FCode, $00); // cmp byte [rcx], 0
+                //   je +3 (skip inc + jmp = 3+5 = 8 bytes... actually inc=3, jmp=2)
+                //   inc rcx = 48 FF C1 (3 bytes)
+                //   jmp back = EB xx (2 bytes, short jump)
+                //   je strlen_done (skip inc+jmp = 5 bytes)
+                EmitU8(FCode, $74); EmitU8(FCode, $05); // je +5
+                WriteIncReg(FCode, RCX);                 // inc rcx (3 bytes)
+                EmitU8(FCode, $EB); EmitU8(FCode, $F6);  // jmp -10 (back to cmp)
+                // strlen_done: rdx = rcx - rsi
+                WriteMovRegReg(FCode, RDX, RCX);
+                WriteSubRegReg(FCode, RDX, RSI);
+              end;
+              // syscall write(1, rsi, rdx)
+              WriteMovRegImm64(FCode, RAX, 1);
+              WriteMovRegImm64(FCode, RDI, 1);
               WriteSyscall(FCode);
             end
             else if instr.ImmStr = 'print_int' then
@@ -377,8 +508,9 @@ begin
             end
             else if instr.ImmStr = 'exit' then
             begin
+              // load exit code from temp slot into RDI
+              WriteMovRegMem(FCode, RDI, RBP, SlotOffset(localCnt + instr.Src1));
               WriteMovRegImm64(FCode, RAX, 60);
-              WriteMovRegImm64(FCode, RDI, 0);
               WriteSyscall(FCode);
             end;
           end;
@@ -550,12 +682,18 @@ begin
                 WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
             end;
 
-            // Fix stack: add totalSlots*8 to RSP if we allocated
-            if totalSlots > 0 then
+            // Fix stack: add frameBytes+framePad back to RSP if we allocated
+            if frameBytes + framePad > 0 then
             begin
-              // add rsp, imm32  => 48 81 C4 imm32
-              EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $C4);
-              EmitU32(FCode, Cardinal(totalSlots * 8));
+              if frameBytes + framePad <= 127 then
+              begin
+                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $C4); EmitU8(FCode, Byte(frameBytes + framePad));
+              end
+              else
+              begin
+                EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $C4);
+                EmitU32(FCode, Cardinal(frameBytes + framePad));
+              end;
             end;
 
             if isEntryFunction then
@@ -611,59 +749,65 @@ begin
           end;
         irCall:
           begin
-            // Log call info
-            Log(Format('irCall: func=%s argCount=%d destTemp=%d', [instr.ImmStr, instr.ImmInt, instr.Dest]));
-
             // Call user-defined function (simple SysV-ish implementation)
             // Args info: instr.ImmInt = argCount, instr.Src1/Src2 first two temp indices,
             // remaining temps serialized in instr.LabelName as CSV starting from index 2.
             argCount := instr.ImmInt;
             SetLength(argTemps, argCount);
+            for k := 0 to argCount - 1 do
+              argTemps[k] := -1;
             if argCount > 0 then argTemps[0] := instr.Src1;
             if argCount > 1 then argTemps[1] := instr.Src2;
-            if argCount > 2 then
+            if (argCount > 2) and (instr.LabelName <> '') then
             begin
               // parse CSV from LabelName (temps starting from index 2)
               sParse := instr.LabelName;
               ppos := Pos(',', sParse);
               ai := 2;
-              while ppos > 0 do
+              while (ppos > 0) and (ai < argCount) do
               begin
                 argTemps[ai] := StrToIntDef(Copy(sParse, 1, ppos - 1), -1);
                 Delete(sParse, 1, ppos);
                 Inc(ai);
                 ppos := Pos(',', sParse);
               end;
-              if sParse <> '' then
-              begin
+              if (sParse <> '') and (ai < argCount) then
                 argTemps[ai] := StrToIntDef(sParse, -1);
+            end;
+
+
+            // Move args into registers (SysV: RDI, RSI, RDX, RCX, R8, R9)
+            if argCount > 0 then
+            begin
+              // direct registers for up to 6 args
+              if (argCount >= 1) and (argTemps[0] >= 0) then WriteMovRegMem(FCode, 7, RBP, SlotOffset(localCnt + argTemps[0])); // RDI
+              if (argCount >= 2) and (argTemps[1] >= 0) then WriteMovRegMem(FCode, 6, RBP, SlotOffset(localCnt + argTemps[1])); // RSI
+              if (argCount >= 3) and (argTemps[2] >= 0) then WriteMovRegMem(FCode, 2, RBP, SlotOffset(localCnt + argTemps[2])); // RDX
+              if (argCount >= 4) and (argTemps[3] >= 0) then WriteMovRegMem(FCode, 1, RBP, SlotOffset(localCnt + argTemps[3])); // RCX
+              if (argCount >= 5) and (argTemps[4] >= 0) then WriteMovRegMem(FCode, 8, RBP, SlotOffset(localCnt + argTemps[4])); // R8
+              if (argCount >= 6) and (argTemps[5] >= 0) then WriteMovRegMem(FCode, 9, RBP, SlotOffset(localCnt + argTemps[5])); // R9
+            end;
+
+            // handle extra args >6: push them in reverse order onto stack
+            extraCount := 0;
+            if argCount > 6 then extraCount := argCount - 6;
+            pushBytes := 0;
+            if extraCount > 0 then
+            begin
+              // push args from last to first (arg_n ... arg_7)
+              for k := argCount - 1 downto 6 do
+              begin
+                if argTemps[k] < 0 then Continue;
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + argTemps[k]));
+                EmitU8(FCode, $50 + (RAX and $7));
+                Inc(pushBytes, 8);
               end;
             end;
-
-            // Log parsed temps
-            tmpLog := 'args:';
-            if argCount > 0 then
+            callPad := (8 - (pushBytes mod 16)) mod 16;
+            if callPad > 0 then
             begin
-              for k := 0 to argCount - 1 do
-                tmpLog := tmpLog + ' ' + IntToStr(argTemps[k]);
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $EC); EmitU8(FCode, Byte(callPad));
             end;
-            Log(tmpLog);
-
-            // Move args into registers (support up to 4 args: RDI, RSI, RDX, RCX)
-            if argCount > 0 then
-            begin
-              if argCount >= 1 then
-                WriteMovRegMem(FCode, RDI, RBP, SlotOffset(localCnt + argTemps[0]));
-              if argCount >= 2 then
-                WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + argTemps[1]));
-              if argCount >= 3 then
-                WriteMovRegMem(FCode, RDX, RBP, SlotOffset(localCnt + argTemps[2]));
-              if argCount >= 4 then
-                WriteMovRegMem(FCode, RCX, RBP, SlotOffset(localCnt + argTemps[3]));
-            end;
-
-            // alignment: ensure 16-byte alignment for call by adjusting RSP by 8
-            EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $EC); EmitU8(FCode, $08); // sub rsp,8
 
             // emit call and patch later
             SetLength(FJumpPatches, Length(FJumpPatches) + 1);
@@ -673,8 +817,20 @@ begin
             EmitU8(FCode, $E8); // call rel32
             EmitU32(FCode, 0);  // placeholder offset
 
-            // restore stack
-            EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $C4); EmitU8(FCode, $08); // add rsp,8
+            // restore stack: remove padding + extra pushed args
+            restoreBytes := callPad + pushBytes;
+            if restoreBytes > 0 then
+            begin
+              if restoreBytes <= 127 then
+              begin
+                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $C4); EmitU8(FCode, Byte(restoreBytes));
+              end
+              else
+              begin
+                EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $C4);
+                EmitU32(FCode, Cardinal(restoreBytes));
+              end;
+            end;
 
             // Store result from RAX if there's a destination
             if instr.Dest >= 0 then
@@ -730,6 +886,30 @@ begin
     begin
       jmpPos := FJumpPatches[i].Pos;
       rel32 := Int64(targetPos) - Int64(jmpPos + FJumpPatches[i].JmpSize);
+
+      // detailed patch logging for debugging
+      try
+        AssignFile(lf, '/tmp/emitter_patch_log.txt');
+        if FileExists('/tmp/emitter_patch_log.txt') then Append(lf) else Rewrite(lf);
+        try
+          WriteLn(lf, Format('PATCH idx=%d jmpPos=%d label=%s targetPos=%d jmpSize=%d rel32=%d',
+            [i, jmpPos, FJumpPatches[i].LabelName, targetPos, FJumpPatches[i].JmpSize, rel32]));
+          // dump nearby bytes
+          startOff := jmpPos - 8;
+          if startOff < 0 then startOff := 0;
+          endOff := jmpPos + 16;
+          if endOff > FCode.Size - 1 then endOff := FCode.Size - 1;
+          sBytes := '';
+          for off := startOff to endOff do
+            sBytes := sBytes + Format('%02x ', [FCode.ReadU8(off)]);
+          WriteLn(lf, Format('BYTES @%d..%d: %s', [startOff, endOff, sBytes]));
+        finally
+          CloseFile(lf);
+        end;
+      except
+        // ignore logging errors
+      end;
+
       if FJumpPatches[i].JmpSize = 5 then
         FCode.PatchU32LE(jmpPos + 1, Cardinal(rel32)) // jmp rel32: opcode at pos, rel32 at pos+1
       else
@@ -773,6 +953,21 @@ begin
     end;
   except
     // ignore errors in debug dump
+  end;
+end;
+
+function TX86_64Emitter.GetFunctionOffset(const name: string): Integer;
+var
+  i: Integer;
+begin
+  Result := -1;
+  for i := 0 to High(FLabelPositions) do
+  begin
+    if FLabelPositions[i].Name = name then
+    begin
+      Result := FLabelPositions[i].Pos;
+      Exit;
+    end;
   end;
 end;
 

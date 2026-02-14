@@ -22,14 +22,13 @@ var
   emit: TX86_64Emitter;
   codeBuf, dataBuf: TByteBuffer;
   entryVA: UInt64;
-  irDump: TStringList;
-  fi, ii: Integer;
-  ins: TIRInstr;
-  fs: TFileStream;
-
+  entryOffset: Integer;
 begin
   if ParamCount < 1 then
   begin
+    WriteLn(StdErr, 'Aurum Compiler v0.1.0');
+    WriteLn(StdErr, 'Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.');
+    WriteLn(StdErr);
     WriteLn(StdErr, 'Verwendung: aurumc <datei.au> [-o <output>]');
     Halt(1);
   end;
@@ -40,7 +39,9 @@ begin
   if (ParamCount >= 3) and (ParamStr(2) = '-o') then
     outputFile := ParamStr(3);
 
-  WriteLn('aurumc v0.0.1 EMITTEST');
+  WriteLn('Aurum Compiler v0.1.0');
+  WriteLn('Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.');
+  WriteLn;
   WriteLn('Eingabe:  ', inputFile);
   WriteLn('Ausgabe:  ', outputFile);
 
@@ -50,44 +51,43 @@ begin
     d := TDiagnostics.Create;
     try
       lx := TLexer.Create(src.Text, inputFile, d);
+      try
+        p := TParser.Create(lx, d);
         try
-          emit := TX86_64Emitter.Create;
-          try
-            WriteLn('EMIT: start');
-            if Assigned(module) then
-              WriteLn('EMIT: module assigned, strings=', module.Strings.Count)
-            else
-              WriteLn('EMIT: module is nil');
-            WriteLn('EMIT: calling Create/GetCodeBuffer');
-            WriteLn('emit obj: ', PtrInt(emit));
-            try
-              codeBuf := emit.GetCodeBuffer;
-              WriteLn('EMIT: GetCodeBuffer ok, size=', codeBuf.Size);
-            except
-              on E: Exception do
-                WriteLn('EMIT: GetCodeBuffer raised: ', E.ClassName, ' ', E.Message);
-            end;
-            emit.EmitFromIR(module);
-            WriteLn('EMIT: done');
-            codeBuf := emit.GetCodeBuffer;
-            dataBuf := emit.GetDataBuffer;
+          prog := p.ParseProgram;
+        finally
+          p.Free;
+        end;
+      finally
+        lx.Free;
+      end;
 
+      s := TSema.Create(d);
+      try
+        s.Analyze(prog);
+        if d.HasErrors then
+        begin
+          d.PrintAll;
+          Halt(1);
+        end;
+      finally
+        s.Free;
+      end;
 
-          // dump code/data buffers for debugging
-          fs := TFileStream.Create('/tmp/code_from_aurumc.bin', fmCreate);
-          try
-            if codeBuf.Size > 0 then fs.WriteBuffer(codeBuf.GetBuffer^, codeBuf.Size);
-          finally
-            fs.Free;
-          end;
-          fs := TFileStream.Create('/tmp/data_from_aurumc.bin', fmCreate);
-          try
-            if dataBuf.Size > 0 then fs.WriteBuffer(dataBuf.GetBuffer^, dataBuf.Size);
-          finally
-            fs.Free;
-          end;
-
-          entryVA := $400000 + 4096;
+      module := TIRModule.Create;
+      lower := TIRLowering.Create(module, d);
+      try
+        lower.Lower(prog);
+        emit := TX86_64Emitter.Create;
+        try
+          emit.EmitFromIR(module);
+          codeBuf := emit.GetCodeBuffer;
+          dataBuf := emit.GetDataBuffer;
+          entryOffset := emit.GetFunctionOffset('main');
+          if entryOffset < 0 then
+            entryVA := $400000 + 4096
+          else
+            entryVA := $400000 + 4096 + UInt64(entryOffset);
           WriteElf64(outputFile, codeBuf, dataBuf, entryVA);
           FpChmod(PChar(outputFile), 493);
           WriteLn('Wrote ', outputFile);
