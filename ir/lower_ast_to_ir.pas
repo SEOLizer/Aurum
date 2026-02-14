@@ -231,65 +231,79 @@ begin
       Exit(instr.Dest);
     end;
   end;
-  if expr is TAstCall then
-  begin
-    // handle builtins: print_str, print_int, exit
-    if TAstCall(expr).Name = 'print_str' then
+    if expr is TAstCall then
     begin
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
-      instr.Op := irCallBuiltin;
-      instr.ImmStr := 'print_str';
-      instr.Src1 := t1;
-      Emit(instr);
-      Exit(-1); // void
-    end
-    else if TAstCall(expr).Name = 'print_int' then
-    begin
-      // constant-fold print_int(x) -> print_str("...") when x is literal
-      if (Length(TAstCall(expr).Args) >= 1) and (TAstCall(expr).Args[0] is TAstIntLit) then
+      // handle builtins: print_str, print_int, exit
+      if TAstCall(expr).Name = 'print_str' then
       begin
-        si := FModule.InternString(IntToStr(TAstIntLit(TAstCall(expr).Args[0]).Value));
-        t1 := NewTemp;
-        instr.Op := irConstStr;
-        instr.Dest := t1;
-        instr.ImmStr := IntToStr(si);
-        Emit(instr);
+        t1 := LowerExpr(TAstCall(expr).Args[0]);
         instr.Op := irCallBuiltin;
         instr.ImmStr := 'print_str';
         instr.Src1 := t1;
         Emit(instr);
-        Exit(-1);
-      end;
+        Exit(-1); // void
+      end
+      else if TAstCall(expr).Name = 'print_int' then
+      begin
+        // constant-fold print_int(x) -> print_str("...") when x is literal
+        if (Length(TAstCall(expr).Args) >= 1) and (TAstCall(expr).Args[0] is TAstIntLit) then
+        begin
+          si := FModule.InternString(IntToStr(TAstIntLit(TAstCall(expr).Args[0]).Value));
+          t1 := NewTemp;
+          instr.Op := irConstStr;
+          instr.Dest := t1;
+          instr.ImmStr := IntToStr(si);
+          Emit(instr);
+          instr.Op := irCallBuiltin;
+          instr.ImmStr := 'print_str';
+          instr.Src1 := t1;
+          Emit(instr);
+          Exit(-1);
+        end;
 
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
-      instr.Op := irCallBuiltin;
-      instr.ImmStr := 'print_int';
-      instr.Src1 := t1;
-      Emit(instr);
-      Exit(-1);
-    end
-    else if TAstCall(expr).Name = 'exit' then
-    begin
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
-      instr.Op := irCallBuiltin;
-      instr.ImmStr := 'exit';
-      instr.Src1 := t1;
-      Emit(instr);
-      Exit(-1);
-    end
-    else
-    begin
-      // generic call
-      // lower args but we don't support calling user functions properly yet
-      for t1 := 0 to High(TAstCall(expr).Args) do
-        LowerExpr(TAstCall(expr).Args[t1]);
-      instr.Op := irCall;
-      instr.ImmStr := TAstCall(expr).Name;
-      Emit(instr);
-      Result := -1;
-      Exit(Result);
+        t1 := LowerExpr(TAstCall(expr).Args[0]);
+        instr.Op := irCallBuiltin;
+        instr.ImmStr := 'print_int';
+        instr.Src1 := t1;
+        Emit(instr);
+        Exit(-1);
+      end
+      else if TAstCall(expr).Name = 'exit' then
+      begin
+        t1 := LowerExpr(TAstCall(expr).Args[0]);
+        instr.Op := irCallBuiltin;
+        instr.ImmStr := 'exit';
+        instr.Src1 := t1;
+        Emit(instr);
+        Exit(-1);
+      end
+      else
+      begin
+        // generic call
+        // lower args and collect their temp indices
+        var argTemps: array of Integer;
+        SetLength(argTemps, Length(TAstCall(expr).Args));
+        for t1 := 0 to High(TAstCall(expr).Args) do
+        begin
+          argTemps[t1] := LowerExpr(TAstCall(expr).Args[t1]);
+        end;
+        instr.Op := irCall;
+        instr.ImmStr := TAstCall(expr).Name;
+        instr.ImmInt := Length(argTemps);
+        if instr.ImmInt > 0 then instr.Src1 := argTemps[0] else instr.Src1 := -1;
+        if instr.ImmInt > 1 then instr.Src2 := argTemps[1] else instr.Src2 := -1;
+        // serialize remaining temps (from index 2) into LabelName as CSV
+        instr.LabelName := '';
+        for t1 := 2 to High(argTemps) do
+        begin
+          if instr.LabelName <> '' then instr.LabelName := instr.LabelName + ',';
+          instr.LabelName := instr.LabelName + IntToStr(argTemps[t1]);
+        end;
+        Emit(instr);
+        Result := -1;
+        Exit(Result);
+      end;
     end;
-  end;
 
   // fallback
   FDiag.Error('lowering: unsupported expr', expr.Span);
