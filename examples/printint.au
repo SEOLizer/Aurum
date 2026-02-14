@@ -1,0 +1,4 @@
+fn main(): int64 {
+  print_int(5);
+  return 0;
+}

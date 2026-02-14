@@ -171,7 +171,28 @@ var
   len: Integer;
   nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
   targetPos, jmpPos: Integer;
+  // for call/abi
+  argCount: Integer;
+  argTemps: array of Integer;
+  sParse: string;
+  ppos, ai: Integer;
+  // function context
+  isEntryFunction: Boolean;
+  // logging
+  logf: TextFile;
+  tmpLog: string;
+  // debug IO
+  fs: TFileStream;
+  meta: TStringList;
+  procedure Log(const s: string);
+  begin
+    AssignFile(logf, '/tmp/emitter_log.txt');
+    if FileExists('/tmp/emitter_log.txt') then Append(logf) else Rewrite(logf);
+    WriteLn(logf, s);
+    CloseFile(logf);
+  end;
 begin
+  WriteLn('EMITTER: EmitFromIR begin');
   // reset patch arrays
   SetLength(FLeaPositions, 0);
   SetLength(FLeaStrIndex, 0);
@@ -202,6 +223,8 @@ begin
       FLabelPositions[High(FLabelPositions)].Pos := FCode.Size;
 
       localCnt := module.Functions[i].LocalCount;
+      // is this the program entry (main)? If so, irReturn should sys_exit
+      isEntryFunction := (module.Functions[i].Name = 'main');
       maxTemp := -1;
       for j := 0 to High(module.Functions[i].Instructions) do
       begin
@@ -515,9 +538,17 @@ begin
           end;
         irReturn:
           begin
-            // Move return value into RAX if provided
-            if instr.Src1 >= 0 then
-              WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+            // Move return value into RAX (non-entry) or RDI (entry) if provided
+            if isEntryFunction then
+            begin
+              if instr.Src1 >= 0 then
+                WriteMovRegMem(FCode, RDI, RBP, SlotOffset(localCnt + instr.Src1));
+            end
+            else
+            begin
+              if instr.Src1 >= 0 then
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+            end;
 
             // Fix stack: add totalSlots*8 to RSP if we allocated
             if totalSlots > 0 then
@@ -527,9 +558,18 @@ begin
               EmitU32(FCode, Cardinal(totalSlots * 8));
             end;
 
-            // leave; ret
-            EmitU8(FCode, $C9); // leave
-            EmitU8(FCode, $C3); // ret
+            if isEntryFunction then
+            begin
+              // sys_exit
+              WriteMovRegImm64(FCode, RAX, 60);
+              WriteSyscall(FCode);
+            end
+            else
+            begin
+              // leave; ret
+              EmitU8(FCode, $C9); // leave
+              EmitU8(FCode, $C3); // ret
+            end;
           end;
         irLabel:
           begin
@@ -571,14 +611,71 @@ begin
           end;
         irCall:
           begin
-            // Call user-defined function (simple implementation)
-            // Label name is in instr.ImmStr (function name)
+            // Log call info
+            Log(Format('irCall: func=%s argCount=%d destTemp=%d', [instr.ImmStr, instr.ImmInt, instr.Dest]));
+
+            // Call user-defined function (simple SysV-ish implementation)
+            // Args info: instr.ImmInt = argCount, instr.Src1/Src2 first two temp indices,
+            // remaining temps serialized in instr.LabelName as CSV starting from index 2.
+            argCount := instr.ImmInt;
+            SetLength(argTemps, argCount);
+            if argCount > 0 then argTemps[0] := instr.Src1;
+            if argCount > 1 then argTemps[1] := instr.Src2;
+            if argCount > 2 then
+            begin
+              // parse CSV from LabelName (temps starting from index 2)
+              sParse := instr.LabelName;
+              ppos := Pos(',', sParse);
+              ai := 2;
+              while ppos > 0 do
+              begin
+                argTemps[ai] := StrToIntDef(Copy(sParse, 1, ppos - 1), -1);
+                Delete(sParse, 1, ppos);
+                Inc(ai);
+                ppos := Pos(',', sParse);
+              end;
+              if sParse <> '' then
+              begin
+                argTemps[ai] := StrToIntDef(sParse, -1);
+              end;
+            end;
+
+            // Log parsed temps
+            tmpLog := 'args:';
+            if argCount > 0 then
+            begin
+              for k := 0 to argCount - 1 do
+                tmpLog := tmpLog + ' ' + IntToStr(argTemps[k]);
+            end;
+            Log(tmpLog);
+
+            // Move args into registers (support up to 4 args: RDI, RSI, RDX, RCX)
+            if argCount > 0 then
+            begin
+              if argCount >= 1 then
+                WriteMovRegMem(FCode, RDI, RBP, SlotOffset(localCnt + argTemps[0]));
+              if argCount >= 2 then
+                WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + argTemps[1]));
+              if argCount >= 3 then
+                WriteMovRegMem(FCode, RDX, RBP, SlotOffset(localCnt + argTemps[2]));
+              if argCount >= 4 then
+                WriteMovRegMem(FCode, RCX, RBP, SlotOffset(localCnt + argTemps[3]));
+            end;
+
+            // alignment: ensure 16-byte alignment for call by adjusting RSP by 8
+            EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $EC); EmitU8(FCode, $08); // sub rsp,8
+
+            // emit call and patch later
             SetLength(FJumpPatches, Length(FJumpPatches) + 1);
             FJumpPatches[High(FJumpPatches)].Pos := FCode.Size;
             FJumpPatches[High(FJumpPatches)].LabelName := instr.ImmStr;
             FJumpPatches[High(FJumpPatches)].JmpSize := 5; // call rel32
             EmitU8(FCode, $E8); // call rel32
             EmitU32(FCode, 0);  // placeholder offset
+
+            // restore stack
+            EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $C4); EmitU8(FCode, $08); // add rsp,8
+
             // Store result from RAX if there's a destination
             if instr.Dest >= 0 then
               WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
@@ -638,6 +735,44 @@ begin
       else
         FCode.PatchU32LE(jmpPos + 2, Cardinal(rel32)); // jcc rel32: opcode 0F xx at pos, rel32 at pos+2
     end;
+  end;
+
+  // Dump code/data and metadata for debugging
+  try
+    // write raw code and data buffers
+    fs := TFileStream.Create('/tmp/emitter_code.bin', fmCreate);
+    try
+      if FCode.Size > 0 then fs.WriteBuffer(FCode.GetBuffer^, FCode.Size);
+    finally
+      fs.Free;
+    end;
+    fs := TFileStream.Create('/tmp/emitter_data.bin', fmCreate);
+    try
+      if FData.Size > 0 then fs.WriteBuffer(FData.GetBuffer^, FData.Size);
+    finally
+      fs.Free;
+    end;
+
+    // write metadata
+    meta := TStringList.Create;
+    try
+      meta.Add('CodeSize=' + IntToStr(FCode.Size));
+      meta.Add('DataSize=' + IntToStr(FData.Size));
+      meta.Add('Labels:');
+      for i := 0 to High(FLabelPositions) do
+        meta.Add(Format('  %s => %d', [FLabelPositions[i].Name, FLabelPositions[i].Pos]));
+      meta.Add('JumpPatches:');
+      for i := 0 to High(FJumpPatches) do
+        meta.Add(Format('  pos=%d label=%s jmpSize=%d', [FJumpPatches[i].Pos, FJumpPatches[i].LabelName, FJumpPatches[i].JmpSize]));
+      meta.Add('LeaPositions:');
+      for i := 0 to High(FLeaPositions) do
+        meta.Add(Format('  pos=%d strIndex=%d', [FLeaPositions[i], FLeaStrIndex[i]]));
+      meta.SaveToFile('/tmp/emitter_meta.txt');
+    finally
+      meta.Free;
+    end;
+  except
+    // ignore errors in debug dump
   end;
 end;
 

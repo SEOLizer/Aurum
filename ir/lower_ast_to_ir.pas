@@ -102,11 +102,13 @@ end;
 { Lowering main entry }
 
 function TIRLowering.Lower(prog: TAstProgram): TIRModule;
-var
+  var
   i: Integer;
   fn: TIRFunction;
   node: TAstNode;
   j: Integer;
+  dump: TStringList;
+  rf: TextFile;
 begin
   // iterate top-level decls, create functions
   for i := 0 to High(prog.Decls) do
@@ -120,12 +122,26 @@ begin
       FLocalMap.Clear;
       FTempCounter := 0;
       // lower statements sequentially
-      for j := 0 to High(TAstFuncDecl(node).Body.Stmts) do
-      begin
-        LowerStmt(TAstFuncDecl(node).Body.Stmts[j]);
-      end;
-      FCurrentFunc := nil;
-    end
+       for j := 0 to High(TAstFuncDecl(node).Body.Stmts) do
+       begin
+         LowerStmt(TAstFuncDecl(node).Body.Stmts[j]);
+       end;
+       // write IR text directly to /tmp/ir_lower.txt (append)
+        AssignFile(rf, '/tmp/ir_lower.txt');
+       if FileExists('/tmp/ir_lower.txt') then Append(rf) else Rewrite(rf);
+       try
+         Writeln(rf, 'Function: ' + fn.Name + ' locals=' + IntToStr(fn.LocalCount));
+         for j := 0 to High(fn.Instructions) do
+         begin
+           Writeln(rf, Format(' %d: op=%d dest=%d s1=%d s2=%d imm=%d immstr=%s label=%s', [j, Ord(fn.Instructions[j].Op), fn.Instructions[j].Dest, fn.Instructions[j].Src1, fn.Instructions[j].Src2, fn.Instructions[j].ImmInt, fn.Instructions[j].ImmStr, fn.Instructions[j].LabelName]));
+         end;
+       finally
+         CloseFile(rf);
+       end;
+       FCurrentFunc := nil;
+     end
+
+
     else if node is TAstConDecl then
     begin
       // constants can be lowered to module strings/consts if needed
@@ -153,6 +169,8 @@ var
   instr: TIRInstr;
   t1, t2: Integer;
   si: Integer;
+  argTemps: array of Integer;
+  ai: Integer;
 begin
   if expr is TAstIntLit then
   begin
@@ -281,7 +299,6 @@ begin
       begin
         // generic call
         // lower args and collect their temp indices
-        var argTemps: array of Integer;
         SetLength(argTemps, Length(TAstCall(expr).Args));
         for t1 := 0 to High(TAstCall(expr).Args) do
         begin
@@ -299,8 +316,10 @@ begin
           if instr.LabelName <> '' then instr.LabelName := instr.LabelName + ',';
           instr.LabelName := instr.LabelName + IntToStr(argTemps[t1]);
         end;
+        // create temp for return value
+        instr.Dest := NewTemp;
         Emit(instr);
-        Result := -1;
+        Result := instr.Dest;
         Exit(Result);
       end;
     end;
