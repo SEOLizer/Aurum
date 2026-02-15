@@ -634,7 +634,7 @@ begin
 
               // if value < 0 -> return -1 (unsupported)
               WriteMovRegReg(FCode, RCX, RAX);
-              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(0); // cmp rcx,0
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(FCode, 0); // cmp rcx,0
               // jge ok
               nonZeroPos := FCode.Size;
               WriteJgeRel32(FCode, 0);
@@ -679,7 +679,7 @@ begin
 
               // copy loop: while RCX > 0 { mov al, [RDI]; mov [R8], al; inc RDI; inc R8; dec RCX }
               // cmp rcx, 0
-              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(0);
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(FCode, 0);
               nonZeroPos := FCode.Size;
               WriteJneRel32(FCode, 0);
               // fast path: if length == 0 return idx
@@ -699,7 +699,7 @@ begin
               // dec rcx
               WriteDecReg(FCode, RCX);
               // cmp rcx,0
-              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(0);
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(FCode, 0);
               // jne copy_start (jump back by appropriate rel32)
               // emit short jump back (EB xx) not reliable for variable size; use rel32
               // reserve patch
@@ -795,7 +795,7 @@ begin
               WriteAddRegReg(FCode, RDI, RDX);
 
               // if value < 0 -> return -1 (unsupported)
-              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(0); // cmp rax,0
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(FCode, 0); // cmp rax,0
               nonZeroPos := FCode.Size;
               WriteJgeRel32(FCode, 0);
               // negative: return -1
@@ -839,7 +839,7 @@ begin
 
               // copy loop: while RCX > 0 { mov al, [RDI]; mov [R8], al; inc RDI; inc R8; dec RCX }
               // cmp rcx, 0
-              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(0);
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(FCode, 0);
               nonZeroPos := FCode.Size;
               WriteJneRel32(FCode, 0);
               // fast path: if length == 0 return idx
@@ -859,7 +859,7 @@ begin
               // dec rcx
               WriteDecReg(FCode, RCX);
               // cmp rcx,0
-              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(0);
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(FCode, 0);
               // jne copy_start (jump back by appropriate rel32)
               // reserve patch
               jneLoopPos := FCode.Size;
