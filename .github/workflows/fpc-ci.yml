@@ -27,3 +27,16 @@ jobs:
           set -e
           make test
           make syntax-test
+
+      - name: Build aurumc compiler
+        run: |
+          set -e
+          fpc -O2 -Mobjfpc -Sh aurumc.lpr -oaurumc
+
+      - name: Run example integration tests
+        run: |
+          set -e
+          ./aurumc examples/use_env.au -o /tmp/use_env
+          /tmp/use_env arg1 arg2
+          ./aurumc examples/use_math.au -o /tmp/use_math
+          /tmp/use_math
