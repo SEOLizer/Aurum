@@ -1,3 +1,2 @@
-# Linguist mappings
-# Map Aurum source files to Rust highlighting as a pragmatic fallback until an upstream grammar is merged.
+# Linguist mapping: treat Aurum source files as Rust for GitHub highlighting (temporary fallback)
 *.au linguist-language=Rust
