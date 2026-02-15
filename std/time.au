@@ -1,15 +1,160 @@
 // std/time.au
-// Simple time helpers backed by minimal builtins implemented in the emitter
+// Basisfunktionen für Gregorianische Datumsberechnung
+// - days_from_civil / civil_from_days (Einzel-Zugrifforss)
+// - is_leap_year, day_of_year, weekday, iso_week, iso_year
+// - API-Skeleton für spätere Formatter-Implementierung
 
-pub fn now_unix(): int64 {
-  // builtin implemented by emitter: returns seconds since epoch
-  return now_unix();
+// Hinweis: Dieses Modul liefert reine numerische Hilfsfunktionen; eine vollwertige
+// String-Formatter-Implementierung folgt in einem separaten Commit.
+
+pub fn is_leap_year(y: int64): bool {
+  // Gregorianische Schaltregel
+  if (y % 4) != 0 { return false; }
+  if (y % 100) != 0 { return true; }
+  if (y % 400) == 0 { return true; }
+  return false;
 }
 
-pub fn now_unix_ms(): int64 {
-  return now_unix_ms();
+pub fn days_from_civil(year: int64, month: int64, day: int64): int64 {
+  // Algorithmus nach Howard Hinnant: Tage seit 1970-01-01 (Unix epoch)
+  // Übergabe: proleptischer gregorianischer Kalender
+  var y: int64 := year;
+  var m: int64 := month;
+  var d: int64 := day;
+
+  // Januar und Februar als Monate 11 und 12 des Vorjahres behandeln
+  if m <= 2 {
+    y = y - 1;
+    m = m + 12;
+  }
+
+  var era: int64 := y / 400; // floor division für positive/negative Jahre in Aurum: rounds toward zero
+  // Korrektur für negative Jahre: wenn y < 0 und y not divisible by 400, era--
+  if y < 0 && (y % 400) != 0 {
+    era = era - 1;
+  }
+
+  var yoe: int64 := y - era * 400; // year of era
+  var doy: int64 := (153 * (m - 3) + 2) / 5 + d - 1; // day of year
+  var doe: int64 := yoe * 365 + yoe / 4 - yoe / 100 + doy; // day of era
+
+  // 1970-01-01 ist day 719468 in Hinnant-Referenz (days since civil 0000-03-01)
+  var days: int64 := era * 146097 + doe - 719468;
+  return days;
 }
 
-pub fn sleep_ms(ms: int64): void {
-  sleep_ms(ms);
+pub fn civil_year_from_days(days: int64): int64 {
+  var z: int64 := days + 719468;
+  var era: int64 := z / 146097;
+  if z < 0 && (z % 146097) != 0 { era = era - 1; }
+  var doe: int64 := z - era * 146097; // [0, 146096]
+  var yoe: int64 := (doe - doe/1460 + doe/36524 - doe/146096) / 365; // [0,399]
+  var y: int64 := yoe + era * 400;
+  return y;
 }
+
+pub fn civil_month_from_days(days: int64): int64 {
+  var z: int64 := days + 719468;
+  var era: int64 := z / 146097;
+  if z < 0 && (z % 146097) != 0 { era = era - 1; }
+  var doe: int64 := z - era * 146097; // [0, 146096]
+  var yoe: int64 := (doe - doe/1460 + doe/36524 - doe/146096) / 365; // [0,399]
+  var y: int64 := yoe + era * 400;
+  var doy: int64 := doe - (365*yoe + yoe/4 - yoe/100);
+  var mp: int64 := (5 * doy + 2) / 153; // month part
+  var month: int64 := mp + 3;
+  if mp >= 10 { month = month - 12; }
+  return month;
+}
+
+pub fn civil_day_from_days(days: int64): int64 {
+  var z: int64 := days + 719468;
+  var era: int64 := z / 146097;
+  if z < 0 && (z % 146097) != 0 { era = era - 1; }
+  var doe: int64 := z - era * 146097; // [0, 146096]
+  var yoe: int64 := (doe - doe/1460 + doe/36524 - doe/146096) / 365; // [0,399]
+  var y: int64 := yoe + era * 400;
+  var doy: int64 := doe - (365*yoe + yoe/4 - yoe/100);
+  var mp: int64 := (5 * doy + 2) / 153; // month part
+  var day: int64 := doy - (153*mp+2)/5 + 1;
+  return day;
+}
+
+pub fn day_of_year(year: int64, month: int64, day: int64): int64 {
+  // 1..366
+  var m: int64 := month;
+  var y: int64 := year;
+  var k: int64 := 0;
+  if m <= 2 {
+    k = 0;
+  } else if is_leap_year(y) {
+    k = 1;
+  } else {
+    k = 0;
+  }
+  // alternative einfache Berechnung via days_from_civil
+  var days0: int64 := days_from_civil(y, 1, 1);
+  var daysGiven: int64 := days_from_civil(y, m, day);
+  return daysGiven - days0 + 1;
+}
+
+pub fn weekday(year: int64, month: int64, day: int64): int64 {
+  // ISO: 0 = Monday, ... 6 = Sunday
+  var days: int64 := days_from_civil(year, month, day);
+  // 1970-01-01 was a Thursday. ISO: Thursday = 3 (Mon=0)
+  // Compute weekday = (days + 4) % 7 with Monday=0 => (days+4) mod 7 ???
+  // Verify: 1970-01-01 -> days=0 -> weekday = (0+3) % 7 = 3 (Thu)
+  var w: int64 := (days + 3) % 7;
+  if w < 0 { w = w + 7; }
+  return w;
+}
+
+pub fn iso_week(year: int64, month: int64, day: int64): int64 {
+  // ISO week number 1..53
+  // Compute ordinal day and weekday
+  var doy: int64 := day_of_year(year, month, day);
+  var wday: int64 := weekday(year, month, day); // 0=Mon
+  // Thursday-based week year
+  var week: int64 := (doy - wday + 10) / 7;
+  if week < 1 {
+    // week belongs to previous year
+    var prevYear: int64 := year - 1;
+    var dec31_wday: int64 := weekday(prevYear, 12, 31);
+    var dec31_doy: int64 := day_of_year(prevYear, 12, 31);
+    var prevWeekCount: int64 := (dec31_doy - dec31_wday + 10) / 7;
+    return prevWeekCount;
+  }
+  // check if week number exceeds number of weeks in year
+  var nextYearWeek1: int64 := iso_week(year+1, 1, 1);
+  // if nextYearWeek1 == 1 then current year has week count = ???
+  // Simpler: compute week for Dec 31
+  var lastWeek: int64 := (day_of_year(year, 12, 31) - weekday(year, 12, 31) + 10) / 7;
+  if week > lastWeek { return 1; }
+  return week;
+}
+
+pub fn iso_year(year: int64, month: int64, day: int64): int64 {
+  var w: int64 := iso_week(year, month, day);
+  if w == 1 && month == 12 {
+    return year + 1;
+  }
+  if w >= 52 && month == 1 {
+    return year - 1;
+  }
+  return year;
+}
+
+// API-Skeleton für Formatter (Platzhalter)
+con NOT_IMPL: pchar := "(time.formatter not implemented)\0";
+
+pub fn format_unix(ts: int64, fmt: pchar, tz_offset: int64): pchar {
+  // Rückgabewert: statischer Puffer (hier Platzhalter)
+  return NOT_IMPL;
+}
+
+pub fn format_unix_to_buf(ts: int64, fmt: pchar, tz_offset: int64, buf: pchar, buflen: int64): int64 {
+  // Noch nicht implementiert. Rückgabe: -1
+  return -1;
+}
+
+// Convenience: Beispiele und Tests werden später erweitert

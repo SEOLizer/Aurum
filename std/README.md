@@ -24,11 +24,25 @@ Aktuell implementiert
   - arg_count(): int64
   - arg(i: int64): pchar
 
+- std/time.au (Entwurf)
+  - is_leap_year(y: int64): bool
+  - days_from_civil(y,m,d): int64
+  - civil_year_from_days(days): int64
+  - civil_month_from_days(days): int64
+  - civil_day_from_days(days): int64
+  - day_of_year(y,m,d): int64
+  - weekday(y,m,d): int64    // 0=Monday..6=Sunday
+  - iso_week(y,m,d): int64
+  - iso_year(y,m,d): int64
+  - format_unix(ts, fmt, tz_offset): pchar  // Platzhalter (noch nicht implementiert)
+  - format_unix_to_buf(...): int64         // Platzhalter (noch nicht implementiert)
+
 Verwendung
 
 import std.math;
 import std.io;
 import std.env; // falls benötigt
+import std.time; // Entwurf: numerische Datumsfunktionen
 
 fn main(argc: int64, argv: pchar): int64 {
   // env.init ist optional, ab Version mit automatischer _start-Init nicht mehr erforderlich
@@ -46,5 +60,5 @@ Hinweis zur env-Initialisierung
 
 Tests
 
-- Beispiele befinden sich in `examples/` (use_math.au, use_io.au, use_env.au).
+- Beispiele befinden sich in `examples/` (use_math.au, use_io.au, use_env.au, use_time_format.au).
 - CI führt Integrationstests, die diese Beispiele bauen und ausführen.
