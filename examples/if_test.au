@@ -1,0 +1,30 @@
+con NL: pchar := "\n";
+
+fn main(): int64 {
+  let x: int64 := 10;
+
+  // Einfaches if/else
+  if (x > 5) {
+    print_str("x > 5\n");
+  } else {
+    print_str("x <= 5\n");
+  }
+
+  // If ohne else (ein Statement / Block erlaubt)
+  if ((x > 0) && (x < 20)) {
+    print_str("0 < x < 20\n");
+  }
+
+  // Verschachtelte Ifs
+  if (x == 0) {
+    print_str("x == 0\n");
+  } else {
+    if (x % 2 == 0) {
+      print_str("x is even\n");
+    } else {
+      print_str("x is odd\n");
+    }
+  }
+
+  return 0;
+}
