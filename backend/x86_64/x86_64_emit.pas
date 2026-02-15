@@ -1734,43 +1734,7 @@ begin
     end;
   end;
 
-  // Dump code/data and metadata for debugging
-  try
-    // write raw code and data buffers
-    fs := TFileStream.Create('/tmp/emitter_code.bin', fmCreate);
-    try
-      if FCode.Size > 0 then fs.WriteBuffer(FCode.GetBuffer^, FCode.Size);
-    finally
-      fs.Free;
-    end;
-    fs := TFileStream.Create('/tmp/emitter_data.bin', fmCreate);
-    try
-      if FData.Size > 0 then fs.WriteBuffer(FData.GetBuffer^, FData.Size);
-    finally
-      fs.Free;
-    end;
-
-    // write metadata
-    meta := TStringList.Create;
-    try
-      meta.Add('CodeSize=' + IntToStr(FCode.Size));
-      meta.Add('DataSize=' + IntToStr(FData.Size));
-      meta.Add('Labels:');
-      for i := 0 to High(FLabelPositions) do
-        meta.Add(Format('  %s => %d', [FLabelPositions[i].Name, FLabelPositions[i].Pos]));
-      meta.Add('JumpPatches:');
-      for i := 0 to High(FJumpPatches) do
-        meta.Add(Format('  pos=%d label=%s jmpSize=%d', [FJumpPatches[i].Pos, FJumpPatches[i].LabelName, FJumpPatches[i].JmpSize]));
-      meta.Add('LeaPositions:');
-      for i := 0 to High(FLeaPositions) do
-        meta.Add(Format('  pos=%d strIndex=%d', [FLeaPositions[i], FLeaStrIndex[i]]));
-      meta.SaveToFile('/tmp/emitter_meta.txt');
-    finally
-      meta.Free;
-    end;
-  except
-    // ignore errors in debug dump
-  end;
+  // debug dump removed in release
 end;
 
 function TX86_64Emitter.GetFunctionOffset(const name: string): Integer;
