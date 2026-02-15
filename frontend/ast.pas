@@ -382,6 +382,8 @@ begin
     nkIf:        Result := 'If';
     nkWhile:     Result := 'While';
     nkReturn:    Result := 'Return';
+    nkBreak:     Result := 'Break';
+    nkSwitch:    Result := 'Switch';
     nkBlock:     Result := 'Block';
     nkExprStmt:  Result := 'ExprStmt';
     nkFuncDecl:  Result := 'FuncDecl';
