@@ -206,6 +206,53 @@ begin
   EmitU32(buf, Cardinal(disp32));
 end;
 
+procedure WriteMovzxRegMem16(buf: TByteBuffer; dstReg: Byte; baseReg: Byte; disp32: Integer);
+begin
+  // movzx r64, r/m16 : rex.w 0F B7 /r
+  EmitU8(buf, $48);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $B7);
+  EmitU8(buf, $80 or ((dstReg shl 3) and $38) or (baseReg and $7));
+  EmitU32(buf, Cardinal(disp32));
+end;
+
+procedure WriteMovSxRegMem8(buf: TByteBuffer; dstReg: Byte; baseReg: Byte; disp32: Integer);
+begin
+  // movsx r64, r/m8 : rex.w 0F BE /r
+  EmitU8(buf, $48);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $BE);
+  EmitU8(buf, $80 or ((dstReg shl 3) and $38) or (baseReg and $7));
+  EmitU32(buf, Cardinal(disp32));
+end;
+
+procedure WriteMovSxRegMem16(buf: TByteBuffer; dstReg: Byte; baseReg: Byte; disp32: Integer);
+begin
+  // movsx r64, r/m16 : rex.w 0F BF /r
+  EmitU8(buf, $48);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $BF);
+  EmitU8(buf, $80 or ((dstReg shl 3) and $38) or (baseReg and $7));
+  EmitU32(buf, Cardinal(disp32));
+end;
+
+procedure WriteMovSxRegMem32(buf: TByteBuffer; dstReg: Byte; baseReg: Byte; disp32: Integer);
+begin
+  // movsxd r64, r/m32 : rex.w 63 /r
+  EmitU8(buf, $48);
+  EmitU8(buf, $63);
+  EmitU8(buf, $80 or ((dstReg shl 3) and $38) or (baseReg and $7));
+  EmitU32(buf, Cardinal(disp32));
+end;
+
+procedure WriteMovEAXMem32(buf: TByteBuffer; baseReg: Byte; disp32: Integer);
+begin
+  // mov eax, dword ptr [base+disp32] : 8B 80 disp32
+  EmitU8(buf, $8B);
+  EmitU8(buf, $80 or (baseReg and $7));
+  EmitU32(buf, Cardinal(disp32));
+end;
+
 function SlotOffset(slot: Integer): Integer;
 begin
   Result := -8 * (slot + 1);
@@ -232,7 +279,7 @@ function TX86_64Emitter.GetCodeBuffer: TByteBuffer; begin Result := FCode; end;
 function TX86_64Emitter.GetDataBuffer: TByteBuffer; begin Result := FData; end;
 
 procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
-var
+  var
   i, j, k, sidx: Integer;
   totalDataOffset: UInt64;
   instr: TIRInstr;
@@ -268,6 +315,8 @@ var
   lf: TextFile;
   startOff, endOff, off: Integer;
   sBytes: string;
+  // integer width helpers
+  mask64: UInt64;
 begin
   // reset patch arrays
   SetLength(FLeaPositions, 0);
@@ -514,20 +563,69 @@ begin
               WriteSyscall(FCode);
             end;
           end;
-        irConstInt:
-          begin
-            // Load immediate integer into temp slot
-            slotIdx := localCnt + instr.Dest;
-            WriteMovRegImm64(FCode, RAX, UInt64(instr.ImmInt));
-            WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
-          end;
-        irLoadLocal:
-          begin
-            // Load local variable into temp: dest = locals[src1]
-            WriteMovRegMem(FCode, RAX, RBP, SlotOffset(instr.Src1));
-            slotIdx := localCnt + instr.Dest;
-            WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
-          end;
+         irConstInt:
+           begin
+             // Load immediate integer into temp slot
+             slotIdx := localCnt + instr.Dest;
+             WriteMovRegImm64(FCode, RAX, UInt64(instr.ImmInt));
+             WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
+           end;
+         irLoadLocal:
+           begin
+             // Load local variable into temp: dest = locals[src1]
+             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(instr.Src1));
+             slotIdx := localCnt + instr.Dest;
+             WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
+           end;
+         irSExt:
+           begin
+             // sign-extend src1 (width in ImmInt) into dest
+             slotIdx := localCnt + instr.Src1;
+             // load into RAX as appropriate
+             case instr.ImmInt of
+               8: WriteMovSxRegMem8(FCode, RAX, RBP, SlotOffset(slotIdx));
+               16: WriteMovSxRegMem16(FCode, RAX, RBP, SlotOffset(slotIdx));
+               32: WriteMovSxRegMem32(FCode, RAX, RBP, SlotOffset(slotIdx));
+             else
+               // default: just mov 64-bit
+               WriteMovRegMem(FCode, RAX, RBP, SlotOffset(slotIdx));
+             end;
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+           end;
+         irZExt:
+           begin
+             // zero-extend src1 (width in ImmInt) into dest
+             slotIdx := localCnt + instr.Src1;
+             case instr.ImmInt of
+               8: WriteMovzxRegMem8(FCode, RAX, RBP, SlotOffset(slotIdx));
+               16: WriteMovzxRegMem16(FCode, RAX, RBP, SlotOffset(slotIdx));
+               32:
+                 begin
+                   WriteMovEAXMem32(FCode, RBP, SlotOffset(slotIdx));
+                   // now eax zero-extends to rax automatically
+                   WriteMovRegReg(FCode, RAX, RAX); // noop to keep pattern
+                 end;
+             else
+               WriteMovRegMem(FCode, RAX, RBP, SlotOffset(slotIdx));
+             end;
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+           end;
+         irTrunc:
+           begin
+             // truncate src1 to ImmInt bits and store to dest
+             slotIdx := localCnt + instr.Src1;
+             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(slotIdx));
+              if instr.ImmInt < 64 then
+              begin
+                // mask lower bits
+                mask64 := (UInt64(1) shl instr.ImmInt) - 1;
+                EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $E0); // and rax, imm32
+                EmitU32(FCode, Cardinal(mask64 and $FFFFFFFF));
+              end;
+
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+           end;
+
         irStoreLocal:
           begin
             // Store temp into local variable: locals[dest] = src1
