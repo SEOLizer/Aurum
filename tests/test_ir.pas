@@ -35,7 +35,17 @@ begin
     modl := TIRModule.Create;
     lower := TIRLowering.Create(modl, d);
     try
-      lower.Lower(prog);
+      WriteLn('DEBUG: about to call lower.Lower');
+      try
+        lower.Lower(prog);
+        WriteLn('DEBUG: returned from lower.Lower');
+      except
+        on E: Exception do
+        begin
+          WriteLn('DEBUG: lower.Lower raised exception: ' + E.ClassName + ' - ' + E.Message);
+          raise;
+        end;
+      end;
       AssertTrue(Length(modl.Functions) >= 1);
       fn := modl.Functions[0];
       AssertTrue(Length(fn.Instructions) > 0);
