@@ -374,9 +374,10 @@ begin
          FDiag.Error('use of undeclared local ' + TAstIdent(TAstIndexAccess(expr).Obj).Name, expr.Span)
        else
        begin
-         lit := TAstIntLit(TAstIndexAccess(expr).Index).Value;
-         t1 := NewTemp;
-         instr.Op := irLoadLocal; instr.Dest := t1; instr.Src1 := loc + lit; Emit(instr);
+          w := Integer(TAstIntLit(TAstIndexAccess(expr).Index).Value);
+          t1 := NewTemp;
+          instr.Op := irLoadLocal; instr.Dest := t1; instr.Src1 := loc + w; Emit(instr);
+
          Exit(t1);
        end;
      end
@@ -610,33 +611,157 @@ begin
       Emit(instr);
       Exit(instr.Dest);
     end
-    else if TAstCall(expr).Name = 'itoa_to_buf' then
-    begin
-      // itoa_to_buf(val: int64, buf: pchar, idx: int64, buflen: int64) -> int64
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
-      t2 := LowerExpr(TAstCall(expr).Args[1]);
-       t3 := LowerExpr(TAstCall(expr).Args[2]);
-       t4 := LowerExpr(TAstCall(expr).Args[3]);
-       // optional extras: minWidth, padZero
-       if Length(TAstCall(expr).Args) > 4 then
-         t5 := LowerExpr(TAstCall(expr).Args[4])
-       else
-         t5 := -1;
-       if Length(TAstCall(expr).Args) > 5 then
-         t6 := LowerExpr(TAstCall(expr).Args[5])
-       else
-         t6 := -1;
+     else if TAstCall(expr).Name = 'itoa_to_buf' then
+     begin
+       // itoa_to_buf(val: int64, buf: pchar, idx: int64, buflen: int64) -> int64
+       t1 := LowerExpr(TAstCall(expr).Args[0]);
+       t2 := LowerExpr(TAstCall(expr).Args[1]);
+        t3 := LowerExpr(TAstCall(expr).Args[2]);
+        t4 := LowerExpr(TAstCall(expr).Args[3]);
+        // optional extras: minWidth, padZero
+        if Length(TAstCall(expr).Args) > 4 then
+          t5 := LowerExpr(TAstCall(expr).Args[4])
+        else
+          t5 := -1;
+        if Length(TAstCall(expr).Args) > 5 then
+          t6 := LowerExpr(TAstCall(expr).Args[5])
+        else
+          t6 := -1;
+        instr.Op := irCallBuiltin;
+        instr.ImmStr := 'itoa_to_buf';
+        instr.Src1 := t1;
+        instr.Src2 := t2;
+        instr.LabelName := IntToStr(t3) + ',' + IntToStr(t4) + ',' + IntToStr(t5) + ',' + IntToStr(t6);
+        instr.Dest := NewTemp;
+        Emit(instr);
+        Exit(instr.Dest);
+     end
+     else if TAstCall(expr).Name = 'push' then
+     begin
+       // push(arrVar, val)
+       if Length(TAstCall(expr).Args) <> 2 then
+       begin
+         FDiag.Error('push requires 2 arguments', TAstCall(expr).Span);
+         Exit(-1);
+       end;
+       // first arg must be identifier (variable)
+       if not (TAstCall(expr).Args[0] is TAstIdent) then
+       begin
+         FDiag.Error('push: first argument must be array variable identifier', TAstCall(expr).Args[0].Span);
+         Exit(-1);
+       end;
+       var arrName := TAstIdent(TAstCall(expr).Args[0]).Name;
+       var arrLoc := ResolveLocal(arrName);
+       if arrLoc < 0 then
+       begin
+         FDiag.Error('push: unknown variable ' + arrName, TAstCall(expr).Args[0].Span);
+         Exit(-1);
+       end;
+       t1 := LowerExpr(TAstCall(expr).Args[1]); // value temp
        instr.Op := irCallBuiltin;
-       instr.ImmStr := 'itoa_to_buf';
-       instr.Src1 := t1;
-       instr.Src2 := t2;
-       instr.LabelName := IntToStr(t3) + ',' + IntToStr(t4) + ',' + IntToStr(t5) + ',' + IntToStr(t6);
+       instr.ImmStr := 'push';
+       instr.Src1 := arrLoc;
+       instr.Src2 := t1;
+       Emit(instr);
+       Exit(-1);
+     end
+     else if TAstCall(expr).Name = 'pop' then
+     begin
+       // pop(arrVar) -> int64
+       if Length(TAstCall(expr).Args) <> 1 then
+       begin
+         FDiag.Error('pop requires 1 argument', TAstCall(expr).Span);
+         Exit(-1);
+       end;
+       if not (TAstCall(expr).Args[0] is TAstIdent) then
+       begin
+         FDiag.Error('pop: first argument must be array variable identifier', TAstCall(expr).Args[0].Span);
+         Exit(-1);
+       end;
+       var arrName2 := TAstIdent(TAstCall(expr).Args[0]).Name;
+       var arrLoc2 := ResolveLocal(arrName2);
+       if arrLoc2 < 0 then
+       begin
+         FDiag.Error('pop: unknown variable ' + arrName2, TAstCall(expr).Args[0].Span);
+         Exit(-1);
+       end;
+       instr.Op := irCallBuiltin;
+       instr.ImmStr := 'pop';
+       instr.Src1 := arrLoc2;
        instr.Dest := NewTemp;
        Emit(instr);
        Exit(instr.Dest);
-    end
-    else
-    begin
+     end
+     else if TAstCall(expr).Name = 'len' then
+     begin
+       // len(arrVar) -> int64
+       if Length(TAstCall(expr).Args) <> 1 then
+       begin
+         FDiag.Error('len requires 1 argument', TAstCall(expr).Span);
+         Exit(-1);
+       end;
+       if TAstCall(expr).Args[0] is TAstIdent then
+       begin
+         var name0 := TAstIdent(TAstCall(expr).Args[0]).Name;
+         var sSym := ResolveSymbol(name0);
+         if Assigned(sSym) and (sSym.ArrayLen > 0) then
+         begin
+           // static array: return constant length
+           t1 := NewTemp;
+           instr.Op := irConstInt; instr.Dest := t1; instr.ImmInt := sSym.ArrayLen; Emit(instr);
+           Exit(t1);
+         end
+         else
+         begin
+           var loc0 := ResolveLocal(name0);
+           if loc0 < 0 then
+           begin
+             FDiag.Error('len: unknown variable ' + name0, TAstCall(expr).Args[0].Span);
+             Exit(-1);
+           end;
+           instr.Op := irCallBuiltin;
+           instr.ImmStr := 'len';
+           instr.Src1 := loc0;
+           instr.Dest := NewTemp;
+           Emit(instr);
+           Exit(instr.Dest);
+         end;
+       end
+       else
+       begin
+         FDiag.Error('len: argument must be identifier', TAstCall(expr).Args[0].Span);
+         Exit(-1);
+       end;
+     end
+     else if TAstCall(expr).Name = 'free' then
+     begin
+       // free(arrVar)
+       if Length(TAstCall(expr).Args) <> 1 then
+       begin
+         FDiag.Error('free requires 1 argument', TAstCall(expr).Span);
+         Exit(-1);
+       end;
+       if not (TAstCall(expr).Args[0] is TAstIdent) then
+       begin
+         FDiag.Error('free: first argument must be array variable identifier', TAstCall(expr).Args[0].Span);
+         Exit(-1);
+       end;
+       var name1 := TAstIdent(TAstCall(expr).Args[0]).Name;
+       var loc1 := ResolveLocal(name1);
+       if loc1 < 0 then
+       begin
+         FDiag.Error('free: unknown variable ' + name1, TAstCall(expr).Args[0].Span);
+         Exit(-1);
+       end;
+       instr.Op := irCallBuiltin;
+       instr.ImmStr := 'free';
+       instr.Src1 := loc1;
+       Emit(instr);
+       Exit(-1);
+     end
+     else
+     begin
+
       // generic call
       SetLength(argTemps, Length(TAstCall(expr).Args));
       for ai := 0 to High(argTemps) do

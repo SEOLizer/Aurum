@@ -186,6 +186,44 @@ begin
   s.ParamTypes[4] := atInt64; // minWidth
   s.ParamTypes[5] := atInt64; // padZero
   AddSymbolToCurrent(s, NullSpan);
+
+  // Dynamic array builtins
+  // push(arrVar: pchar, val: int64) -> void
+  s := TSymbol.Create('push');
+  s.Kind := symFunc;
+  s.DeclType := atVoid;
+  s.ParamCount := 2;
+  SetLength(s.ParamTypes, 2);
+  s.ParamTypes[0] := atPChar; // pointer to array header stored in variable (we'll pass variable slot)
+  s.ParamTypes[1] := atInt64; // value
+  AddSymbolToCurrent(s, NullSpan);
+
+  // pop(arrVar: pchar) -> int64
+  s := TSymbol.Create('pop');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atPChar;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // len(arrVar: pchar) -> int64
+  s := TSymbol.Create('len');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atPChar;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // free(arrVar: pchar) -> void
+  s := TSymbol.Create('free');
+  s.Kind := symFunc;
+  s.DeclType := atVoid;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atPChar;
+  AddSymbolToCurrent(s, NullSpan);
 end;
 
 function IsIntegerType(t: TAurumType): Boolean;
