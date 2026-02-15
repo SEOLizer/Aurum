@@ -519,6 +519,7 @@ var
   name: string;
   declType: TAurumType;
   initExpr: TAstExpr;
+  arrayLen: Integer;
 begin
   if Accept(tkVar) then storage := skVar
   else if Accept(tkLet) then storage := skLet
@@ -747,6 +748,8 @@ var
   b: Boolean;
   e: TAstExpr;
   dummy: TAstIntLit;
+  items: TAstExprList;
+  a: TAstExpr;
 begin
   if Check(tkIntLit) then
   begin
@@ -938,6 +941,7 @@ var
   name: string;
   typ: TAurumType;
   p: TAstParam;
+  arrLen: Integer;
 begin
   params := nil;
   while not Check(tkRParen) and not Check(tkEOF) do
