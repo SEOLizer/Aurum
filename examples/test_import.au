@@ -1,0 +1,11 @@
+// Test: Import der math-Unit
+
+import test.math;
+
+fn main(): int64 {
+    var x: int64 := add(3, 4);      // Aus test.math importiert
+    var y: int64 := mul(x, 2);       // Aus test.math importiert
+    print_int(y);                    // Sollte 14 ausgeben
+    print_str("\n");
+    return 0;
+}

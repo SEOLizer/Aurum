@@ -54,6 +54,7 @@ type
     constructor Create;
     destructor Destroy; override;
     function AddFunction(const name: string): TIRFunction;
+    function FindFunction(const name: string): TIRFunction;
     function InternString(const s: string): Integer;
   end;
 
@@ -98,6 +99,16 @@ begin
   SetLength(Functions, Length(Functions) + 1);
   Functions[High(Functions)] := TIRFunction.Create(name);
   Result := Functions[High(Functions)];
+end;
+
+function TIRModule.FindFunction(const name: string): TIRFunction;
+var
+  i: Integer;
+begin
+  for i := 0 to High(Functions) do
+    if Functions[i].Name = name then
+      Exit(Functions[i]);
+  Result := nil;
 end;
 
 function TIRModule.InternString(const s: string): Integer;

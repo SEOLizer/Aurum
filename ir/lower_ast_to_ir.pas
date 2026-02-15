@@ -5,7 +5,7 @@ interface
 
 uses
   SysUtils, Classes,
-  ast, ir, diag, lexer;
+  ast, ir, diag, lexer, unit_manager;
 
 type
   TConstValue = class
@@ -42,6 +42,7 @@ type
     destructor Destroy; override;
 
     function Lower(prog: TAstProgram): TIRModule;
+    procedure LowerImportedUnits(um: TUnitManager);
   end;
 
 implementation
@@ -211,6 +212,63 @@ begin
     end;
   end;
   Result := FModule;
+end;
+
+procedure TIRLowering.LowerImportedUnits(um: TUnitManager);
+{ Lower all functions from imported units }
+var
+  i, j, k: Integer;
+  loadedUnit: TLoadedUnit;
+  node: TAstNode;
+  fn: TIRFunction;
+  unitAST: TAstProgram;
+begin
+  if not Assigned(um) then Exit;
+
+  for i := 0 to um.Units.Count - 1 do
+  begin
+    loadedUnit := TLoadedUnit(um.Units.Objects[i]);
+    if not Assigned(loadedUnit) or not Assigned(loadedUnit.AST) then
+      Continue;
+
+    unitAST := loadedUnit.AST;
+
+    // Lower all function declarations from this unit
+    for j := 0 to High(unitAST.Decls) do
+    begin
+      node := unitAST.Decls[j];
+      if node is TAstFuncDecl then
+      begin
+        // Check if function already exists (avoid duplicates)
+        fn := FModule.FindFunction(TAstFuncDecl(node).Name);
+        if not Assigned(fn) then
+        begin
+          fn := FModule.AddFunction(TAstFuncDecl(node).Name);
+          FCurrentFunc := fn;
+          FLocalMap.Clear;
+          FTempCounter := 0;
+          fn.ParamCount := Length(TAstFuncDecl(node).Params);
+          fn.LocalCount := fn.ParamCount;
+          SetLength(FLocalTypes, fn.LocalCount);
+          SetLength(FLocalConst, fn.LocalCount);
+
+          for k := 0 to fn.ParamCount - 1 do
+          begin
+            FLocalMap.AddObject(TAstFuncDecl(node).Params[k].Name, IntToObj(k));
+            FLocalTypes[k] := TAstFuncDecl(node).Params[k].ParamType;
+            FLocalConst[k] := nil;
+          end;
+
+          // Lower statements
+          if Assigned(TAstFuncDecl(node).Body) then
+            for k := 0 to High(TAstFuncDecl(node).Body.Stmts) do
+              LowerStmt(TAstFuncDecl(node).Body.Stmts[k]);
+
+          FCurrentFunc := nil;
+        end;
+      end;
+    end;
+  end;
 end;
 
 { Lowering helpers }
