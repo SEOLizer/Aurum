@@ -550,6 +550,37 @@ begin
       Emit(instr);
       Exit(-1);
     end
+    else if TAstCall(expr).Name = 'buf_put_byte' then
+    begin
+      // buf_put_byte(buf: pchar, idx: int64, b: int64) -> int64
+      t1 := LowerExpr(TAstCall(expr).Args[0]);
+      t2 := LowerExpr(TAstCall(expr).Args[1]);
+      t3 := LowerExpr(TAstCall(expr).Args[2]);
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'buf_put_byte';
+      instr.Src1 := t1;
+      instr.Src2 := t2;
+      instr.LabelName := IntToStr(t3);
+      instr.Dest := NewTemp;
+      Emit(instr);
+      Exit(instr.Dest);
+    end
+    else if TAstCall(expr).Name = 'itoa_to_buf' then
+    begin
+      // itoa_to_buf(val: int64, buf: pchar, idx: int64, buflen: int64) -> int64
+      t1 := LowerExpr(TAstCall(expr).Args[0]);
+      t2 := LowerExpr(TAstCall(expr).Args[1]);
+      t3 := LowerExpr(TAstCall(expr).Args[2]);
+      t4 := LowerExpr(TAstCall(expr).Args[3]);
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'itoa_to_buf';
+      instr.Src1 := t1;
+      instr.Src2 := t2;
+      instr.LabelName := IntToStr(t3) + ',' + IntToStr(t4);
+      instr.Dest := NewTemp;
+      Emit(instr);
+      Exit(instr.Dest);
+    end
     else
     begin
       // generic call

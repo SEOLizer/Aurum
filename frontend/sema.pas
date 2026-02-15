@@ -158,6 +158,30 @@ begin
   SetLength(s.ParamTypes, 1);
   s.ParamTypes[0] := atInt64;
   AddSymbolToCurrent(s, NullSpan);
+
+  // Buffer/runtime primitives for time formatter
+  // buf_put_byte(buf: pchar, idx: int64, b: int64) -> int64
+  s := TSymbol.Create('buf_put_byte');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 3;
+  SetLength(s.ParamTypes, 3);
+  s.ParamTypes[0] := atPChar;
+  s.ParamTypes[1] := atInt64;
+  s.ParamTypes[2] := atInt64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // itoa_to_buf(val: int64, buf: pchar, idx: int64, buflen: int64) -> int64
+  s := TSymbol.Create('itoa_to_buf');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 4;
+  SetLength(s.ParamTypes, 4);
+  s.ParamTypes[0] := atInt64;
+  s.ParamTypes[1] := atPChar;
+  s.ParamTypes[2] := atInt64;
+  s.ParamTypes[3] := atInt64;
+  AddSymbolToCurrent(s, NullSpan);
 end;
 
 function IsIntegerType(t: TAurumType): Boolean;
