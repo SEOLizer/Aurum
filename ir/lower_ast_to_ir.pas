@@ -238,6 +238,7 @@ var
   ltype: TAurumType;
   w: Integer;
   loc: Integer;
+  thenLabel, elseLabel, endLabel: string;
 begin
   instr := Default(TIRInstr);
   if expr is TAstIntLit then
@@ -256,6 +257,15 @@ begin
     instr.Op := irConstStr;
     instr.Dest := t1;
     instr.ImmStr := IntToStr(si);
+    Emit(instr);
+    Exit(t1);
+  end;
+  if expr is TAstCharLit then
+  begin
+    t1 := NewTemp;
+    instr.Op := irConstInt;
+    instr.Dest := t1;
+    instr.ImmInt := Ord(TAstCharLit(expr).Value);
     Emit(instr);
     Exit(t1);
   end;
@@ -355,8 +365,54 @@ begin
       tkLe: instr.Op := irCmpLe;
       tkGt: instr.Op := irCmpGt;
       tkGe: instr.Op := irCmpGe;
-      tkAnd: instr.Op := irAnd;
-      tkOr: instr.Op := irOr;
+      tkAnd:
+        begin
+          // short-circuit: if left is false, result is 0 (skip right)
+          instr.Op := irAnd; // will be used as fallback
+          // actually implement short-circuit via branches
+          begin
+            loc := NewTemp; // result temp
+            thenLabel := NewLabel('Land_true');
+            elseLabel := NewLabel('Land_false');
+            endLabel := NewLabel('Land_end');
+            // test left
+            instr.Op := irBrFalse; instr.Src1 := t1; instr.LabelName := elseLabel; Emit(instr);
+            // left is true, test right
+            instr.Op := irBrFalse; instr.Src1 := t2; instr.LabelName := elseLabel; Emit(instr);
+            // both true -> result = 1
+            instr.Op := irConstInt; instr.Dest := loc; instr.ImmInt := 1; Emit(instr);
+            instr.Op := irJmp; instr.LabelName := endLabel; Emit(instr);
+            // false label -> result = 0
+            instr.Op := irLabel; instr.LabelName := elseLabel; Emit(instr);
+            instr.Op := irConstInt; instr.Dest := loc; instr.ImmInt := 0; Emit(instr);
+            // end label
+            instr.Op := irLabel; instr.LabelName := endLabel; Emit(instr);
+            Exit(loc);
+          end;
+        end;
+      tkOr:
+        begin
+          // short-circuit: if left is true, result is 1 (skip right)
+          begin
+            loc := NewTemp;
+            thenLabel := NewLabel('Lor_true');
+            elseLabel := NewLabel('Lor_false');
+            endLabel := NewLabel('Lor_end');
+            // test left
+            instr.Op := irBrTrue; instr.Src1 := t1; instr.LabelName := thenLabel; Emit(instr);
+            // left is false, test right
+            instr.Op := irBrTrue; instr.Src1 := t2; instr.LabelName := thenLabel; Emit(instr);
+            // both false -> result = 0
+            instr.Op := irConstInt; instr.Dest := loc; instr.ImmInt := 0; Emit(instr);
+            instr.Op := irJmp; instr.LabelName := endLabel; Emit(instr);
+            // true label -> result = 1
+            instr.Op := irLabel; instr.LabelName := thenLabel; Emit(instr);
+            instr.Op := irConstInt; instr.Dest := loc; instr.ImmInt := 1; Emit(instr);
+            // end label
+            instr.Op := irLabel; instr.LabelName := endLabel; Emit(instr);
+            Exit(loc);
+          end;
+        end;
     else
       instr.Op := irInvalid;
     end;
@@ -466,6 +522,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     loc: Integer;
     tmp: Integer;
     condTmp: Integer;
+    t1, t2: Integer;
     thenLabel, elseLabel, endLabel: string;
     whileNode: TAstWhile;
     startLabel, bodyLabel, exitLabel: string;
@@ -674,6 +731,73 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
       Exit(True);
     end;
 
+
+   if stmt is TAstFor then
+   begin
+     // for varName := start to/downto end do body
+     // lower as: var = start; while (var <= end) { body; var := var +/- 1 }
+     with TAstFor(stmt) do
+     begin
+       loc := AllocLocal(VarName, atInt64);
+       tmp := LowerExpr(StartExpr);
+       instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := tmp; Emit(instr);
+       startLabel := NewLabel('Lfor');
+       exitLabel := NewLabel('Lfor_end');
+       // start label
+       instr.Op := irLabel; instr.LabelName := startLabel; Emit(instr);
+       // load var and end, compare
+       t1 := NewTemp;
+       instr.Op := irLoadLocal; instr.Dest := t1; instr.Src1 := loc; Emit(instr);
+       t2 := LowerExpr(EndExpr);
+       condTmp := NewTemp;
+       if IsDownto then
+         begin instr.Op := irCmpGe; end
+       else
+         begin instr.Op := irCmpLe; end;
+       instr.Dest := condTmp; instr.Src1 := t1; instr.Src2 := t2; Emit(instr);
+       instr.Op := irBrFalse; instr.Src1 := condTmp; instr.LabelName := exitLabel; Emit(instr);
+       // body
+       FBreakStack.AddObject(exitLabel, nil);
+       LowerStmt(Body);
+       FBreakStack.Delete(FBreakStack.Count - 1);
+       // increment/decrement
+       t1 := NewTemp;
+       instr.Op := irLoadLocal; instr.Dest := t1; instr.Src1 := loc; Emit(instr);
+       t2 := NewTemp;
+       instr.Op := irConstInt; instr.Dest := t2; instr.ImmInt := 1; Emit(instr);
+       condTmp := NewTemp;
+       if IsDownto then
+         instr.Op := irSub
+       else
+         instr.Op := irAdd;
+       instr.Dest := condTmp; instr.Src1 := t1; instr.Src2 := t2; Emit(instr);
+       instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := condTmp; Emit(instr);
+       // jump to start
+       instr.Op := irJmp; instr.LabelName := startLabel; Emit(instr);
+       // exit label
+       instr.Op := irLabel; instr.LabelName := exitLabel; Emit(instr);
+     end;
+     Exit(True);
+   end;
+
+   if stmt is TAstRepeatUntil then
+   begin
+     startLabel := NewLabel('Lrepeat');
+     exitLabel := NewLabel('Lrepeat_end');
+     // start label
+     instr.Op := irLabel; instr.LabelName := startLabel; Emit(instr);
+     // body
+     FBreakStack.AddObject(exitLabel, nil);
+     LowerStmt(TAstRepeatUntil(stmt).Body);
+     FBreakStack.Delete(FBreakStack.Count - 1);
+     // condition
+     condTmp := LowerExpr(TAstRepeatUntil(stmt).Cond);
+     // if condition false, jump back to start (repeat until cond is true)
+     instr.Op := irBrFalse; instr.Src1 := condTmp; instr.LabelName := startLabel; Emit(instr);
+     // exit label
+     instr.Op := irLabel; instr.LabelName := exitLabel; Emit(instr);
+     Exit(True);
+   end;
 
    if stmt is TAstBlock then
    begin

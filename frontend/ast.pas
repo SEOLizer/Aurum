@@ -16,6 +16,12 @@ type
     atInt8, atInt16, atInt32, atInt64,
     // unsigned integer widths
     atUInt8, atUInt16, atUInt32, atUInt64,
+    // platform-size integers
+    atISize, atUSize,
+    // floating-point
+    atF32, atF64,
+    // char
+    atChar,
     atBool,
     atVoid,
     atPChar
@@ -29,13 +35,17 @@ type
 
   TNodeKind = (
     // Ausdrücke
-    nkIntLit, nkStrLit, nkBoolLit, nkIdent,
+    nkIntLit, nkStrLit, nkBoolLit, nkCharLit, nkIdent,
     nkBinOp, nkUnaryOp, nkCall,
+    nkFieldAccess, nkIndexAccess,
     // Statements
-    nkVarDecl, nkAssign, nkIf, nkWhile, nkReturn, nkBreak, nkSwitch,
+    nkVarDecl, nkAssign, nkIf, nkWhile, nkFor, nkRepeatUntil,
+    nkReturn, nkBreak, nkSwitch,
     nkBlock, nkExprStmt,
     // Top-Level
-    nkFuncDecl, nkConDecl, nkProgram
+    nkFuncDecl, nkConDecl, nkTypeDecl,
+    nkUnitDecl, nkImportDecl,
+    nkProgram
   );
 
   { --- Vorwärtsdeklarationen --- }
@@ -152,6 +162,39 @@ type
     property Args: TAstExprList read FArgs;
   end;
 
+  { Char-Literal: 'A' }
+  TAstCharLit = class(TAstExpr)
+  private
+    FValue: Char;
+  public
+    constructor Create(aValue: Char; aSpan: TSourceSpan);
+    property Value: Char read FValue;
+  end;
+
+  { Feldzugriff: expr.field }
+  TAstFieldAccess = class(TAstExpr)
+  private
+    FObj: TAstExpr;
+    FField: string;
+  public
+    constructor Create(aObj: TAstExpr; const aField: string; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property Obj: TAstExpr read FObj;
+    property Field: string read FField;
+  end;
+
+  { Indexzugriff: expr[index] }
+  TAstIndexAccess = class(TAstExpr)
+  private
+    FObj: TAstExpr;
+    FIndex: TAstExpr;
+  public
+    constructor Create(aObj: TAstExpr; aIndex: TAstExpr; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property Obj: TAstExpr read FObj;
+    property Index: TAstExpr read FIndex;
+  end;
+
   // ================================================================
   // Statements
   // ================================================================
@@ -249,6 +292,37 @@ type
     property Body: TAstStmt read FBody;
   end;
 
+  { For-Statement: for i := start to/downto end do stmt }
+  TAstFor = class(TAstStmt)
+  private
+    FVarName: string;
+    FStartExpr: TAstExpr;
+    FEndExpr: TAstExpr;
+    FIsDownto: Boolean;
+    FBody: TAstStmt;
+  public
+    constructor Create(const aVarName: string; aStart, aEnd: TAstExpr;
+      aDownto: Boolean; aBody: TAstStmt; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property VarName: string read FVarName;
+    property StartExpr: TAstExpr read FStartExpr;
+    property EndExpr: TAstExpr read FEndExpr;
+    property IsDownto: Boolean read FIsDownto;
+    property Body: TAstStmt read FBody;
+  end;
+
+  { Repeat-Until: repeat { body } until (cond); }
+  TAstRepeatUntil = class(TAstStmt)
+  private
+    FBody: TAstStmt;
+    FCond: TAstExpr;
+  public
+    constructor Create(aBody: TAstStmt; aCond: TAstExpr; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property Body: TAstStmt read FBody;
+    property Cond: TAstExpr read FCond;
+  end;
+
   { Return-Statement: return [expr]; }
   TAstReturn = class(TAstStmt)
   private
@@ -323,6 +397,50 @@ type
     property InitExpr: TAstExpr read FInitExpr;
   end;
 
+  { Type-Deklaration (Top-Level): type Name = Type; }
+  TAstTypeDecl = class(TAstNode)
+  private
+    FName: string;
+    FDeclType: TAurumType;
+    FIsPublic: Boolean;
+  public
+    constructor Create(const aName: string; aDeclType: TAurumType;
+      aPublic: Boolean; aSpan: TSourceSpan);
+    property Name: string read FName;
+    property DeclType: TAurumType read FDeclType;
+    property IsPublic: Boolean read FIsPublic;
+  end;
+
+  { Unit-Deklaration: unit path.to.name; }
+  TAstUnitDecl = class(TAstNode)
+  private
+    FUnitPath: string;
+  public
+    constructor Create(const aPath: string; aSpan: TSourceSpan);
+    property UnitPath: string read FUnitPath;
+  end;
+
+  { Import-Item }
+  TAstImportItem = record
+    Name: string;
+    Alias: string; // leer wenn kein 'as'
+  end;
+  TAstImportItemList = array of TAstImportItem;
+
+  { Import-Deklaration: import path [as alias] [{ items }]; }
+  TAstImportDecl = class(TAstNode)
+  private
+    FUnitPath: string;
+    FAlias: string;
+    FItems: TAstImportItemList;
+  public
+    constructor Create(const aPath, aAlias: string;
+      const aItems: TAstImportItemList; aSpan: TSourceSpan);
+    property UnitPath: string read FUnitPath;
+    property Alias: string read FAlias;
+    property Items: TAstImportItemList read FItems;
+  end;
+
   { Programm (Wurzelknoten): Liste von Top-Level Deklarationen }
   TAstProgram = class(TAstNode)
   private
@@ -356,6 +474,11 @@ begin
     atUInt16:     Result := 'uint16';
     atUInt32:     Result := 'uint32';
     atUInt64:     Result := 'uint64';
+    atISize:      Result := 'isize';
+    atUSize:      Result := 'usize';
+    atF32:        Result := 'f32';
+    atF64:        Result := 'f64';
+    atChar:       Result := 'char';
     atBool:       Result := 'bool';
     atVoid:       Result := 'void';
     atPChar:      Result := 'pchar';
@@ -367,18 +490,23 @@ end;
 function StrToAurumType(const s: string): TAurumType;
 begin
   case s of
-    'int8':  Result := atInt8;
-    'int16': Result := atInt16;
-    'int32': Result := atInt32;
-    'int64': Result := atInt64;
-    'int':   Result := atInt64; // alias
-    'uint8': Result := atUInt8;
+    'int8':   Result := atInt8;
+    'int16':  Result := atInt16;
+    'int32':  Result := atInt32;
+    'int64':  Result := atInt64;
+    'int':    Result := atInt64; // alias
+    'uint8':  Result := atUInt8;
     'uint16': Result := atUInt16;
     'uint32': Result := atUInt32;
     'uint64': Result := atUInt64;
-    'bool':  Result := atBool;
-    'void':  Result := atVoid;
-    'pchar': Result := atPChar;
+    'isize':  Result := atISize;
+    'usize':  Result := atUSize;
+    'f32':    Result := atF32;
+    'f64':    Result := atF64;
+    'char':   Result := atChar;
+    'bool':   Result := atBool;
+    'void':   Result := atVoid;
+    'pchar':  Result := atPChar;
     'string': Result := atPChar; // map string to pchar for now
   else
     Result := atUnresolved;
@@ -398,25 +526,33 @@ end;
 function NodeKindToStr(nk: TNodeKind): string;
 begin
   case nk of
-    nkIntLit:    Result := 'IntLit';
-    nkStrLit:    Result := 'StrLit';
-    nkBoolLit:   Result := 'BoolLit';
-    nkIdent:     Result := 'Ident';
-    nkBinOp:     Result := 'BinOp';
-    nkUnaryOp:   Result := 'UnaryOp';
-    nkCall:      Result := 'Call';
-    nkVarDecl:   Result := 'VarDecl';
-    nkAssign:    Result := 'Assign';
-    nkIf:        Result := 'If';
-    nkWhile:     Result := 'While';
-    nkReturn:    Result := 'Return';
-    nkBreak:     Result := 'Break';
-    nkSwitch:    Result := 'Switch';
-    nkBlock:     Result := 'Block';
-    nkExprStmt:  Result := 'ExprStmt';
-    nkFuncDecl:  Result := 'FuncDecl';
-    nkConDecl:   Result := 'ConDecl';
-    nkProgram:   Result := 'Program';
+    nkIntLit:      Result := 'IntLit';
+    nkStrLit:      Result := 'StrLit';
+    nkBoolLit:     Result := 'BoolLit';
+    nkCharLit:     Result := 'CharLit';
+    nkIdent:       Result := 'Ident';
+    nkBinOp:       Result := 'BinOp';
+    nkUnaryOp:     Result := 'UnaryOp';
+    nkCall:        Result := 'Call';
+    nkFieldAccess: Result := 'FieldAccess';
+    nkIndexAccess: Result := 'IndexAccess';
+    nkVarDecl:     Result := 'VarDecl';
+    nkAssign:      Result := 'Assign';
+    nkIf:          Result := 'If';
+    nkWhile:       Result := 'While';
+    nkFor:         Result := 'For';
+    nkRepeatUntil: Result := 'RepeatUntil';
+    nkReturn:      Result := 'Return';
+    nkBreak:       Result := 'Break';
+    nkSwitch:      Result := 'Switch';
+    nkBlock:       Result := 'Block';
+    nkExprStmt:    Result := 'ExprStmt';
+    nkFuncDecl:    Result := 'FuncDecl';
+    nkConDecl:     Result := 'ConDecl';
+    nkTypeDecl:    Result := 'TypeDecl';
+    nkUnitDecl:    Result := 'UnitDecl';
+    nkImportDecl:  Result := 'ImportDecl';
+    nkProgram:     Result := 'Program';
   end;
 end;
 
@@ -731,6 +867,132 @@ destructor TAstExprStmt.Destroy;
 begin
   FExpr.Free;
   inherited Destroy;
+end;
+
+// ================================================================
+// TAstCharLit
+// ================================================================
+
+constructor TAstCharLit.Create(aValue: Char; aSpan: TSourceSpan);
+begin
+  inherited Create(nkCharLit, aSpan);
+  FValue := aValue;
+  FResolvedType := atChar;
+end;
+
+// ================================================================
+// TAstFieldAccess
+// ================================================================
+
+constructor TAstFieldAccess.Create(aObj: TAstExpr; const aField: string;
+  aSpan: TSourceSpan);
+begin
+  inherited Create(nkFieldAccess, aSpan);
+  FObj := aObj;
+  FField := aField;
+end;
+
+destructor TAstFieldAccess.Destroy;
+begin
+  FObj.Free;
+  inherited Destroy;
+end;
+
+// ================================================================
+// TAstIndexAccess
+// ================================================================
+
+constructor TAstIndexAccess.Create(aObj: TAstExpr; aIndex: TAstExpr;
+  aSpan: TSourceSpan);
+begin
+  inherited Create(nkIndexAccess, aSpan);
+  FObj := aObj;
+  FIndex := aIndex;
+end;
+
+destructor TAstIndexAccess.Destroy;
+begin
+  FObj.Free;
+  FIndex.Free;
+  inherited Destroy;
+end;
+
+// ================================================================
+// TAstFor
+// ================================================================
+
+constructor TAstFor.Create(const aVarName: string; aStart, aEnd: TAstExpr;
+  aDownto: Boolean; aBody: TAstStmt; aSpan: TSourceSpan);
+begin
+  inherited Create(nkFor, aSpan);
+  FVarName := aVarName;
+  FStartExpr := aStart;
+  FEndExpr := aEnd;
+  FIsDownto := aDownto;
+  FBody := aBody;
+end;
+
+destructor TAstFor.Destroy;
+begin
+  FStartExpr.Free;
+  FEndExpr.Free;
+  FBody.Free;
+  inherited Destroy;
+end;
+
+// ================================================================
+// TAstRepeatUntil
+// ================================================================
+
+constructor TAstRepeatUntil.Create(aBody: TAstStmt; aCond: TAstExpr;
+  aSpan: TSourceSpan);
+begin
+  inherited Create(nkRepeatUntil, aSpan);
+  FBody := aBody;
+  FCond := aCond;
+end;
+
+destructor TAstRepeatUntil.Destroy;
+begin
+  FBody.Free;
+  FCond.Free;
+  inherited Destroy;
+end;
+
+// ================================================================
+// TAstTypeDecl
+// ================================================================
+
+constructor TAstTypeDecl.Create(const aName: string; aDeclType: TAurumType;
+  aPublic: Boolean; aSpan: TSourceSpan);
+begin
+  inherited Create(nkTypeDecl, aSpan);
+  FName := aName;
+  FDeclType := aDeclType;
+  FIsPublic := aPublic;
+end;
+
+// ================================================================
+// TAstUnitDecl
+// ================================================================
+
+constructor TAstUnitDecl.Create(const aPath: string; aSpan: TSourceSpan);
+begin
+  inherited Create(nkUnitDecl, aSpan);
+  FUnitPath := aPath;
+end;
+
+// ================================================================
+// TAstImportDecl
+// ================================================================
+
+constructor TAstImportDecl.Create(const aPath, aAlias: string;
+  const aItems: TAstImportItemList; aSpan: TSourceSpan);
+begin
+  inherited Create(nkImportDecl, aSpan);
+  FUnitPath := aPath;
+  FAlias := aAlias;
+  FItems := aItems;
 end;
 
 // ================================================================

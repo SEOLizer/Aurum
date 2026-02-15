@@ -1,0 +1,25 @@
+// Beispiel: Short-Circuit Evaluation (&& und ||)
+// Zeigt das Verhalten von && und || mit Auswertungsreihenfolge
+
+fn main(): int64 {
+    // Test 1: && stoppt bei false (rechter Operand wird nicht ausgewertet)
+    // false && anything -> false (anything wird nicht ausgewertet)
+    if (1 > 2) && (3 < 4) {
+        print_str("Sollte nicht ausgeführt werden\n");
+    } else {
+        print_str("&& funktioniert\n");
+    }
+
+    // Test 2: || stoppt bei true (rechter Operand wird nicht ausgewertet)
+    // true || anything -> true (anything wird nicht ausgewertet)
+    if (1 < 2) || (3 > 4) {
+        print_str("|| funktioniert\n");
+    }
+
+    // Test 3: Beide Operanden von && werden ausgewertet wenn links true
+    if (1 < 2) && (3 < 4) {
+        print_str("Beide Bedingungen wahr\n");
+    }
+
+    return 0;
+}

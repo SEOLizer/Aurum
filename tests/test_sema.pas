@@ -16,6 +16,13 @@ type
     procedure TestTypeMismatchInDecl;
     procedure TestUndeclaredAssignmentError;
     procedure TestCallArgTypeCheck;
+    // Neue Tests (Phase 2)
+    procedure TestForLoopValid;
+    procedure TestForLoopNonIntStartError;
+    procedure TestRepeatUntilConditionBool;
+    procedure TestRepeatUntilConditionNonBoolError;
+    procedure TestCharTypeValid;
+    procedure TestCharTypeMismatchError;
   end;
 
 function TSemaTest.AnalyzeSource(const src: string): TDiagnostics;
@@ -103,6 +110,84 @@ var
   d: TDiagnostics;
 begin
   d := AnalyzeSource('fn main(): int64 { print_int(42); print_str("hi"); print_int(true); return 0; }');
+  try
+    AssertTrue(d.ErrorCount >= 1);
+  finally
+    d.Free;
+  end;
+end;
+
+// --- Neue Tests (Phase 2) ---
+
+procedure TSemaTest.TestForLoopValid;
+var
+  d: TDiagnostics;
+begin
+  d := AnalyzeSource('fn main(): int64 { for i := 0 to 5 do print_int(i); return 0; }');
+  try
+    AssertEquals(0, d.ErrorCount);
+  finally
+    d.Free;
+  end;
+end;
+
+procedure TSemaTest.TestForLoopNonIntStartError;
+var
+  d: TDiagnostics;
+begin
+  // For loop requires int64 for start/end expressions
+  d := AnalyzeSource('fn main(): int64 { for i := true to 5 do print_int(i); return 0; }');
+  try
+    AssertTrue(d.ErrorCount >= 1);
+  finally
+    d.Free;
+  end;
+end;
+
+procedure TSemaTest.TestRepeatUntilConditionBool;
+var
+  d: TDiagnostics;
+begin
+  // Simple repeat-until with block body
+  d := AnalyzeSource('fn main(): int64 { var x: int64 := 0; repeat { x := x + 1; } until x > 5; return x; }');
+  try
+    AssertEquals(0, d.ErrorCount);
+  finally
+    d.Free;
+  end;
+end;
+
+procedure TSemaTest.TestRepeatUntilConditionNonBoolError;
+var
+  d: TDiagnostics;
+begin
+  // Repeat-until condition must be bool
+  d := AnalyzeSource('fn main(): int64 { var x: int64 := 0; repeat x := x + 1; until x + 5; return x; }');
+  try
+    AssertTrue(d.ErrorCount >= 1);
+  finally
+    d.Free;
+  end;
+end;
+
+procedure TSemaTest.TestCharTypeValid;
+var
+  d: TDiagnostics;
+begin
+  d := AnalyzeSource('fn main(): int64 { var c: char := ''A''; return 0; }');
+  try
+    AssertEquals(0, d.ErrorCount);
+  finally
+    d.Free;
+  end;
+end;
+
+procedure TSemaTest.TestCharTypeMismatchError;
+var
+  d: TDiagnostics;
+begin
+  // Char variable assigned int value
+  d := AnalyzeSource('fn main(): int64 { var c: char := 65; return 0; }');
   try
     AssertTrue(d.ErrorCount >= 1);
   finally
