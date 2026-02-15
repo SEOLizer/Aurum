@@ -25,6 +25,7 @@ type
     FLocalMap: TStringList; // name -> local index (as object integer)
     FLocalTypes: array of TAurumType; // index -> declared local type
     FConstMap: TStringList; // name -> TConstValue (compile-time constants)
+    FLocalConst: array of TConstValue; // per-function local constant values (or nil)
     FBreakStack: TStringList; // stack of break labels
 
     function NewTemp: Integer;
@@ -72,6 +73,8 @@ constructor TIRLowering.Create(modul: TIRModule; diag: TDiagnostics);
     FConstMap.Sorted := False;
     FBreakStack := TStringList.Create;
     FBreakStack.Sorted := False;
+    SetLength(FLocalTypes, 0);
+    SetLength(FLocalConst, 0);
   end;
 
 
@@ -83,6 +86,9 @@ begin
   for i := 0 to FConstMap.Count - 1 do
     TObject(FConstMap.Objects[i]).Free;
   FConstMap.Free;
+  for i := 0 to Length(FLocalConst)-1 do
+    if Assigned(FLocalConst[i]) then FLocalConst[i].Free;
+  SetLength(FLocalConst, 0);
   FBreakStack.Free;
   inherited Destroy;
 end;
@@ -149,19 +155,22 @@ begin
     node := prog.Decls[i];
     if node is TAstFuncDecl then
     begin
-      fn := FModule.AddFunction(TAstFuncDecl(node).Name);
-      // Lower function body
-      FCurrentFunc := fn;
-      FLocalMap.Clear;
-      FTempCounter := 0;
+       fn := FModule.AddFunction(TAstFuncDecl(node).Name);
+       // Lower function body
+       FCurrentFunc := fn;
+       FLocalMap.Clear;
+       FTempCounter := 0;
        fn.ParamCount := Length(TAstFuncDecl(node).Params);
        fn.LocalCount := fn.ParamCount;
        SetLength(FLocalTypes, fn.LocalCount);
+       SetLength(FLocalConst, fn.LocalCount);
        for j := 0 to fn.ParamCount - 1 do
        begin
          FLocalMap.AddObject(TAstFuncDecl(node).Params[j].Name, IntToObj(j));
          FLocalTypes[j] := TAstFuncDecl(node).Params[j].ParamType;
+         FLocalConst[j] := nil;
        end;
+
 
       // lower statements sequentially
       for j := 0 to High(TAstFuncDecl(node).Body.Stmts) do
@@ -457,6 +466,12 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     ltype: TAurumType;
     width: Integer;
     w: Integer;
+    lit: Int64;
+    mask64: UInt64;
+    truncated: UInt64;
+    half: UInt64;
+    signedVal: Int64;
+    cvLocal: TConstValue;
   begin
   instr := Default(TIRInstr);
   Result := True;
@@ -466,7 +481,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     // If initializer is constant integer and the local has narrower signed width, constant fold
     if (TAstVarDecl(stmt).InitExpr is TAstIntLit) then
     begin
-      var lit := TAstIntLit(TAstVarDecl(stmt).InitExpr).Value;
+      lit := TAstIntLit(TAstVarDecl(stmt).InitExpr).Value;
       ltype := GetLocalType(loc);
       if (ltype <> atUnresolved) and (ltype <> atInt64) then
       begin
@@ -478,27 +493,32 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
           atInt32, atUInt32: width := 32;
           atInt64, atUInt64: width := 64;
         end;
-        var mask := (UInt64(1) shl width) - 1;
-        var truncated := UInt64(lit) and mask;
+        mask64 := (UInt64(1) shl width) - 1;
+        truncated := UInt64(lit) and mask64;
         if (ltype in [atInt8, atInt16, atInt32, atInt64]) then
         begin
           // signed interpretation
-          var half := UInt64(1) shl (width - 1);
-          var signedVal: Int64;
+          half := UInt64(1) shl (width - 1);
           if truncated >= half then
             signedVal := Int64(truncated - (UInt64(1) shl width))
           else
             signedVal := Int64(truncated);
-          tmp := NewTemp;
-          instr.Op := irConstInt; instr.Dest := tmp; instr.ImmInt := signedVal; Emit(instr);
+          // record local constant for future loads instead of emitting store
+          cvLocal := TConstValue.Create;
+          cvLocal.IsStr := False;
+          cvLocal.IntVal := signedVal;
+          if loc >= Length(FLocalConst) then SetLength(FLocalConst, loc+1);
+          FLocalConst[loc] := cvLocal;
         end
         else
         begin
-          // unsigned: store zero-extended value
-          tmp := NewTemp;
-          instr.Op := irConstInt; instr.Dest := tmp; instr.ImmInt := Int64(truncated); Emit(instr);
+          // unsigned: record local constant zero-extended value
+          cvLocal := TConstValue.Create;
+          cvLocal.IsStr := False;
+          cvLocal.IntVal := Int64(truncated);
+          if loc >= Length(FLocalConst) then SetLength(FLocalConst, loc+1);
+          FLocalConst[loc] := cvLocal;
         end;
-        instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := tmp; Emit(instr);
         Exit(True);
       end;
     end;
