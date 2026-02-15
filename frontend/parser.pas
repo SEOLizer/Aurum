@@ -233,6 +233,10 @@ var
   elseStmt: TAstStmt;
   bodyStmt: TAstStmt;
   vExpr: TAstExpr;
+  cases: TAstCaseList;
+  defaultBody: TAstStmt;
+  ccase: TAstCase;
+  i: Integer;
 begin
   if Check(tkVar) or Check(tkLet) or Check(tkCo) then
     Exit(ParseVarLetCoDecl);
@@ -259,6 +263,46 @@ begin
     Expect(tkRParen);
     bodyStmt := Self.ParseStmt;
     Exit(TAstWhile.Create(cond, bodyStmt, cond.Span));
+  end;
+
+  // switch (expr) { case CONST: stmt ... default: stmt }
+  if Check(tkSwitch) then
+  begin
+    Advance; // switch
+    Expect(tkLParen);
+    cond := ParseExpr;
+    Expect(tkRParen);
+    Expect(tkLBrace);
+    // collect cases
+    SetLength(cases, 0);
+    defaultBody := nil;
+    while not Check(tkRBrace) and not Check(tkEOF) do
+    begin
+      if Accept(tkCase) then
+      begin
+        // parse single const expr
+        ccase.Value := ParseExpr;
+        Expect(tkColon);
+        ccase.Body := ParseStmt;
+        SetLength(cases, Length(cases) + 1);
+        cases[High(cases)] := ccase;
+        Continue;
+      end
+      else if Accept(tkDefault) then
+      begin
+        Expect(tkColon);
+        defaultBody := ParseStmt;
+        Continue;
+      end
+      else
+      begin
+        // unexpected token inside switch
+        FDiag.Error('unexpected token in switch', FCurTok.Span);
+        Advance;
+      end;
+    end;
+    Expect(tkRBrace);
+    Exit(TAstSwitch.Create(cond, cases, defaultBody, cond.Span));
   end;
 
   if Check(tkReturn) then
