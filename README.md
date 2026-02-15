@@ -4,7 +4,7 @@
 Er erzeugt direkt ausführbare **Linux x86_64 ELF64-Binaries** — ohne libc, ohne Linker, rein über Syscalls.
 
 ```
-Aurum Compiler v0.1.0
+Aurum Compiler v0.1.2
 Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.
 ```
 
@@ -495,7 +495,7 @@ Primary     := IntLit | BoolLit | StringLit | Ident | Call | '(' Expr ')' ;
 |---------|----------|
 | **v0.0.1** | `print_str("...")`, `exit(n)`, ELF64 läuft |
 | **v0.0.2** | Integer-Ausdrücke, `print_int(expr)` |
-| **v0.1** | `var`, `let`, `co`, `con`, `if`, `while`, `return`, Funktionen, SysV ABI |
+| **v0.1.2** | `var`, `let`, `co`, `con`, `if`, `while`, `return`, Funktionen, SysV ABI |
 | **v0.2** | Erweiterte Funktionen, bessere Diagnostik |
 | **v1** | Module/Imports, Objectfiles, Linker-Ansteuerung |
 

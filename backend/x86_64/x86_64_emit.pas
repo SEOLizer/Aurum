@@ -494,42 +494,27 @@ begin
             begin
               // load pointer from slot into RSI
               WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + instr.Src1));
-              // try static length from interned string
-              len := 0;
-              if (instr.Src1 >= 0) and (instr.Src1 < Length(tempStrIndex)) then
-              begin
-                sidx := tempStrIndex[instr.Src1];
-                if (sidx >= 0) and (sidx < module.Strings.Count) then
-                  len := Length(module.Strings[sidx]);
-              end;
-              if len > 0 then
-              begin
-                // static length known: use immediate
-                WriteMovRegImm64(FCode, RDX, Cardinal(len));
-              end
-              else
-              begin
-                // runtime strlen: scan for \0 starting at RSI
-                // rcx = rsi (save start pointer)
-                WriteMovRegReg(FCode, RCX, RSI);
-                // strlen_loop: cmp byte [rcx], 0
-                // je strlen_done
-                // inc rcx
-                // jmp strlen_loop
-                // strlen_done: rdx = rcx - rsi
-                //   strlen_loop:
-                EmitU8(FCode, $80); EmitU8(FCode, $39); EmitU8(FCode, $00); // cmp byte [rcx], 0
-                //   je +3 (skip inc + jmp = 3+5 = 8 bytes... actually inc=3, jmp=2)
-                //   inc rcx = 48 FF C1 (3 bytes)
-                //   jmp back = EB xx (2 bytes, short jump)
-                //   je strlen_done (skip inc+jmp = 5 bytes)
-                EmitU8(FCode, $74); EmitU8(FCode, $05); // je +5
-                WriteIncReg(FCode, RCX);                 // inc rcx (3 bytes)
-                EmitU8(FCode, $EB); EmitU8(FCode, $F6);  // jmp -10 (back to cmp)
-                // strlen_done: rdx = rcx - rsi
-                WriteMovRegReg(FCode, RDX, RCX);
-                WriteSubRegReg(FCode, RDX, RSI);
-              end;
+               // Use runtime strlen: always scan for \0 starting at RSI
+               // rcx = rsi (save start pointer)
+               WriteMovRegReg(FCode, RCX, RSI);
+               // strlen_loop: cmp byte [rcx], 0
+               // je strlen_done
+               // inc rcx
+               // jmp strlen_loop
+               // strlen_done: rdx = rcx - rsi
+               //   strlen_loop:
+               EmitU8(FCode, $80); EmitU8(FCode, $39); EmitU8(FCode, $00); // cmp byte [rcx], 0
+               //   je +3 (skip inc + jmp = 3+5 = 8 bytes... actually inc=3, jmp=2)
+               //   inc rcx = 48 FF C1 (3 bytes)
+               //   jmp back = EB xx (2 bytes, short jump)
+               //   je strlen_done (skip inc+jmp = 5 bytes)
+               EmitU8(FCode, $74); EmitU8(FCode, $05); // je +5
+               WriteIncReg(FCode, RCX);                 // inc rcx (3 bytes)
+               EmitU8(FCode, $EB); EmitU8(FCode, $F6);  // jmp -10 (back to cmp)
+               // strlen_done: rdx = rcx - rsi
+               WriteMovRegReg(FCode, RDX, RCX);
+               WriteSubRegReg(FCode, RDX, RSI);
+
               // syscall write(1, rsi, rdx)
               WriteMovRegImm64(FCode, RAX, 1);
               WriteMovRegImm64(FCode, RDI, 1);

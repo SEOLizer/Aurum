@@ -27,7 +27,7 @@ var
 begin
   if ParamCount < 1 then
   begin
-    WriteLn(StdErr, 'Aurum Compiler v0.1.0');
+    WriteLn(StdErr, 'Aurum Compiler v0.1.2');
     WriteLn(StdErr, 'Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.');
     WriteLn(StdErr);
     WriteLn(StdErr, 'Verwendung: aurumc <datei.au> [-o <output>]');
@@ -40,7 +40,7 @@ begin
   if (ParamCount >= 3) and (ParamStr(2) = '-o') then
     outputFile := ParamStr(3);
 
-  WriteLn('Aurum Compiler v0.1.0');
+  WriteLn('Aurum Compiler v0.1.2');
   WriteLn('Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.');
   WriteLn;
   WriteLn('Eingabe:  ', inputFile);

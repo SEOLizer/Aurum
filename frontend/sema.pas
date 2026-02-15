@@ -217,10 +217,12 @@ var
   bin: TAstBinOp;
   un: TAstUnaryOp;
   call: TAstCall;
-  s: TSymbol;
-  i: Integer;
-  lt, rt, ot, atype: TAurumType;
-begin
+    s: TSymbol;
+    i: Integer;
+    lt, rt, ot, atype: TAurumType;
+    qualifier: string;
+    identName: string;
+  begin
   if expr = nil then
   begin
     Result := atUnresolved;
@@ -328,8 +330,16 @@ begin
     nkCall:
       begin
         call := TAstCall(expr);
-        s := ResolveSymbol(call.Name);
-        if s = nil then
+         s := ResolveSymbol(call.Name);
+         if (s = nil) and (Pos('.', call.Name) > 0) then
+         begin
+           // Handle qualified name (e.g., 'module.function')
+           qualifier := Copy(call.Name, 1, Pos('.', call.Name) - 1);
+           identName := Copy(call.Name, Pos('.', call.Name) + 1, MaxInt);
+           s := ResolveQualifiedName(qualifier, identName, call.Span);
+         end;
+
+         if s = nil then
         begin
           FDiag.Error('call to undeclared function: ' + call.Name, call.Span);
           Result := atUnresolved;
@@ -568,6 +578,11 @@ begin
   // (die gehören dem UnitManager)
   if Assigned(FImportedUnits) then
     FImportedUnits.Free;
+
+  // Freigabe aller verbleibenden Scopes (insbesondere globaler Scope)
+  while Length(FScopes) > 0 do
+    PopScope;
+
   inherited Destroy;
 end;
 
@@ -699,6 +714,7 @@ begin
         SetLength(Result.ParamTypes, Result.ParamCount);
         for j := 0 to Result.ParamCount - 1 do
           Result.ParamTypes[j] := fn.Params[j].ParamType;
+        AddSymbolToCurrent(Result, span);
         Exit;
       end;
     end;
