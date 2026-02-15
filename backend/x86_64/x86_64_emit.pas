@@ -341,6 +341,33 @@ begin
   bufferOffset := 0;
   SetLength(bufferLeaPositions, 0);
 
+  // Emit program entry (_start): load argc/argv from stack and call main
+  begin
+    // mov rdi, qword ptr [rsp]  ; argc -> RDI
+    WriteMovRegMem(FCode, RDI, RSP, 0);
+    // mov rsi, rsp
+    WriteMovRegReg(FCode, RSI, RSP);
+    // mov rax, 8
+    WriteMovRegImm64(FCode, RAX, 8);
+    // add rsi, rax  ; rsi = &argv[0]
+    WriteAddRegReg(FCode, RSI, RAX);
+
+    // call main (patched later)
+    SetLength(FJumpPatches, Length(FJumpPatches) + 1);
+    FJumpPatches[High(FJumpPatches)].Pos := FCode.Size;
+    FJumpPatches[High(FJumpPatches)].LabelName := 'main';
+    FJumpPatches[High(FJumpPatches)].JmpSize := 5; // call rel32
+    EmitU8(FCode, $E8); // call rel32
+    EmitU32(FCode, 0);  // placeholder offset
+
+    // move return value (in RAX) into RDI for exit
+    WriteMovRegReg(FCode, RDI, RAX);
+    // mov rax, 60 ; sys_exit
+    WriteMovRegImm64(FCode, RAX, 60);
+    // syscall
+    WriteSyscall(FCode);
+  end;
+
     for i := 0 to High(module.Functions) do
     begin
       // record function start label for calls
