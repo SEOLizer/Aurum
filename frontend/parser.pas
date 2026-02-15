@@ -955,7 +955,6 @@ begin
       name := '<anon>'; FDiag.Error('expected parameter name', FCurTok.Span);
     end;
     Expect(tkColon);
-    var arrLen: Integer;
     typ := ParseTypeEx(arrLen);
     if arrLen <> 0 then
       FDiag.Error('array parameter types not yet supported', FCurTok.Span);
