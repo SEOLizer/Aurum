@@ -560,7 +560,7 @@ begin
       instr.ImmStr := 'buf_put_byte';
       instr.Src1 := t1;
       instr.Src2 := t2;
-      instr.Src3 := t3;
+      instr.LabelName := IntToStr(t3);
       instr.Dest := NewTemp;
       Emit(instr);
       Exit(instr.Dest);
@@ -576,8 +576,7 @@ begin
       instr.ImmStr := 'itoa_to_buf';
       instr.Src1 := t1;
       instr.Src2 := t2;
-      instr.Src3 := t3;
-      instr.Src4 := t4;
+      instr.LabelName := IntToStr(t3) + ',' + IntToStr(t4);
       instr.Dest := NewTemp;
       Emit(instr);
       Exit(instr.Dest);
