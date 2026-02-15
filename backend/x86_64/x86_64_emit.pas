@@ -590,6 +590,10 @@ begin
               // compute length = (buffer_end) - rdi
               EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $8E); EmitU32(FCode, 64);
               WriteSubRegReg(FCode, RCX, RDI);
+              // save length into RDX before RCX is used as loop counter
+              WriteMovRegReg(FCode, RDX, RCX);
+              // save length into RDX before RCX is used as loop counter
+              WriteMovRegReg(FCode, RDX, RCX);
               WriteMovRegReg(FCode, RDX, RCX);
 
               // syscall write(1, rdi, rdx)
@@ -692,6 +696,8 @@ begin
               // compute length = buffer_end - rdi -> RCX
               EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $8E); EmitU32(FCode, 64);
               WriteSubRegReg(FCode, RCX, RDI);
+              // save length into RDX before RCX is used as loop counter
+              WriteMovRegReg(FCode, RDX, RCX);
 
               // prepare destination pointer: dst = buf + idx
               if instr.Src2 >= 0 then
@@ -854,6 +860,8 @@ begin
               // compute length = buffer_end - rdi -> RCX
               EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $8E); EmitU32(FCode, 64);
               WriteSubRegReg(FCode, RCX, RDI);
+              // save length into RDX before RCX is used as loop counter
+              WriteMovRegReg(FCode, RDX, RCX);
 
               // prepare destination pointer: dst = buf + idx
               if instr.Src2 >= 0 then
