@@ -3,14 +3,14 @@ program test_time_format;
 
 uses
   SysUtils, Classes,
-  fpcunit, testregistry, consoletestrunner,
-  // Zeit-Unit: Funktionen in std/time.au werden vom Compiler zur Laufzeit verfügbar gemacht
-  // Tests rufen die externen Funktionsdeklarationen über die Compiler-Frontend API auf.
-  // Hier werden sie als externe Prozeduren in der Testumgebung simuliert.
-  
-  { keine direkte Unit für Aurum-Std hier; die Tests rufen die Funktionen via Test-Runner }
-  
-  ;
+  fpcunit, testregistry, consoletestrunner;
+
+// Zeit-Unit: Funktionen in std/time.au werden vom Compiler zur Laufzeit verfügbar gemacht
+// Tests rufen die externen Funktionsdeklarationen über die Compiler-Frontend API auf.
+// Hier werden sie als externe Prozeduren in der Testumgebung simuliert.
+
+// Keine direkte Unit für Aurum-Std hier; die Tests rufen die Funktionen via Test-Runner
+
 
 // Da die Test-Suite in FreePascal läuft (für den Compiler selbst), testen wir die
 // numerischen Algorithmen durch Vergleich der Referenzimplementierung in Pascal.
