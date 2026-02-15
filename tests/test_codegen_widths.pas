@@ -19,11 +19,14 @@ type
   end;
 
 function TCodegenWidthsTest.ParseAndLower(const src, fname: string): TIRModule;
-var
+  var
   lex: TLexer;
   p: TParser;
   prog: TAstProgram;
   s: TSema;
+  lower: TIRLowering;
+  modl: TIRModule;
+
 begin
   FDiag := TDiagnostics.Create;
   lex := TLexer.Create(src, fname, FDiag);
@@ -38,8 +41,6 @@ begin
         s.Free;
       end;
       // create lowering with owned module, call Lower and free lowering afterwards
-      var lower: TIRLowering;
-      var modl: TIRModule;
       modl := TIRModule.Create;
       lower := TIRLowering.Create(modl, FDiag);
       try
