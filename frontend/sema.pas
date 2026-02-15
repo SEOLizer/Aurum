@@ -188,14 +188,24 @@ begin
   AddSymbolToCurrent(s, NullSpan);
 
   // Dynamic array builtins
-  // push(arrVar: pchar, val: int64) -> void
-  s := TSymbol.Create('push');
+  // append(arrVar: pchar, val: int64) -> void  (alias: push)
+  s := TSymbol.Create('append');
   s.Kind := symFunc;
   s.DeclType := atVoid;
   s.ParamCount := 2;
   SetLength(s.ParamTypes, 2);
   s.ParamTypes[0] := atPChar; // pointer to array header stored in variable (we'll pass variable slot)
   s.ParamTypes[1] := atInt64; // value
+  AddSymbolToCurrent(s, NullSpan);
+
+  // push(arrVar: pchar, val: int64) -> void  (legacy name)
+  s := TSymbol.Create('push');
+  s.Kind := symFunc;
+  s.DeclType := atVoid;
+  s.ParamCount := 2;
+  SetLength(s.ParamTypes, 2);
+  s.ParamTypes[0] := atPChar;
+  s.ParamTypes[1] := atInt64;
   AddSymbolToCurrent(s, NullSpan);
 
   // pop(arrVar: pchar) -> int64

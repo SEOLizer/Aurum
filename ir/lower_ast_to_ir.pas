@@ -24,6 +24,7 @@ type
     FLabelCounter: Integer;
     FLocalMap: TStringList; // name -> local index (as object integer)
     FLocalTypes: array of TAurumType; // index -> declared local type
+    FLocalElemSize: array of Integer; // index -> element size in bytes for dynamic array locals (0 if not array)
     FConstMap: TStringList; // name -> TConstValue (compile-time constants)
     FLocalConst: array of TConstValue; // per-function local constant values (or nil)
     FBreakStack: TStringList; // stack of break labels
@@ -76,6 +77,7 @@ constructor TIRLowering.Create(modul: TIRModule; diag: TDiagnostics);
     FBreakStack := TStringList.Create;
     FBreakStack.Sorted := False;
     SetLength(FLocalTypes, 0);
+    SetLength(FLocalElemSize, 0);
     SetLength(FLocalConst, 0);
   end;
 
@@ -124,6 +126,9 @@ begin
   // ensure FLocalTypes has same length
   SetLength(FLocalTypes, FCurrentFunc.LocalCount);
   FLocalTypes[Result] := aType;
+  // ensure FLocalElemSize has same length and initialize to 0
+  SetLength(FLocalElemSize, FCurrentFunc.LocalCount);
+  FLocalElemSize[Result] := 0;
 end;
 
 function TIRLowering.AllocLocalMany(const name: string; aType: TAurumType; count: Integer): Integer;
@@ -143,6 +148,10 @@ begin
   SetLength(FLocalTypes, FCurrentFunc.LocalCount);
   for i := 0 to count - 1 do
     FLocalTypes[base + i] := aType;
+  // ensure FLocalElemSize has same length and initialize entries to 0
+  SetLength(FLocalElemSize, FCurrentFunc.LocalCount);
+  for i := 0 to count - 1 do
+    FLocalElemSize[base + i] := 0;
   Result := base;
 end;
 
@@ -321,6 +330,10 @@ function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
   ltype: TAurumType;
   w: Integer;
   loc: Integer;
+  // temps for array builtins
+  arrName, arrName2, name0, name1: string;
+  arrLoc, arrLoc2, loc0, loc1: Integer;
+  esz, esz2, esz_len, esz_free: Integer;
   thenLabel, elseLabel, endLabel: string;
 begin
   instr := Default(TIRInstr);
@@ -635,63 +648,72 @@ begin
         instr.Dest := NewTemp;
         Emit(instr);
         Exit(instr.Dest);
-     end
-     else if TAstCall(expr).Name = 'push' then
-     begin
-       // push(arrVar, val)
-       if Length(TAstCall(expr).Args) <> 2 then
-       begin
-         FDiag.Error('push requires 2 arguments', TAstCall(expr).Span);
-         Exit(-1);
-       end;
-       // first arg must be identifier (variable)
-       if not (TAstCall(expr).Args[0] is TAstIdent) then
-       begin
-         FDiag.Error('push: first argument must be array variable identifier', TAstCall(expr).Args[0].Span);
-         Exit(-1);
-       end;
-       var arrName := TAstIdent(TAstCall(expr).Args[0]).Name;
-       var arrLoc := ResolveLocal(arrName);
-       if arrLoc < 0 then
-       begin
-         FDiag.Error('push: unknown variable ' + arrName, TAstCall(expr).Args[0].Span);
-         Exit(-1);
-       end;
-       t1 := LowerExpr(TAstCall(expr).Args[1]); // value temp
-       instr.Op := irCallBuiltin;
-       instr.ImmStr := 'push';
-       instr.Src1 := arrLoc;
-       instr.Src2 := t1;
-       Emit(instr);
-       Exit(-1);
-     end
-     else if TAstCall(expr).Name = 'pop' then
-     begin
-       // pop(arrVar) -> int64
-       if Length(TAstCall(expr).Args) <> 1 then
-       begin
-         FDiag.Error('pop requires 1 argument', TAstCall(expr).Span);
-         Exit(-1);
-       end;
-       if not (TAstCall(expr).Args[0] is TAstIdent) then
-       begin
-         FDiag.Error('pop: first argument must be array variable identifier', TAstCall(expr).Args[0].Span);
-         Exit(-1);
-       end;
-       var arrName2 := TAstIdent(TAstCall(expr).Args[0]).Name;
-       var arrLoc2 := ResolveLocal(arrName2);
-       if arrLoc2 < 0 then
-       begin
-         FDiag.Error('pop: unknown variable ' + arrName2, TAstCall(expr).Args[0].Span);
-         Exit(-1);
-       end;
-       instr.Op := irCallBuiltin;
-       instr.ImmStr := 'pop';
-       instr.Src1 := arrLoc2;
-       instr.Dest := NewTemp;
-       Emit(instr);
-       Exit(instr.Dest);
-     end
+      end
+      else if (TAstCall(expr).Name = 'push') or (TAstCall(expr).Name = 'append') then
+      begin
+        // push(arrVar, val) / append(arrVar, val)
+        if Length(TAstCall(expr).Args) <> 2 then
+        begin
+          FDiag.Error('push/append requires 2 arguments', TAstCall(expr).Span);
+          Exit(-1);
+        end;
+        // first arg must be identifier (variable)
+        if not (TAstCall(expr).Args[0] is TAstIdent) then
+        begin
+          FDiag.Error('push/append: first argument must be array variable identifier', TAstCall(expr).Args[0].Span);
+          Exit(-1);
+        end;
+        arrName := TAstIdent(TAstCall(expr).Args[0]).Name;
+        arrLoc := ResolveLocal(arrName);
+        if arrLoc < 0 then
+        begin
+          FDiag.Error('push/append: unknown variable ' + arrName, TAstCall(expr).Args[0].Span);
+          Exit(-1);
+        end;
+        t1 := LowerExpr(TAstCall(expr).Args[1]); // value temp
+        instr.Op := irCallBuiltin;
+        instr.ImmStr := 'push';
+        instr.Src1 := arrLoc;
+        instr.Src2 := t1;
+        // attach element size metadata if available
+        esz := 8;
+        if (arrLoc >= 0) and (arrLoc < Length(FLocalElemSize)) then esz := FLocalElemSize[arrLoc];
+        instr.LabelName := IntToStr(esz);
+        Emit(instr);
+        Exit(-1);
+      end
+      else if TAstCall(expr).Name = 'pop' then
+      begin
+        // pop(arrVar) -> int64
+        if Length(TAstCall(expr).Args) <> 1 then
+        begin
+          FDiag.Error('pop requires 1 argument', TAstCall(expr).Span);
+          Exit(-1);
+        end;
+        if not (TAstCall(expr).Args[0] is TAstIdent) then
+        begin
+          FDiag.Error('pop: first argument must be array variable identifier', TAstCall(expr).Args[0].Span);
+          Exit(-1);
+        end;
+        arrName2 := TAstIdent(TAstCall(expr).Args[0]).Name;
+        arrLoc2 := ResolveLocal(arrName2);
+        if arrLoc2 < 0 then
+        begin
+          FDiag.Error('pop: unknown variable ' + arrName2, TAstCall(expr).Args[0].Span);
+          Exit(-1);
+        end;
+        instr.Op := irCallBuiltin;
+        instr.ImmStr := 'pop';
+        instr.Src1 := arrLoc2;
+        instr.Dest := NewTemp;
+        // attach element size metadata if available
+        esz2 := 8;
+        if (arrLoc2 >= 0) and (arrLoc2 < Length(FLocalElemSize)) then esz2 := FLocalElemSize[arrLoc2];
+        instr.LabelName := IntToStr(esz2);
+        Emit(instr);
+        Exit(instr.Dest);
+      end
+
      else if TAstCall(expr).Name = 'len' then
      begin
        // len(arrVar) -> int64
@@ -702,29 +724,37 @@ begin
        end;
        if TAstCall(expr).Args[0] is TAstIdent then
        begin
-         var name0 := TAstIdent(TAstCall(expr).Args[0]).Name;
-         var sSym := ResolveSymbol(name0);
-         if Assigned(sSym) and (sSym.ArrayLen > 0) then
-         begin
-           // static array: return constant length
-           t1 := NewTemp;
-           instr.Op := irConstInt; instr.Dest := t1; instr.ImmInt := sSym.ArrayLen; Emit(instr);
-           Exit(t1);
-         end
-         else
-         begin
-           var loc0 := ResolveLocal(name0);
-           if loc0 < 0 then
-           begin
-             FDiag.Error('len: unknown variable ' + name0, TAstCall(expr).Args[0].Span);
-             Exit(-1);
-           end;
-           instr.Op := irCallBuiltin;
-           instr.ImmStr := 'len';
-           instr.Src1 := loc0;
-           instr.Dest := NewTemp;
-           Emit(instr);
-           Exit(instr.Dest);
+          name0 := TAstIdent(TAstCall(expr).Args[0]).Name;
+          // Resolve local slot for variable
+          loc0 := ResolveLocal(name0);
+          if loc0 < 0 then
+          begin
+            FDiag.Error('len: unknown variable ' + name0, TAstCall(expr).Args[0].Span);
+            Exit(-1);
+          end;
+          instr.Op := irCallBuiltin;
+          instr.ImmStr := 'len';
+          instr.Src1 := loc0;
+          instr.Dest := NewTemp;
+          // attach element size metadata if available
+          esz_len := 8;
+          if (loc0 >= 0) and (loc0 < Length(FLocalElemSize)) then esz_len := FLocalElemSize[loc0];
+          instr.LabelName := IntToStr(esz_len);
+          Emit(instr);
+          Exit(instr.Dest);
+
+        instr.Op := irCallBuiltin;
+            instr.ImmStr := 'len';
+            instr.Src1 := loc0;
+            instr.Dest := NewTemp;
+            // attach element size metadata if available
+             esz_len := 8;
+             if (loc0 >= 0) and (loc0 < Length(FLocalElemSize)) then esz_len := FLocalElemSize[loc0];
+             instr.LabelName := IntToStr(esz_len);
+
+            Emit(instr);
+            Exit(instr.Dest);
+
          end;
        end
        else
@@ -746,18 +776,25 @@ begin
          FDiag.Error('free: first argument must be array variable identifier', TAstCall(expr).Args[0].Span);
          Exit(-1);
        end;
-       var name1 := TAstIdent(TAstCall(expr).Args[0]).Name;
-       var loc1 := ResolveLocal(name1);
-       if loc1 < 0 then
+        name1 := TAstIdent(TAstCall(expr).Args[0]).Name;
+        loc1 := ResolveLocal(name1);
+        if loc1 < 0 then
+
        begin
          FDiag.Error('free: unknown variable ' + name1, TAstCall(expr).Args[0].Span);
          Exit(-1);
        end;
-       instr.Op := irCallBuiltin;
-       instr.ImmStr := 'free';
-       instr.Src1 := loc1;
-       Emit(instr);
-       Exit(-1);
+        instr.Op := irCallBuiltin;
+        instr.ImmStr := 'free';
+        instr.Src1 := loc1;
+        // attach element size metadata if available
+         esz_free := 8;
+         if (loc1 >= 0) and (loc1 < Length(FLocalElemSize)) then esz_free := FLocalElemSize[loc1];
+         instr.LabelName := IntToStr(esz_free);
+
+        Emit(instr);
+        Exit(-1);
+
      end
      else
      begin
@@ -816,6 +853,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     cvLocal: TConstValue;
     vd: TAstVarDecl;
     items: TAstExprList;
+    elemSize: Integer;
   begin
   instr := Default(TIRInstr);
   Result := True;
@@ -852,20 +890,38 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
       else if vd.ArrayLen = -1 then
       begin
 
-       // dynamic array: represent as single local pointer (pchar/int64)
-       loc := AllocLocal(vd.Name, atPChar);
-       // initializer: if empty array literal -> set nil (0)
-       if vd.InitExpr is TAstArrayLit then
-       begin
-         // only allow empty literal for now
-         if Length(TAstArrayLit(vd.InitExpr).Items) <> 0 then
-           FDiag.Error('cannot initialize dynamic array with non-empty literal', vd.Span);
-          // emit const 0 -> store
-          t0 := NewTemp;
-          instr.Op := irConstInt; instr.Dest := t0; instr.ImmInt := 0; Emit(instr);
-          instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := t0; Emit(instr);
+        // dynamic array: represent as single local pointer (pchar/int64)
+        loc := AllocLocal(vd.Name, atPChar);
+        // record element size for this local slot (needed by backend for element addressing)
+          begin
+            elemSize := 8; // default
+            case vd.DeclType of
+              atInt8, atUInt8: elemSize := 1;
+              atInt16, atUInt16: elemSize := 2;
+              atInt32, atUInt32: elemSize := 4;
+              atInt64, atUInt64: elemSize := 8;
+              atChar: elemSize := 1;
+              atPChar: elemSize := 8;
+            else
+              elemSize := 8; // conservative default
+            end;
+            if loc >= Length(FLocalElemSize) then SetLength(FLocalElemSize, loc+1);
+            FLocalElemSize[loc] := elemSize;
+          end;
 
-       end
+        // initializer: if empty array literal -> set nil (0)
+        if vd.InitExpr is TAstArrayLit then
+        begin
+          // only allow empty literal for now
+          if Length(TAstArrayLit(vd.InitExpr).Items) <> 0 then
+            FDiag.Error('cannot initialize dynamic array with non-empty literal', vd.Span);
+           // emit const 0 -> store
+           t0 := NewTemp;
+           instr.Op := irConstInt; instr.Dest := t0; instr.ImmInt := 0; Emit(instr);
+           instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := t0; Emit(instr);
+
+        end
+
        else
        begin
          tmp := LowerExpr(vd.InitExpr);

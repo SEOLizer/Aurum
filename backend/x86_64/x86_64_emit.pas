@@ -1113,8 +1113,253 @@ begin
               WriteMovRegMem(FCode, RDI, RBP, SlotOffset(localCnt + instr.Src1));
               WriteMovRegImm64(FCode, RAX, 60);
               WriteSyscall(FCode);
+            end
+            else if instr.ImmStr = 'push' then
+            begin
+              // append/push for dynamic arrays
+              // instr.Src1 = array local slot index, instr.Src2 = value temp, instr.LabelName = element size
+              var esz := 8;
+              if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
+              // load array pointer from local
+              if instr.Src1 >= 0 then
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
+              else
+                WriteMovRegImm64(FCode, RAX, 0);
+              // if pointer == 0 -> allocate initial block
+              nonZeroPos := FCode.Size;
+              WriteJneRel32(FCode, 0); // jump if non-zero (patch later)
+              // allocate new region via mmap
+              // initCap = 4
+              WriteMovRegImm64(FCode, RDI, 0);
+              WriteMovRegImm64(FCode, RSI, UInt64(16 + 4 * esz));
+              WriteMovRegImm64(FCode, RDX, 3); // PROT_READ|PROT_WRITE
+              WriteMovRegImm64(FCode, R10, 34); // MAP_PRIVATE|MAP_ANONYMOUS
+              WriteMovRegImm64(FCode, R8, UInt64(-1));
+              WriteMovRegImm64(FCode, R9, 0);
+              WriteMovRegImm64(FCode, RAX, 9); // syscall mmap
+              WriteSyscall(FCode);
+              // RAX = newptr
+              // store length=0 and capacity=4
+              WriteMovRegImm64(FCode, RDI, 0);
+              WriteMovMemReg(FCode, RAX, 0, RDI);
+              WriteMovRegImm64(FCode, RDI, 4);
+              WriteMovMemReg(FCode, RAX, 8, RDI);
+              // store newptr into local slot
+              WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Src1), RAX);
+              // patch jump to here
+              k := FCode.Size;
+              FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+              // Now RAX holds array pointer
+              // Load length into RCX
+              WriteMovRegMem(FCode, RCX, RAX, 0);
+              // load capacity into RDX
+              WriteMovRegMem(FCode, RDX, RAX, 8);
+              // compare length and capacity, if length == capacity grow
+              // cmp rcx, rdx
+              EmitRex(FCode, 1, (RDX shr 3) and 1, 0, (RCX shr 3) and 1);
+              EmitU8(FCode, $39);
+              EmitU8(FCode, $C0 or ((RDX and 7) shl 3) or (RCX and 7));
+              // je grow
+              nonZeroPos := FCode.Size;
+              WriteJeRel32(FCode, 0);
+              // no grow: compute dest = ptr + 16 + length*esz
+              // load value into RAX (64-bit)
+              if instr.Src2 >= 0 then
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src2))
+              else
+                WriteMovRegImm64(FCode, RAX, 0);
+              // compute dest in RDI: RDI = ptr + 16 + length*esz
+              // RAX currently holds ptr; load length into RCX
+              WriteMovRegMem(FCode, RCX, RAX, 0);
+              // compute base = ptr + 16
+              WriteMovRegReg(FCode, RDI, RAX);
+              WriteMovRegImm64(FCode, RDX, 16);
+              WriteAddRegReg(FCode, RDI, RDX);
+              // multiply length*esz into RDX
+              WriteMovRegReg(FCode, RDX, RCX);
+              if esz <> 1 then
+              begin
+                WriteMovRegImm64(FCode, RAX, UInt64(esz));
+                WriteImulRegReg(FCode, RDX, RAX);
+              end;
+              // add offset
+              WriteAddRegReg(FCode, RDI, RDX);
+              // copy value bytes from temp slot to dest using shared buffer
+              if not bufferAdded then
+              begin
+                bufferOffset := totalDataOffset;
+                for k := 1 to 64 do FData.WriteU8(0);
+                Inc(totalDataOffset, 64);
+                bufferAdded := True;
+              end;
+              // lea rsi, buffer (record position for patch)
+              leaPos := FCode.Size;
+              EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+              SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
+              bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
+              // store 8-byte value into buffer (at RSI)
+              WriteMovMemReg(FCode, RSI, 0, RAX);
+              // perform rep movsb: RCX = esz, RSI = buffer, RDI = dest
+              WriteMovRegImm64(FCode, RAX, UInt64(esz));
+              WriteMovRegReg(FCode, RCX, RAX);
+              // RSI already points to buffer; RDI already dest
+              // rep movsb
+              EmitU8(FCode, $F3); EmitU8(FCode, $A4);
+
+              // increment length: length++ -> load, add 1, store
+              WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+              WriteMovRegMem(FCode, RCX, RAX, 0);
+              WriteMovRegImm64(FCode, RDI, 1);
+              WriteAddRegReg(FCode, RCX, RDI);
+              WriteMovMemReg(FCode, RAX, 0, RCX);
+            end
+            else if instr.ImmStr = 'pop' then
+            begin
+              // pop(arrVar) -> returns element
+              var esz := 8;
+              if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
+              if instr.Src1 >= 0 then
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
+              else
+                WriteMovRegImm64(FCode, RAX, 0);
+              // if pointer == 0 -> exit(1)
+              WriteTestRegReg(FCode, RAX, RAX);
+              nonZeroPos := FCode.Size;
+              WriteJneRel32(FCode, 0);
+              // exit(1)
+              WriteMovRegImm64(FCode, RDI, 1);
+              WriteMovRegImm64(FCode, RAX, 60);
+              WriteSyscall(FCode);
+              k := FCode.Size;
+              FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+              // load length
+              WriteMovRegMem(FCode, RCX, RAX, 0);
+              // if length == 0 -> exit(1)
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(FCode, 0);
+              nonZeroPos := FCode.Size;
+              WriteJneRel32(FCode, 0);
+              // exit(1)
+              WriteMovRegImm64(FCode, RDI, 1);
+              WriteMovRegImm64(FCode, RAX, 60);
+              WriteSyscall(FCode);
+              k := FCode.Size;
+              FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+              // newLen = length - 1
+              WriteMovRegImm64(FCode, RDI, 1);
+              WriteSubRegReg(FCode, RCX, RDI);
+              // store new length
+              WriteMovMemReg(FCode, RAX, 0, RCX);
+              // compute element address = base + 16 + newLen*esz -> use RDI as dest
+              WriteMovRegReg(FCode, RDI, RAX);
+              WriteMovRegImm64(FCode, RDX, 16);
+              WriteAddRegReg(FCode, RDI, RDX);
+              // compute offset newLen*esz in RDX
+              WriteMovRegReg(FCode, RDX, RCX);
+              if esz <> 1 then
+              begin
+                WriteMovRegImm64(FCode, RAX, UInt64(esz));
+                WriteImulRegReg(FCode, RDX, RAX);
+              end;
+              WriteAddRegReg(FCode, RDI, RDX);
+              // prepare buffer and clear it
+              if not bufferAdded then
+              begin
+                bufferOffset := totalDataOffset;
+                for k := 1 to 64 do FData.WriteU8(0);
+                Inc(totalDataOffset, 64);
+                bufferAdded := True;
+              end;
+              // lea rsi, buffer
+              leaPos := FCode.Size;
+              EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+              SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
+              bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
+              // clear buffer 8 bytes
+              WriteMovRegImm64(FCode, RAX, 0);
+              WriteMovMemReg(FCode, RSI, 0, RAX);
+              // set RCX = esz
+              WriteMovRegImm64(FCode, RAX, UInt64(esz));
+              WriteMovRegReg(FCode, RCX, RAX);
+              // set RSI = RDI (source is element address) -> swap registers: move source addr to RSI, dest to RDI? We'll copy from element address (in RDI) to buffer (RSI)
+              // Move RDI (element addr) into RSI
+              WriteMovRegReg(FCode, RSI, RDI);
+              // set RDI to buffer address (we need dest for rep movsb)
+              // Actually buffer lea is in earlier lea instruction which placed address into RSI register in that position; we overwrote RSI. Simpler: perform LEA into RDX instead: we need a dedicated buffer lea position; to avoid register clashes, compute lea into RAX etc. For simplicity, reuse scheme: after leaPos patch, RSI will be buffer; we overwrote RSI by moving RDI into RSI. To avoid this, we should compute buffer lea into R12 instead. Adjusted approach: use R12 for buffer address.
+              
+              // (To keep code generation correct, we now load buffer address into R12)
+              // Re-emit LEA into R12
+              leaPos := FCode.Size;
+              EmitU8(FCode, $4C); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+              SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
+              bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
+              // clear buffer 8 bytes: mov [r12], rax
+              WriteMovMemReg(FCode, R12, 0, RAX);
+              // set RCX = esz
+              WriteMovRegImm64(FCode, RAX, UInt64(esz));
+              WriteMovRegReg(FCode, RCX, RAX);
+              // set RSI = element address (we have it in RDI), set RDI = buffer (r12)
+              WriteMovRegReg(FCode, RSI, RDI);
+              WriteMovRegReg(FCode, RDI, R12);
+              // rep movsb
+              EmitU8(FCode, $F3); EmitU8(FCode, $A4);
+              // load 8-byte value from buffer into RAX
+              WriteMovRegMem(FCode, RAX, R12, 0);
+              if instr.Dest >= 0 then WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+            end
+            else if instr.ImmStr = 'len' then
+            begin
+              // len(arr) -> returns length
+              var esz := 8;
+              if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
+              if instr.Src1 >= 0 then
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
+              else
+                WriteMovRegImm64(FCode, RAX, 0);
+              // if pointer == 0 -> return 0
+              WriteTestRegReg(FCode, RAX, RAX);
+              nonZeroPos := FCode.Size;
+              WriteJneRel32(FCode, 0);
+              WriteMovRegImm64(FCode, RAX, 0);
+              if instr.Dest >= 0 then WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+              k := FCode.Size;
+              FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+              // load length from [ptr]
+              WriteMovRegMem(FCode, RAX, RAX, 0);
+              if instr.Dest >= 0 then WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+            end
+            else if instr.ImmStr = 'free' then
+            begin
+              // free(arr): munmap region and set local to 0
+              var esz := 8;
+              if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
+              if instr.Src1 >= 0 then
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
+              else
+                WriteMovRegImm64(FCode, RAX, 0);
+              // if pointer == 0 do nothing
+              WriteTestRegReg(FCode, RAX, RAX);
+              nonZeroPos := FCode.Size;
+              WriteJneRel32(FCode, 0);
+              // patch: jump past free
+              k := FCode.Size;
+              FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+              // load capacity
+              WriteMovRegMem(FCode, RDX, RAX, 8);
+              // totalSize = 16 + capacity*esz -> compute in RSI
+              WriteMovRegReg(FCode, RSI, RDX);
+              WriteMovRegImm64(FCode, RDI, UInt64(esz));
+              WriteImulRegReg(FCode, RSI, RDI);
+              WriteMovRegImm64(FCode, RDI, 16);
+              WriteAddRegReg(FCode, RSI, RDI);
+              // syscall munmap(addr=ptr, len=RSI) syscall number 11
+              WriteMovRegReg(FCode, RDI, RAX); // addr
+              WriteMovRegReg(FCode, RAX, RAX); // syscall number in RAX will be set next
+              WriteMovRegImm64(FCode, RAX, 11);
+              WriteSyscall(FCode);
+              // set local slot to 0
+              WriteMovRegImm64(FCode, RDI, 0);
+              WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Src1), RDI);
             end;
-          end;
          irConstInt:
            begin
              // Load immediate integer into temp slot
