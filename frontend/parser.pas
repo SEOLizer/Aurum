@@ -535,13 +535,14 @@ begin
   end;
 
   Expect(tkColon);
-  declType := ParseType;
+  var arrayLen: Integer;
+  declType := ParseTypeEx(arrayLen);
 
   Expect(tkAssign);
   initExpr := ParseExpr;
   Expect(tkSemicolon);
 
-  Result := TAstVarDecl.Create(storage, name, declType, initExpr, initExpr.Span);
+  Result := TAstVarDecl.Create(storage, name, declType, arrayLen, initExpr, initExpr.Span);
 end;
 
 function TParser.ParseForStmt: TAstFor;
@@ -785,6 +786,27 @@ begin
   if Check(tkIdent) then
     Exit(ParseCallOrIdent);
 
+  if Accept(tkLBracket) then
+  begin
+    // array literal: [expr, expr, ...]
+    var items: TAstExprList;
+    var a: TAstExpr;
+    items := nil;
+    if not Check(tkRBracket) then
+    begin
+      while True do
+      begin
+        a := ParseExpr;
+        SetLength(items, Length(items) + 1);
+        items[High(items)] := a;
+        if Accept(tkComma) then Continue;
+        Break;
+      end;
+    end;
+    Expect(tkRBracket);
+    Exit(TAstArrayLit.Create(items, FCurTok.Span));
+  end;
+
   if Accept(tkLParen) then
   begin
     e := ParseExpr;
@@ -865,20 +887,49 @@ begin
   end;
 end;
 
-function TParser.ParseType: TAurumType;
+function TParser.ParseTypeEx(out arrayLen: Integer): TAurumType;
 var s: string;
 begin
+  arrayLen := 0;
   if Check(tkIdent) then
   begin
     s := FCurTok.Value;
     Advance;
     Result := StrToAurumType(s);
+    // optional array suffix: [N] or []
+    if Accept(tkLBracket) then
+    begin
+      if Check(tkRBracket) then
+      begin
+        // [] dynamic array
+        arrayLen := -1;
+        Advance; // consume ]
+      end
+      else if Check(tkIntLit) then
+      begin
+        arrayLen := StrToIntDef(FCurTok.Value, 0);
+        Advance;
+        Expect(tkRBracket);
+      end
+      else
+      begin
+        FDiag.Error('expected integer literal or ] in array type', FCurTok.Span);
+        // try to recover
+        if Check(tkRBracket) then Advance;
+      end;
+    end;
   end
   else
   begin
     FDiag.Error('expected type name', FCurTok.Span);
     Result := atUnresolved;
   end;
+end;
+
+function TParser.ParseType: TAurumType;
+var dummy: Integer;
+begin
+  Result := ParseTypeEx(dummy);
 end;
 
 function TParser.ParseParamList: TAstParamList;
@@ -900,7 +951,10 @@ begin
       name := '<anon>'; FDiag.Error('expected parameter name', FCurTok.Span);
     end;
     Expect(tkColon);
-    typ := ParseType;
+    var arrLen: Integer;
+    typ := ParseTypeEx(arrLen);
+    if arrLen <> 0 then
+      FDiag.Error('array parameter types not yet supported', FCurTok.Span);
     p.Name := name; p.ParamType := typ; p.Span := FCurTok.Span;
     SetLength(params, Length(params) + 1);
     params[High(params)] := p;

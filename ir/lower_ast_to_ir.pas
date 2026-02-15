@@ -31,6 +31,7 @@ type
     function NewTemp: Integer;
     function NewLabel(const prefix: string): string;
     function AllocLocal(const name: string; aType: TAurumType): Integer;
+    function AllocLocalMany(const name: string; aType: TAurumType; count: Integer): Integer;
     function GetLocalType(idx: Integer): TAurumType;
     function ResolveLocal(const name: string): Integer;
     procedure Emit(instr: TIRInstr);
@@ -123,6 +124,26 @@ begin
   // ensure FLocalTypes has same length
   SetLength(FLocalTypes, FCurrentFunc.LocalCount);
   FLocalTypes[Result] := aType;
+end;
+
+function TIRLowering.AllocLocalMany(const name: string; aType: TAurumType; count: Integer): Integer;
+var
+  idx, i, base: Integer;
+begin
+  idx := FLocalMap.IndexOf(name);
+  if idx >= 0 then
+  begin
+    Result := ObjToInt(FLocalMap.Objects[idx]);
+    Exit;
+  end;
+  base := FCurrentFunc.LocalCount;
+  FCurrentFunc.LocalCount := FCurrentFunc.LocalCount + count;
+  FLocalMap.AddObject(name, IntToObj(base));
+  // ensure FLocalTypes has same length
+  SetLength(FLocalTypes, FCurrentFunc.LocalCount);
+  for i := 0 to count - 1 do
+    FLocalTypes[base + i] := aType;
+  Result := base;
 end;
 
 function TIRLowering.GetLocalType(idx: Integer): TAurumType;
@@ -343,9 +364,33 @@ begin
     Emit(instr);
     Exit(t1);
   end;
-  if expr is TAstIdent then
-  begin
-    // check if this is a compile-time constant (con)
+   if expr is TAstIndexAccess then
+   begin
+     // handle static array index: baseIdent[CONST]
+     if (TAstIndexAccess(expr).Obj is TAstIdent) and (TAstIndexAccess(expr).Index is TAstIntLit) then
+     begin
+       loc := ResolveLocal(TAstIdent(TAstIndexAccess(expr).Obj).Name);
+       if loc < 0 then
+         FDiag.Error('use of undeclared local ' + TAstIdent(TAstIndexAccess(expr).Obj).Name, expr.Span)
+       else
+       begin
+         lit := TAstIntLit(TAstIndexAccess(expr).Index).Value;
+         t1 := NewTemp;
+         instr.Op := irLoadLocal; instr.Dest := t1; instr.Src1 := loc + lit; Emit(instr);
+         Exit(t1);
+       end;
+     end
+     else
+     begin
+       FDiag.Error('dynamic indexing not yet supported in lowering', expr.Span);
+       Exit(-1);
+     end;
+   end;
+
+   if expr is TAstIdent then
+   begin
+     // check if this is a compile-time constant (con)
+
     ci := FConstMap.IndexOf(TAstIdent(expr).Name);
     if ci >= 0 then
     begin
@@ -624,7 +669,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     loc: Integer;
     tmp: Integer;
     condTmp: Integer;
-    t1, t2: Integer;
+    t0, t1, t2: Integer;
     thenLabel, elseLabel, endLabel: string;
     whileNode: TAstWhile;
     startLabel, bodyLabel, exitLabel: string;
@@ -644,78 +689,137 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     half: UInt64;
     signedVal: Int64;
     cvLocal: TConstValue;
+    vd: TAstVarDecl;
+    items: TAstExprList;
   begin
   instr := Default(TIRInstr);
   Result := True;
-  if stmt is TAstVarDecl then
-  begin
-    loc := AllocLocal(TAstVarDecl(stmt).Name, TAstVarDecl(stmt).DeclType);
-    // If initializer is constant integer and the local has narrower signed width, constant fold
-    if (TAstVarDecl(stmt).InitExpr is TAstIntLit) then
+   if stmt is TAstVarDecl then
     begin
-      lit := TAstIntLit(TAstVarDecl(stmt).InitExpr).Value;
-      ltype := GetLocalType(loc);
-      if (ltype <> atUnresolved) and (ltype <> atInt64) then
+      vd := TAstVarDecl(stmt);
+      if vd.ArrayLen > 0 then
       begin
-        // determine width in bits
-        width := 64;
-        case ltype of
-          atInt8, atUInt8: width := 8;
-          atInt16, atUInt16: width := 16;
-          atInt32, atUInt32: width := 32;
-          atInt64, atUInt64: width := 64;
-        end;
-        mask64 := (UInt64(1) shl width) - 1;
-        truncated := UInt64(lit) and mask64;
-        if (ltype in [atInt8, atInt16, atInt32, atInt64]) then
+        // static array: allocate consecutive locals and initialize per-item
+        loc := AllocLocalMany(vd.Name, vd.DeclType, vd.ArrayLen);
+        if vd.InitExpr is TAstArrayLit then
         begin
-          // signed interpretation
-          half := UInt64(1) shl (width - 1);
-          if truncated >= half then
-            signedVal := Int64(truncated) - Int64(UInt64(1) shl width)
+          items := TAstArrayLit(vd.InitExpr).Items;
+          if Length(items) <> vd.ArrayLen then
+            FDiag.Error('array literal length mismatch', vd.Span)
           else
-            signedVal := Int64(truncated);
-          // record local constant for future loads instead of emitting store
-          cvLocal := TConstValue.Create;
-          cvLocal.IsStr := False;
-          cvLocal.IntVal := signedVal;
-          if loc >= Length(FLocalConst) then SetLength(FLocalConst, loc+1);
-          FLocalConst[loc] := cvLocal;
+          begin
+            for i := 0 to High(items) do
+            begin
+              tmp := LowerExpr(items[i]);
+              // store into base + i
+              instr.Op := irStoreLocal; instr.Dest := loc + i; instr.Src1 := tmp; Emit(instr);
+            end;
+          end;
         end
         else
         begin
-          // unsigned: record local constant zero-extended value
-          cvLocal := TConstValue.Create;
-          cvLocal.IsStr := False;
-          cvLocal.IntVal := Int64(truncated);
-          if loc >= Length(FLocalConst) then SetLength(FLocalConst, loc+1);
-          FLocalConst[loc] := cvLocal;
+          // initializer not an array literal: try to lower single expression into first element
+          tmp := LowerExpr(vd.InitExpr);
+          instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := tmp; Emit(instr);
         end;
         Exit(True);
-      end;
-    end;
-    tmp := LowerExpr(TAstVarDecl(stmt).InitExpr);
-    // If local has narrower integer width, truncate before store
-    ltype := GetLocalType(loc);
-    if (ltype <> atUnresolved) and (ltype <> atInt64) then
-    begin
-      // determine width in bits
-      width := 64;
-      case ltype of
-        atInt8, atUInt8: width := 8;
-        atInt16, atUInt16: width := 16;
-        atInt32, atUInt32: width := 32;
-        atInt64, atUInt64: width := 64;
-      end;
-      instr.Op := irTrunc; instr.Dest := NewTemp; instr.Src1 := tmp; instr.ImmInt := width; Emit(instr);
-      tmp := instr.Dest;
-    end;
-    instr.Op := irStoreLocal;
-    instr.Dest := loc;
-    instr.Src1 := tmp;
-    Emit(instr);
-    Exit(True);
-  end;
+      end
+      else if vd.ArrayLen = -1 then
+      begin
+
+       // dynamic array: represent as single local pointer (pchar/int64)
+       loc := AllocLocal(vd.Name, atPChar);
+       // initializer: if empty array literal -> set nil (0)
+       if vd.InitExpr is TAstArrayLit then
+       begin
+         // only allow empty literal for now
+         if Length(TAstArrayLit(vd.InitExpr).Items) <> 0 then
+           FDiag.Error('cannot initialize dynamic array with non-empty literal', vd.Span);
+          // emit const 0 -> store
+          t0 := NewTemp;
+          instr.Op := irConstInt; instr.Dest := t0; instr.ImmInt := 0; Emit(instr);
+          instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := t0; Emit(instr);
+
+       end
+       else
+       begin
+         tmp := LowerExpr(vd.InitExpr);
+         instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := tmp; Emit(instr);
+       end;
+       Exit(True);
+     end
+     else
+     begin
+       // scalar local
+       loc := AllocLocal(vd.Name, vd.DeclType);
+       // If initializer is constant integer and the local has narrower signed width, constant fold
+       if (vd.InitExpr is TAstIntLit) then
+       begin
+         lit := TAstIntLit(vd.InitExpr).Value;
+         ltype := GetLocalType(loc);
+         if (ltype <> atUnresolved) and (ltype <> atInt64) then
+         begin
+           // determine width in bits
+           width := 64;
+           case ltype of
+             atInt8, atUInt8: width := 8;
+             atInt16, atUInt16: width := 16;
+             atInt32, atUInt32: width := 32;
+             atInt64, atUInt64: width := 64;
+           end;
+           mask64 := (UInt64(1) shl width) - 1;
+           truncated := UInt64(lit) and mask64;
+           if (ltype in [atInt8, atInt16, atInt32, atInt64]) then
+           begin
+             // signed interpretation
+             half := UInt64(1) shl (width - 1);
+             if truncated >= half then
+               signedVal := Int64(truncated) - Int64(UInt64(1) shl width)
+             else
+               signedVal := Int64(truncated);
+             // record local constant for future loads instead of emitting store
+             cvLocal := TConstValue.Create;
+             cvLocal.IsStr := False;
+             cvLocal.IntVal := signedVal;
+             if loc >= Length(FLocalConst) then SetLength(FLocalConst, loc+1);
+             FLocalConst[loc] := cvLocal;
+           end
+           else
+           begin
+             // unsigned: record local constant zero-extended value
+             cvLocal := TConstValue.Create;
+             cvLocal.IsStr := False;
+             cvLocal.IntVal := Int64(truncated);
+             if loc >= Length(FLocalConst) then SetLength(FLocalConst, loc+1);
+             FLocalConst[loc] := cvLocal;
+           end;
+           Exit(True);
+         end;
+       end;
+       tmp := LowerExpr(vd.InitExpr);
+       // If local has narrower integer width, truncate before store
+       ltype := GetLocalType(loc);
+       if (ltype <> atUnresolved) and (ltype <> atInt64) then
+       begin
+         // determine width in bits
+         width := 64;
+         case ltype of
+           atInt8, atUInt8: width := 8;
+           atInt16, atUInt16: width := 16;
+           atInt32, atUInt32: width := 32;
+           atInt64, atUInt64: width := 64;
+         end;
+         instr.Op := irTrunc; instr.Dest := NewTemp; instr.Src1 := tmp; instr.ImmInt := width; Emit(instr);
+         tmp := instr.Dest;
+       end;
+       instr.Op := irStoreLocal;
+       instr.Dest := loc;
+       instr.Src1 := tmp;
+       Emit(instr);
+       Exit(True);
+     end;
+   end;
+
 
   if stmt is TAstAssign then
   begin

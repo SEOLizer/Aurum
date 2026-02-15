@@ -36,7 +36,7 @@ type
   TNodeKind = (
     // Ausdrücke
     nkIntLit, nkStrLit, nkBoolLit, nkCharLit, nkIdent,
-    nkBinOp, nkUnaryOp, nkCall,
+    nkBinOp, nkUnaryOp, nkCall, nkArrayLit,
     nkFieldAccess, nkIndexAccess,
     // Statements
     nkVarDecl, nkAssign, nkIf, nkWhile, nkFor, nkRepeatUntil,
@@ -162,6 +162,16 @@ type
     property Args: TAstExprList read FArgs;
   end;
 
+  { Array-Literal: [expr, expr, ...] }
+  TAstArrayLit = class(TAstExpr)
+  private
+    FItems: TAstExprList;
+  public
+    constructor Create(const aItems: TAstExprList; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property Items: TAstExprList read FItems;
+  end;
+
   { Char-Literal: 'A' }
   TAstCharLit = class(TAstExpr)
   private
@@ -209,15 +219,17 @@ type
   private
     FStorage: TStorageKlass;
     FName: string;
-    FDeclType: TAurumType;
+    FDeclType: TAurumType; // element type for arrays
+    FArrayLen: Integer;    // 0 = not array, >0 = static length, -1 = dynamic array ([]) 
     FInitExpr: TAstExpr;
   public
     constructor Create(aStorage: TStorageKlass; const aName: string;
-      aDeclType: TAurumType; aInitExpr: TAstExpr; aSpan: TSourceSpan);
+      aDeclType: TAurumType; aArrayLen: Integer; aInitExpr: TAstExpr; aSpan: TSourceSpan);
     destructor Destroy; override;
     property Storage: TStorageKlass read FStorage;
     property Name: string read FName;
     property DeclType: TAurumType read FDeclType;
+    property ArrayLen: Integer read FArrayLen;
     property InitExpr: TAstExpr read FInitExpr;
   end;
 
@@ -536,6 +548,7 @@ begin
     nkBinOp:       Result := 'BinOp';
     nkUnaryOp:     Result := 'UnaryOp';
     nkCall:        Result := 'Call';
+    nkArrayLit:    Result := 'ArrayLit';
     nkFieldAccess: Result := 'FieldAccess';
     nkIndexAccess: Result := 'IndexAccess';
     nkVarDecl:     Result := 'VarDecl';
@@ -687,6 +700,22 @@ begin
   inherited Destroy;
 end;
 
+  constructor TAstArrayLit.Create(const aItems: TAstExprList; aSpan: TSourceSpan);
+begin
+  inherited Create(nkArrayLit, aSpan);
+  FItems := aItems;
+end;
+
+destructor TAstArrayLit.Destroy;
+var
+  i: Integer;
+begin
+  for i := 0 to High(FItems) do
+    FItems[i].Free;
+  FItems := nil;
+  inherited Destroy;
+end;
+
 // ================================================================
 // TAstStmt
 // ================================================================
@@ -701,13 +730,14 @@ end;
 // ================================================================
 
 constructor TAstVarDecl.Create(aStorage: TStorageKlass;
-  const aName: string; aDeclType: TAurumType; aInitExpr: TAstExpr;
+  const aName: string; aDeclType: TAurumType; aArrayLen: Integer; aInitExpr: TAstExpr;
   aSpan: TSourceSpan);
 begin
   inherited Create(nkVarDecl, aSpan);
   FStorage := aStorage;
   FName := aName;
   FDeclType := aDeclType;
+  FArrayLen := aArrayLen;
   FInitExpr := aInitExpr;
 end;
 
@@ -716,6 +746,7 @@ begin
   FInitExpr.Free;
   inherited Destroy;
 end;
+
 
 // ================================================================
 // TAstAssign

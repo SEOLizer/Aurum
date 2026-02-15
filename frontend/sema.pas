@@ -14,6 +14,7 @@ type
     Name: string;
     Kind: TSymbolKind;
     DeclType: TAurumType;
+    ArrayLen: Integer; // 0 = not array, >0 = static length, -1 = dynamic
     // for functions
     ParamTypes: array of TAurumType;
     ParamCount: Integer;
@@ -55,6 +56,7 @@ begin
   Name := AName;
   Kind := symVar;
   DeclType := atUnresolved;
+  ArrayLen := 0;
   ParamCount := 0;
   SetLength(ParamTypes, 0);
 end;
@@ -241,9 +243,25 @@ var
       end;
     nkIndexAccess:
       begin
-        CheckExpr(TAstIndexAccess(expr).Obj);
-        CheckExpr(TAstIndexAccess(expr).Index);
-        // index access type resolution deferred until arrays are fully implemented
+        // resolve object and index
+        var obj := TAstIndexAccess(expr).Obj;
+        var idx := TAstIndexAccess(expr).Index;
+        var objType := CheckExpr(obj);
+        var idxType := CheckExpr(idx);
+        if not IsIntegerType(idxType) then
+          FDiag.Error('array index must be integer', idx.Span);
+        // if indexing an identifier with array metadata, return element type
+        if obj is TAstIdent then
+        begin
+          var s := ResolveSymbol(TAstIdent(obj).Name);
+          if Assigned(s) and (s.ArrayLen <> 0) then
+          begin
+            Result := s.DeclType;
+            expr.ResolvedType := Result;
+            Exit;
+          end;
+        end;
+        // fallback: unresolved
         Result := atUnresolved;
       end;
     nkIdent:
@@ -258,6 +276,27 @@ var
         else
         begin
           Result := s.DeclType;
+        end;
+      end;
+    nkArrayLit:
+      begin
+        var al := TAstArrayLit(expr);
+        if Length(al.Items) = 0 then
+        begin
+          // empty array literal: type unresolved until context gives it
+          Result := atUnresolved;
+        end
+        else
+        begin
+          // infer from first item
+          var firstType := CheckExpr(al.Items[0]);
+          for i := 1 to High(al.Items) do
+          begin
+            var it := CheckExpr(al.Items[i]);
+            if not TypeEqual(it, firstType) then
+              FDiag.Error('array literal items must have same type', al.Items[i].Span);
+          end;
+          Result := firstType;
         end;
       end;
     nkBinOp:
@@ -410,6 +449,8 @@ begin
           sym.DeclType := vtype
         else
           sym.DeclType := vd.DeclType;
+        // array length metadata
+        sym.ArrayLen := vd.ArrayLen;
         AddSymbolToCurrent(sym, vd.Span);
       end;
     nkAssign:
