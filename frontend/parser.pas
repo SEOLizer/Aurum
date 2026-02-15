@@ -235,7 +235,8 @@ var
   vExpr: TAstExpr;
   cases: TAstCaseList;
   defaultBody: TAstStmt;
-  ccase: TAstCase;
+  caseObj: TAstCase;
+  valExpr: TAstExpr;
   i: Integer;
 begin
   if Check(tkVar) or Check(tkLet) or Check(tkCo) then
@@ -281,11 +282,12 @@ begin
       if Accept(tkCase) then
       begin
         // parse single const expr
-        ccase.Value := ParseExpr;
+        valExpr := ParseExpr;
         Expect(tkColon);
-        ccase.Body := ParseStmt;
+        bodyStmt := ParseStmt;
+        caseObj := TAstCase.Create(valExpr, bodyStmt);
         SetLength(cases, Length(cases) + 1);
-        cases[High(cases)] := ccase;
+        cases[High(cases)] := caseObj;
         Continue;
       end
       else if Accept(tkDefault) then

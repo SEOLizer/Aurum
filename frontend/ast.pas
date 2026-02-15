@@ -205,9 +205,12 @@ type
 
   { Switch-Statement: switch (expr) { case val: stmt ... default: stmt }
     Cases are modelled as array of (ValueExpr, BodyStmt) }
-  TAstCase = record
+  TAstCase = class
+  public
     Value: TAstExpr;
     Body: TAstStmt;
+    constructor Create(aValue: TAstExpr; aBody: TAstStmt);
+    destructor Destroy; override;
   end;
   TAstCaseList = array of TAstCase;
 
@@ -611,11 +614,25 @@ begin
   FExpr.Free;
   for i := 0 to High(FCases) do
   begin
-    FCases[i].Value.Free;
-    FCases[i].Body.Free;
+    FCases[i].Free;
   end;
   SetLength(FCases, 0);
   FDefault.Free;
+  inherited Destroy;
+end;
+
+{ TAstCase }
+constructor TAstCase.Create(aValue: TAstExpr; aBody: TAstStmt);
+begin
+  inherited Create;
+  Value := aValue;
+  Body := aBody;
+end;
+
+destructor TAstCase.Destroy;
+begin
+  Value.Free;
+  Body.Free;
   inherited Destroy;
 end;
 
