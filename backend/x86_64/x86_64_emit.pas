@@ -761,7 +761,6 @@ begin
             begin
               // buf_put_byte(buf: pchar, idx: int64, b: int64) -> int64
               // Extra arg (b) passed via instr.LabelName (single temp index)
-              var argTemp3: Integer;
               argTemp3 := -1;
               if instr.LabelName <> '' then
                 argTemp3 := StrToIntDef(instr.LabelName, -1);
@@ -793,8 +792,7 @@ begin
               // Uses scratch buffer (64 bytes) in data segment (bufferOffset). Converts value >=0 to ASCII decimal and copies to dst
 
               // parse extra temps (idx, buflen) from instr.LabelName: "t3,t4"
-              var argTemp3, argTemp4: Integer;
-              argTemp3 := -1; argTemp4 := -1;
+               argTemp3 := -1; argTemp4 := -1;
               if instr.LabelName <> '' then
               begin
                 sParse := instr.LabelName;
