@@ -47,6 +47,7 @@ type
     function ParseCallOrIdent: TAstExpr;
     function ParsePostfix(base: TAstExpr): TAstExpr;
 
+    function ParseTypeEx(out arrayLen: Integer): TAurumType;
     function ParseType: TAurumType;
     function ParseParamList: TAstParamList;
   public
@@ -791,8 +792,6 @@ begin
   if Accept(tkLBracket) then
   begin
     // array literal: [expr, expr, ...]
-    var items: TAstExprList;
-    var a: TAstExpr;
     items := nil;
     if not Check(tkRBracket) then
     begin
