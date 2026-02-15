@@ -1,18 +1,23 @@
 {$mode objfpc}{$H+}
 unit x86_64_emit;
+
 interface
+
 uses
   SysUtils, Classes, bytes, ir;
+
 type
   TLabelPos = record
     Name: string;
     Pos: Integer;
   end;
+
   TJumpPatch = record
     Pos: Integer;
     LabelName: string;
     JmpSize: Integer; // 5 for rel8, 6 for rel32 (jcc rel32)
   end;
+
   TX86_64Emitter = class
   private
     FCode: TByteBuffer;
@@ -30,15 +35,20 @@ type
     function GetDataBuffer: TByteBuffer;
     function GetFunctionOffset(const name: string): Integer;
   end;
+
 implementation
+
 uses
   Math;
+
 const
   RAX = 0; RCX = 1; RDX = 2; RBX = 3; RSP = 4; RBP = 5; RSI = 6; RDI = 7; R8 = 8; R9 = 9;
   ParamRegs: array[0..5] of Byte = (RDI, RSI, RDX, RCX, R8, R9);
+
 procedure EmitU8(b: TByteBuffer; v: Byte); begin b.WriteU8(v); end;
 procedure EmitU32(b: TByteBuffer; v: Cardinal); begin b.WriteU32LE(v); end;
 procedure EmitU64(b: TByteBuffer; v: UInt64); begin b.WriteU64LE(v); end;
+
 procedure EmitRex(buf: TByteBuffer; w, r, x, b: Integer);
 var
   rex: Byte;
@@ -46,6 +56,8 @@ begin
   rex := $40 or (Byte(w and 1) shl 3) or (Byte(r and 1) shl 2) or (Byte(x and 1) shl 1) or Byte(b and 1);
   EmitU8(buf, rex);
 end;
+
+
 procedure WriteMovRegImm64(buf: TByteBuffer; reg: Byte; imm: UInt64);
 begin
   // mov r64, imm64 : REX.W + B8+rd
@@ -129,6 +141,7 @@ end;
 procedure WriteTestRaxRax(buf: TByteBuffer); begin EmitU8(buf,$48); EmitU8(buf,$85); EmitU8(buf,$C0); end;
 procedure WriteSyscall(buf: TByteBuffer); begin EmitU8(buf,$0F); EmitU8(buf,$05); end;
 procedure WriteLeaRsiRipDisp(buf: TByteBuffer; disp32: Cardinal); begin EmitU8(buf,$48); EmitU8(buf,$8D); EmitU8(buf,$35); EmitU32(buf, disp32); end;
+
 procedure WriteJeRel32(buf: TByteBuffer; rel32: Cardinal);
 begin EmitU8(buf,$0F); EmitU8(buf,$84); EmitU32(buf, rel32); end;
 procedure WriteJneRel32(buf: TByteBuffer; rel32: Cardinal);
@@ -137,16 +150,19 @@ procedure WriteJgeRel32(buf: TByteBuffer; rel32: Cardinal);
 begin EmitU8(buf,$0F); EmitU8(buf,$8D); EmitU32(buf, rel32); end;
 procedure WriteJmpRel32(buf: TByteBuffer; rel32: Cardinal);
 begin EmitU8(buf,$E9); EmitU32(buf, rel32); end;
+
 procedure WriteDecReg(buf: TByteBuffer; reg: Byte);
 begin
   // dec r64: 48 FF C8+reg
   EmitU8(buf, $48); EmitU8(buf, $FF); EmitU8(buf, $C8 or (reg and $7));
 end;
+
 procedure WriteIncReg(buf: TByteBuffer; reg: Byte);
 begin
   // inc r64: 48 FF C0+reg
   EmitU8(buf, $48); EmitU8(buf, $FF); EmitU8(buf, $C0 or (reg and $7));
 end;
+
 procedure WriteMovMemRegByte(buf: TByteBuffer; base: Byte; disp: Integer; reg8: Byte);
 begin
   // mov byte ptr [base + disp32], r8 -> 88 /0 with mod=10 (disp32)
@@ -154,12 +170,14 @@ begin
   EmitU8(buf, $80 or ((reg8 and $7) shl 3) or (base and $7));
   EmitU32(buf, Cardinal(disp));
 end;
+
 procedure WriteMovMemRegByteNoDisp(buf: TByteBuffer; base: Byte; reg8: Byte);
 begin
   // mov byte ptr [base], r8 -> 88 /0 with mod=00 and rm=base
   EmitU8(buf, $88);
   EmitU8(buf, ((reg8 and $7) shl 3) or (base and $7));
 end;
+
 procedure WriteMovMemImm8(buf: TByteBuffer; base: Byte; disp: Integer; value: Byte);
 begin
   // mov byte ptr [base+disp32], imm8 => C6 80 disp32 imm8
@@ -168,6 +186,7 @@ begin
   EmitU32(buf, Cardinal(disp));
   EmitU8(buf, value);
 end;
+
 procedure WriteSetccMem8(buf: TByteBuffer; ccOpcode: Byte; baseReg: Byte; disp32: Integer);
 begin
   // setcc r/m8 : opcode 0F ccOpcode modrm(mod=10) rm=base
@@ -176,6 +195,7 @@ begin
   EmitU8(buf, $80 or ((0 shl 3) and $38) or (baseReg and $7));
   EmitU32(buf, Cardinal(disp32));
 end;
+
 procedure WriteMovzxRegMem8(buf: TByteBuffer; dstReg: Byte; baseReg: Byte; disp32: Integer);
 begin
   // movzx r64, r/m8 : rex.w 0F B6 /r with reg=dst, rm=mem
@@ -185,6 +205,7 @@ begin
   EmitU8(buf, $80 or ((dstReg shl 3) and $38) or (baseReg and $7));
   EmitU32(buf, Cardinal(disp32));
 end;
+
 procedure WriteMovzxRegMem16(buf: TByteBuffer; dstReg: Byte; baseReg: Byte; disp32: Integer);
 begin
   // movzx r64, r/m16 : rex.w 0F B7 /r
@@ -194,6 +215,7 @@ begin
   EmitU8(buf, $80 or ((dstReg shl 3) and $38) or (baseReg and $7));
   EmitU32(buf, Cardinal(disp32));
 end;
+
 procedure WriteMovSxRegMem8(buf: TByteBuffer; dstReg: Byte; baseReg: Byte; disp32: Integer);
 begin
   // movsx r64, r/m8 : rex.w 0F BE /r
@@ -203,6 +225,7 @@ begin
   EmitU8(buf, $80 or ((dstReg shl 3) and $38) or (baseReg and $7));
   EmitU32(buf, Cardinal(disp32));
 end;
+
 procedure WriteMovSxRegMem16(buf: TByteBuffer; dstReg: Byte; baseReg: Byte; disp32: Integer);
 begin
   // movsx r64, r/m16 : rex.w 0F BF /r
@@ -212,6 +235,7 @@ begin
   EmitU8(buf, $80 or ((dstReg shl 3) and $38) or (baseReg and $7));
   EmitU32(buf, Cardinal(disp32));
 end;
+
 procedure WriteMovSxRegMem32(buf: TByteBuffer; dstReg: Byte; baseReg: Byte; disp32: Integer);
 begin
   // movsxd r64, r/m32 : rex.w 63 /r
@@ -220,6 +244,7 @@ begin
   EmitU8(buf, $80 or ((dstReg shl 3) and $38) or (baseReg and $7));
   EmitU32(buf, Cardinal(disp32));
 end;
+
 procedure WriteMovEAXMem32(buf: TByteBuffer; baseReg: Byte; disp32: Integer);
 begin
   // mov eax, dword ptr [base+disp32] : 8B 80 disp32
@@ -227,10 +252,12 @@ begin
   EmitU8(buf, $80 or (baseReg and $7));
   EmitU32(buf, Cardinal(disp32));
 end;
+
 function SlotOffset(slot: Integer): Integer;
 begin
   Result := -8 * (slot + 1);
 end;
+
 constructor TX86_64Emitter.Create;
 begin
   inherited Create;
@@ -242,12 +269,15 @@ begin
   SetLength(FLabelPositions, 0);
   SetLength(FJumpPatches, 0);
 end;
+
 destructor TX86_64Emitter.Destroy;
 begin
   FCode.Free; FData.Free; inherited Destroy;
 end;
+
 function TX86_64Emitter.GetCodeBuffer: TByteBuffer; begin Result := FCode; end;
 function TX86_64Emitter.GetDataBuffer: TByteBuffer; begin Result := FData; end;
+
 procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   var
   i, j, k, sidx: Integer;
@@ -300,6 +330,7 @@ begin
   SetLength(FLeaStrIndex, 0);
   SetLength(FLabelPositions, 0);
   SetLength(FJumpPatches, 0);
+
   // write interned strings
   SetLength(FStringOffsets, module.Strings.Count);
   totalDataOffset := 0;
@@ -311,12 +342,14 @@ begin
     FData.WriteU8(0);
     Inc(totalDataOffset, Length(module.Strings[i]) + 1);
   end;
+
   bufferAdded := False;
   bufferOffset := 0;
   SetLength(bufferLeaPositions, 0);
   envAdded := False;
   envOffset := 0;
   SetLength(envLeaPositions, 0);
+
   // Emit program entry (_start): automatically initialize env data (argc/argv) and call main
   begin
     // Reserve env data in data segment (16 bytes: argc,qword + argv_ptr,qword)
@@ -327,6 +360,7 @@ begin
       Inc(totalDataOffset, 16);
       envAdded := True;
     end;
+
     // Load argc from [rsp] into RAX
     WriteMovRegMem(FCode, RAX, RSP, 0);
     // lea rsi, [rip + disp32] ; patch later
@@ -336,10 +370,12 @@ begin
     envLeaPositions[High(envLeaPositions)] := leaPos;
     // store argc at [rsi]
     WriteMovMemReg(FCode, RSI, 0, RAX);
+
     // load argv ptr from [rsp+8] into RAX
     WriteMovRegMem(FCode, RAX, RSP, 8);
     // store argv ptr at [rsi+8]
     WriteMovMemReg(FCode, RSI, 8, RAX);
+
     // call main (patched later)
     SetLength(FJumpPatches, Length(FJumpPatches) + 1);
     FJumpPatches[High(FJumpPatches)].Pos := FCode.Size;
@@ -347,6 +383,7 @@ begin
     FJumpPatches[High(FJumpPatches)].JmpSize := 5; // call rel32
     EmitU8(FCode, $E8); // call rel32
     EmitU32(FCode, 0);  // placeholder offset
+
     // move return value (in RAX) into RDI for exit
     WriteMovRegReg(FCode, RDI, RAX);
     // mov rax, 60 ; sys_exit
@@ -354,12 +391,14 @@ begin
     // syscall
     WriteSyscall(FCode);
   end;
+
     for i := 0 to High(module.Functions) do
     begin
       // record function start label for calls
       SetLength(FLabelPositions, Length(FLabelPositions) + 1);
       FLabelPositions[High(FLabelPositions)].Name := module.Functions[i].Name;
       FLabelPositions[High(FLabelPositions)].Pos := FCode.Size;
+
       localCnt := module.Functions[i].LocalCount;
       // is this the program entry (main)? If so, irReturn should sys_exit
       isEntryFunction := (module.Functions[i].Name = 'main');
@@ -380,6 +419,7 @@ begin
         WriteLn('EMITTER: warning: totalSlots too large, capping. localCnt=', localCnt, ' maxTemp=', maxTemp, ' totalSlotsRaw=', localCnt+maxTemp);
         totalSlots := 1024;
       end;
+
       // compute prologue stack adjustment (frame + padding for alignment)
       frameBytes := totalSlots * 8;
       framePad := (16 - ((frameBytes + 8) mod 16)) mod 16; // +8 because return address after push rbp
@@ -390,6 +430,7 @@ begin
         EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $EC);
         EmitU32(FCode, Cardinal(frameBytes + framePad));
       end;
+
       // spill incoming parameters into slots
       if module.Functions[i].ParamCount > 0 then
       begin
@@ -406,8 +447,11 @@ begin
           end;
         end;
       end;
+
       SetLength(tempStrIndex, maxTemp);
       for k := 0 to maxTemp - 1 do tempStrIndex[k] := -1;
+
+
     for j := 0 to High(module.Functions[i].Instructions) do
     begin
       instr := module.Functions[i].Instructions[j];
@@ -482,6 +526,7 @@ begin
                 Inc(totalDataOffset, 64);
                 bufferAdded := True;
               end;
+
               // load value into RAX
               WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
               // lea rsi, buffer
@@ -489,14 +534,17 @@ begin
               EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
               SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
               bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
+
               // rdi = rsi + 64
               WriteMovRegReg(FCode, RDI, RSI);
               WriteMovRegImm64(FCode, RDX, 64);
               WriteAddRegReg(FCode, RDI, RDX);
+
               // cmp rax,0 ; jne nonzero
               EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F8); EmitU8(FCode, 0);
               nonZeroPos := FCode.Size;
               WriteJneRel32(FCode, 0);
+
               // zero path
               WriteMovMemImm8(FCode, RSI, 0, Ord('0'));
               WriteMovRegImm64(FCode, RDX, 1);
@@ -505,9 +553,11 @@ begin
               WriteSyscall(FCode);
               jmpDonePos := FCode.Size;
               WriteJmpRel32(FCode, 0);
+
               // non-zero label
               k := FCode.Size;
               FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+
               // sign flag in rbx
               WriteMovRegImm64(FCode, RBX, 0);
               EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F8); EmitU8(FCode, 0);
@@ -517,6 +567,7 @@ begin
               WriteMovRegImm64(FCode, RBX, 1);
               k := FCode.Size;
               FCode.PatchU32LE(jgePos + 2, Cardinal(k - jgePos - 6));
+
               // loop over digits
               loopStartPos := FCode.Size;
               WriteCqo(FCode);
@@ -528,6 +579,7 @@ begin
               WriteTestRaxRax(FCode);
               jneLoopPos := FCode.Size;
               WriteJneRel32(FCode, 0);
+
               // add sign if needed
               EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $FB); EmitU8(FCode, 0);
               jeSignPos := FCode.Size;
@@ -536,53 +588,26 @@ begin
               WriteMovMemImm8(FCode, RDI, 0, Ord('-'));
               k := FCode.Size;
               FCode.PatchU32LE(jeSignPos + 2, Cardinal(k - jeSignPos - 6));
+
               // compute length = (buffer_end) - rdi
               EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $8E); EmitU32(FCode, 64);
               WriteSubRegReg(FCode, RCX, RDI);
-              // save length into RDX before RCX is used as loop counter
               WriteMovRegReg(FCode, RDX, RCX);
-              // save length into RDX before RCX is used as loop counter
-              WriteMovRegReg(FCode, RDX, RCX);
-              WriteMovRegReg(FCode, RDX, RCX);
+
               // syscall write(1, rdi, rdx)
               WriteMovRegImm64(FCode, RAX, 1);
               WriteMovRegReg(FCode, RSI, RDI);
               WriteMovRegImm64(FCode, RDI, 1);
               WriteSyscall(FCode);
+
               // patch loop jump
               k := FCode.Size;
               FCode.PatchU32LE(jneLoopPos + 2, Cardinal(loopStartPos - jneLoopPos - 6));
+
                // patch done jump
                FCode.PatchU32LE(jmpDonePos + 1, Cardinal(k - jmpDonePos - 5));
              end
-             else if instr.ImmStr = 'buf_put_byte' then
-             begin
-               // buf_put_byte(buf: pchar, idx: int64, b: int64) -> int64
-               // Extra arg (b) passed via instr.LabelName (single temp index)
-               argTemp3 := -1;
-               if instr.LabelName <> '' then
-                 argTemp3 := StrToIntDef(instr.LabelName, -1);
-               if instr.Src1 >= 0 then
-                 WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + instr.Src1))
-               else
-                 WriteMovRegImm64(FCode, RSI, 0);
-               if instr.Src2 >= 0 then
-                 WriteMovRegMem(FCode, RDX, RBP, SlotOffset(localCnt + instr.Src2))
-               else
-                 WriteMovRegImm64(FCode, RDX, 0);
-               if argTemp3 >= 0 then
-                 WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + argTemp3))
-               else
-                 WriteMovRegImm64(FCode, RAX, 0);
-               // address = buf + idx
-               WriteAddRegReg(FCode, RSI, RDX);
-               // store AL -> [RSI]
-               WriteMovMemRegByteNoDisp(FCode, RSI, 0);
-               // return 0
-               WriteMovRegImm64(FCode, RAX, 0);
-               if instr.Dest >= 0 then
-                 WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
-             end
+
              else if instr.ImmStr = 'itoa_to_buf' then
             begin
               // itoa_to_buf(val: int64, buf: pchar, idx: int64, buflen: int64) -> int64
@@ -594,6 +619,7 @@ begin
                 Inc(totalDataOffset, 64);
                 bufferAdded := True;
               end;
+
               // load value
               WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
               // lea rsi, scratch buffer
@@ -605,6 +631,7 @@ begin
               WriteMovRegReg(FCode, RDI, RSI);
               WriteMovRegImm64(FCode, RDX, 64);
               WriteAddRegReg(FCode, RDI, RDX);
+
               // if value < 0 -> return -1 (unsupported)
               WriteMovRegReg(FCode, RCX, RAX);
               EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(0); // cmp rcx,0
@@ -620,6 +647,7 @@ begin
               // non-negative label
               k := FCode.Size;
               FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+
               // conversion loop (similar to print_int non-zero path)
               loopStartPos := FCode.Size;
               WriteCqo(FCode);
@@ -633,21 +661,22 @@ begin
               WriteTestRaxRax(FCode);
               jneLoopPos := FCode.Size;
               WriteJneRel32(FCode, 0);
+
               // compute length = buffer_end - rdi -> RCX
               EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $8E); EmitU32(FCode, 64);
               WriteSubRegReg(FCode, RCX, RDI);
-              // save length into RDX before RCX is used as loop counter
-              WriteMovRegReg(FCode, RDX, RCX);
+
               // prepare destination pointer: dst = buf + idx
               if instr.Src2 >= 0 then
                 WriteMovRegMem(FCode, R8, RBP, SlotOffset(localCnt + instr.Src2))
               else
                 WriteMovRegImm64(FCode, R8, 0);
-              if instr.Src3 >= 0 then
-                WriteMovRegMem(FCode, R9, RBP, SlotOffset(localCnt + instr.Src3))
+              if argTemp3 >= 0 then
+                WriteMovRegMem(FCode, R9, RBP, SlotOffset(localCnt + argTemp3))
               else
                 WriteMovRegImm64(FCode, R9, 0);
               WriteAddRegReg(FCode, R8, R9); // R8 = dstptr
+
               // copy loop: while RCX > 0 { mov al, [RDI]; mov [R8], al; inc RDI; inc R8; dec RCX }
               // cmp rcx, 0
               EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(0);
@@ -657,6 +686,7 @@ begin
               // copy loop label
               k := FCode.Size;
               FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+
               // copy_start:
               // mov al, [rdi]
               EmitU8(FCode, $8A); EmitU8(FCode, $07);
@@ -675,16 +705,19 @@ begin
               // reserve patch
               jneLoopPos := FCode.Size;
               WriteJneRel32(FCode, 0);
+
               // after copy: compute return = idx + length
               // load original idx into RAX
-              if instr.Src3 >= 0 then
-                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src3))
+              if argTemp3 >= 0 then
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + argTemp3))
               else
                 WriteMovRegImm64(FCode, RAX, 0);
               WriteAddRegReg(FCode, RAX, RCX); // NOTE: RCX now zero; need length saved in RDX earlier
               // TODO: simplify: set RAX = idx + (buffer_end - rdi) originally RCX
+
               // store result
               if instr.Dest >= 0 then WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+
               // patch conversion loop jump
               k := FCode.Size;
               FCode.PatchU32LE(jneLoopPos + 2, Cardinal(loopStartPos - jneLoopPos - 6));
@@ -696,6 +729,7 @@ begin
               argTemp3 := -1;
               if instr.LabelName <> '' then
                 argTemp3 := StrToIntDef(instr.LabelName, -1);
+
               if instr.Src1 >= 0 then
                 WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + instr.Src1))
               else
@@ -721,6 +755,7 @@ begin
             begin
               // itoa_to_buf(val: int64, buf: pchar, idx: int64, buflen: int64) -> int64
               // Uses scratch buffer (64 bytes) in data segment (bufferOffset). Converts value >=0 to ASCII decimal and copies to dst
+
               // parse extra temps (idx, buflen) from instr.LabelName: "t3,t4"
                argTemp3 := -1; argTemp4 := -1;
               if instr.LabelName <> '' then
@@ -738,6 +773,7 @@ begin
                   argTemp3 := StrToIntDef(sParse, -1);
                 end;
               end;
+
               if not bufferAdded then
               begin
                 bufferOffset := totalDataOffset;
@@ -745,6 +781,7 @@ begin
                 Inc(totalDataOffset, 64);
                 bufferAdded := True;
               end;
+
               // load value
               WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
               // lea rsi, scratch buffer
@@ -756,6 +793,7 @@ begin
               WriteMovRegReg(FCode, RDI, RSI);
               WriteMovRegImm64(FCode, RDX, 64);
               WriteAddRegReg(FCode, RDI, RDX);
+
               // if value < 0 -> return -1 (unsupported)
               EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(0); // cmp rax,0
               nonZeroPos := FCode.Size;
@@ -769,6 +807,7 @@ begin
               // non-negative label
               k := FCode.Size;
               FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+
               // conversion loop (similar to print_int non-zero path)
               loopStartPos := FCode.Size;
               WriteCqo(FCode);
@@ -782,11 +821,11 @@ begin
               WriteTestRaxRax(FCode);
               jneLoopPos := FCode.Size;
               WriteJneRel32(FCode, 0);
+
               // compute length = buffer_end - rdi -> RCX
               EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $8E); EmitU32(FCode, 64);
               WriteSubRegReg(FCode, RCX, RDI);
-              // save length into RDX before RCX is used as loop counter
-              WriteMovRegReg(FCode, RDX, RCX);
+
               // prepare destination pointer: dst = buf + idx
               if instr.Src2 >= 0 then
                 WriteMovRegMem(FCode, R8, RBP, SlotOffset(localCnt + instr.Src2))
@@ -797,6 +836,7 @@ begin
               else
                 WriteMovRegImm64(FCode, R9, 0);
               WriteAddRegReg(FCode, R8, R9); // R8 = dstptr
+
               // copy loop: while RCX > 0 { mov al, [RDI]; mov [R8], al; inc RDI; inc R8; dec RCX }
               // cmp rcx, 0
               EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(0);
@@ -806,6 +846,7 @@ begin
               // copy loop label
               k := FCode.Size;
               FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+
               // copy_start:
               // mov al, [rdi]
               EmitU8(FCode, $8A); EmitU8(FCode, $07);
@@ -823,6 +864,7 @@ begin
               // reserve patch
               jneLoopPos := FCode.Size;
               WriteJneRel32(FCode, 0);
+
               // after copy: compute return = idx + length
               // load original idx into RAX
               if argTemp3 >= 0 then
@@ -830,8 +872,10 @@ begin
               else
                 WriteMovRegImm64(FCode, RAX, 0);
               // NOTE: RCX is zero here; length was overwritten. Use RDX to hold length if needed. For simplicity, return idx (no increment)
+
               // store result
               if instr.Dest >= 0 then WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+
               // patch conversion loop jump
               k := FCode.Size;
               FCode.PatchU32LE(jneLoopPos + 2, Cardinal(loopStartPos - jneLoopPos - 6));
@@ -846,23 +890,28 @@ begin
                 Inc(totalDataOffset, 16);
                 envAdded := True;
               end;
+
               // load argc into RAX
               if instr.Src1 >= 0 then
                 WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
               else
                 WriteMovRegImm64(FCode, RAX, 0);
+
               // lea rsi, envData
               leaPos := FCode.Size;
               EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
               SetLength(envLeaPositions, Length(envLeaPositions) + 1);
               envLeaPositions[High(envLeaPositions)] := leaPos;
+
               // store argc at [rsi]
               WriteMovMemReg(FCode, RSI, 0, RAX);
+
               // load argv ptr into RAX
               if instr.Src2 >= 0 then
                 WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src2))
               else
                 WriteMovRegImm64(FCode, RAX, 0);
+
               // store argv ptr at [rsi + 8]
               WriteMovMemReg(FCode, RSI, 8, RAX);
             end
@@ -1091,8 +1140,10 @@ begin
                 EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $E0); // and rax, imm32
                 EmitU32(FCode, Cardinal(mask64 and $FFFFFFFF));
               end;
+
              WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
            end;
+
         irStoreLocal:
           begin
             // Store temp into local variable: locals[dest] = src1
@@ -1246,6 +1297,7 @@ begin
               if instr.Src1 >= 0 then
                 WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
             end;
+
             // Fix stack: add frameBytes+framePad back to RSP if we allocated
             if frameBytes + framePad > 0 then
             begin
@@ -1259,6 +1311,7 @@ begin
                 EmitU32(FCode, Cardinal(frameBytes + framePad));
               end;
             end;
+
             if isEntryFunction then
             begin
               // sys_exit
@@ -1337,6 +1390,8 @@ begin
               if (sParse <> '') and (ai < argCount) then
                 argTemps[ai] := StrToIntDef(sParse, -1);
             end;
+
+
             // Move args into registers (SysV: RDI, RSI, RDX, RCX, R8, R9)
             if argCount > 0 then
             begin
@@ -1348,6 +1403,7 @@ begin
               if (argCount >= 5) and (argTemps[4] >= 0) then WriteMovRegMem(FCode, 8, RBP, SlotOffset(localCnt + argTemps[4])); // R8
               if (argCount >= 6) and (argTemps[5] >= 0) then WriteMovRegMem(FCode, 9, RBP, SlotOffset(localCnt + argTemps[5])); // R9
             end;
+
             // handle extra args >6: push them in reverse order onto stack
             extraCount := 0;
             if argCount > 6 then extraCount := argCount - 6;
@@ -1368,6 +1424,7 @@ begin
             begin
               EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $EC); EmitU8(FCode, Byte(callPad));
             end;
+
             // emit call and patch later
             SetLength(FJumpPatches, Length(FJumpPatches) + 1);
             FJumpPatches[High(FJumpPatches)].Pos := FCode.Size;
@@ -1375,6 +1432,7 @@ begin
             FJumpPatches[High(FJumpPatches)].JmpSize := 5; // call rel32
             EmitU8(FCode, $E8); // call rel32
             EmitU32(FCode, 0);  // placeholder offset
+
             // restore stack: remove padding + extra pushed args
             restoreBytes := callPad + pushBytes;
             if restoreBytes > 0 then
@@ -1389,6 +1447,7 @@ begin
                 EmitU32(FCode, Cardinal(restoreBytes));
               end;
             end;
+
             // Store result from RAX if there's a destination
             if instr.Dest >= 0 then
               WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
@@ -1396,6 +1455,7 @@ begin
       end;
     end;
   end;
+
   // patch string LEAs
   for i := 0 to High(FLeaPositions) do
   begin
@@ -1410,6 +1470,7 @@ begin
       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
     end;
   end;
+
   // patch buffer LEAs for print_int
   if bufferAdded then
   begin
@@ -1423,6 +1484,7 @@ begin
       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
     end;
   end;
+
   // patch env LEAs
   if envAdded then
   begin
@@ -1436,6 +1498,7 @@ begin
       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
     end;
   end;
+
   // patch jumps to labels
   for i := 0 to High(FJumpPatches) do
   begin
@@ -1453,6 +1516,7 @@ begin
     begin
       jmpPos := FJumpPatches[i].Pos;
       rel32 := Int64(targetPos) - Int64(jmpPos + FJumpPatches[i].JmpSize);
+
       // detailed patch logging for debugging
       try
         AssignFile(lf, '/tmp/emitter_patch_log.txt');
@@ -1475,12 +1539,14 @@ begin
       except
         // ignore logging errors
       end;
+
       if FJumpPatches[i].JmpSize = 5 then
         FCode.PatchU32LE(jmpPos + 1, Cardinal(rel32)) // jmp rel32: opcode at pos, rel32 at pos+1
       else
         FCode.PatchU32LE(jmpPos + 2, Cardinal(rel32)); // jcc rel32: opcode 0F xx at pos, rel32 at pos+2
     end;
   end;
+
   // Dump code/data and metadata for debugging
   try
     // write raw code and data buffers
@@ -1496,6 +1562,7 @@ begin
     finally
       fs.Free;
     end;
+
     // write metadata
     meta := TStringList.Create;
     try
@@ -1518,6 +1585,7 @@ begin
     // ignore errors in debug dump
   end;
 end;
+
 function TX86_64Emitter.GetFunctionOffset(const name: string): Integer;
 var
   i: Integer;
@@ -1532,4 +1600,5 @@ begin
     end;
   end;
 end;
+
 end.
