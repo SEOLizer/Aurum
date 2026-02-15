@@ -1,0 +1,10 @@
+// examples/use_string.au
+import std.string;
+import std.io;
+
+fn main(): int64 {
+  let s := "hello";
+  print_int(strlen(s));
+  print_str("\n");
+  return 0;
+}
