@@ -70,18 +70,19 @@ begin
     begin
       f := modl.Functions[i];
       if f.Name <> 'main' then Continue;
-      for i := 0 to High(f.Instructions) do
+      var j: Integer;
+      for j := 0 to High(f.Instructions) do
       begin
-        case f.Instructions[i].Op of
+        case f.Instructions[j].Op of
           irStoreLocal:
             begin
-              if f.Instructions[i].Dest = 0 then foundStore0 := True;
-              if f.Instructions[i].Dest = 1 then foundStore1 := True;
-              if f.Instructions[i].Dest = 2 then foundStore2 := True;
+              if f.Instructions[j].Dest = 0 then foundStore0 := True;
+              if f.Instructions[j].Dest = 1 then foundStore1 := True;
+              if f.Instructions[j].Dest = 2 then foundStore2 := True;
             end;
           irLoadLocal:
             begin
-              if f.Instructions[i].Src1 = 1 then foundLoad1 := True;
+              if f.Instructions[j].Src1 = 1 then foundLoad1 := True;
             end;
         end;
       end;
