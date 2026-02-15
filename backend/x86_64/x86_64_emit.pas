@@ -291,6 +291,10 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   bufferAdded: Boolean;
   bufferOffset: UInt64;
   bufferLeaPositions: array of Integer;
+  // env data storage (argc, argv)
+  envAdded: Boolean;
+  envOffset: UInt64;
+  envLeaPositions: array of Integer;
   len: Integer;
   nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
   targetPos, jmpPos: Integer;
@@ -340,17 +344,35 @@ begin
   bufferAdded := False;
   bufferOffset := 0;
   SetLength(bufferLeaPositions, 0);
+  envAdded := False;
+  envOffset := 0;
+  SetLength(envLeaPositions, 0);
 
-  // Emit program entry (_start): load argc/argv from stack and call main
+  // Emit program entry (_start): automatically initialize env data (argc/argv) and call main
   begin
-    // mov rdi, qword ptr [rsp]  ; argc -> RDI
-    WriteMovRegMem(FCode, RDI, RSP, 0);
-    // mov rsi, rsp
-    WriteMovRegReg(FCode, RSI, RSP);
-    // mov rax, 8
-    WriteMovRegImm64(FCode, RAX, 8);
-    // add rsi, rax  ; rsi = &argv[0]
-    WriteAddRegReg(FCode, RSI, RAX);
+    // Reserve env data in data segment (16 bytes: argc,qword + argv_ptr,qword)
+    if not envAdded then
+    begin
+      envOffset := totalDataOffset;
+      for k := 1 to 16 do FData.WriteU8(0);
+      Inc(totalDataOffset, 16);
+      envAdded := True;
+    end;
+
+    // Load argc from [rsp] into RAX
+    WriteMovRegMem(FCode, RAX, RSP, 0);
+    // lea rsi, [rip + disp32] ; patch later
+    leaPos := FCode.Size;
+    EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+    SetLength(envLeaPositions, Length(envLeaPositions) + 1);
+    envLeaPositions[High(envLeaPositions)] := leaPos;
+    // store argc at [rsi]
+    WriteMovMemReg(FCode, RSI, 0, RAX);
+
+    // load argv ptr from [rsp+8] into RAX
+    WriteMovRegMem(FCode, RAX, RSP, 8);
+    // store argv ptr at [rsi+8]
+    WriteMovMemReg(FCode, RSI, 8, RAX);
 
     // call main (patched later)
     SetLength(FJumpPatches, Length(FJumpPatches) + 1);
@@ -582,6 +604,103 @@ begin
 
               // patch done jump
               FCode.PatchU32LE(jmpDonePos + 1, Cardinal(k - jmpDonePos - 5));
+            end
+            else if instr.ImmStr = 'env_init' then
+            begin
+              // env_init(argc, argv): store argc (qword) and argv pointer (qword) into data
+              if not envAdded then
+              begin
+                envOffset := totalDataOffset;
+                for k := 1 to 16 do FData.WriteU8(0);
+                Inc(totalDataOffset, 16);
+                envAdded := True;
+              end;
+
+              // load argc into RAX
+              if instr.Src1 >= 0 then
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
+              else
+                WriteMovRegImm64(FCode, RAX, 0);
+
+              // lea rsi, envData
+              leaPos := FCode.Size;
+              EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+              SetLength(envLeaPositions, Length(envLeaPositions) + 1);
+              envLeaPositions[High(envLeaPositions)] := leaPos;
+
+              // store argc at [rsi]
+              WriteMovMemReg(FCode, RSI, 0, RAX);
+
+              // load argv ptr into RAX
+              if instr.Src2 >= 0 then
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src2))
+              else
+                WriteMovRegImm64(FCode, RAX, 0);
+
+              // store argv ptr at [rsi + 8]
+              WriteMovMemReg(FCode, RSI, 8, RAX);
+            end
+            else if instr.ImmStr = 'env_arg_count' then
+            begin
+              // return stored argc
+              // if not present, return 0
+              if not envAdded then
+              begin
+                WriteMovRegImm64(FCode, RAX, 0);
+              end
+              else
+              begin
+                // lea rsi, envData
+                leaPos := FCode.Size;
+                EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+                SetLength(envLeaPositions, Length(envLeaPositions) + 1);
+                envLeaPositions[High(envLeaPositions)] := leaPos;
+                // mov rax, qword ptr [rsi]
+                WriteMovRegMem(FCode, RAX, RSI, 0);
+              end;
+              // store result into dest slot if applicable
+              if instr.Dest >= 0 then
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+            end
+            else if instr.ImmStr = 'env_arg' then
+            begin
+              // return argv[i] (pchar) or nil
+              if not envAdded then
+              begin
+                WriteMovRegImm64(FCode, RAX, 0);
+              end
+              else
+              begin
+                // load index into RAX
+                if instr.Src1 >= 0 then
+                  WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
+                else
+                  WriteMovRegImm64(FCode, RAX, 0);
+                // lea rsi, envData
+                leaPos := FCode.Size;
+                EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+                SetLength(envLeaPositions, Length(envLeaPositions) + 1);
+                envLeaPositions[High(envLeaPositions)] := leaPos;
+                // load argv_base = qword ptr [rsi+8]
+                WriteMovRegMem(FCode, RDI, RSI, 8);
+                // compute address = argv_base + index*8
+                // rdx = index * 8
+                WriteMovRegReg(FCode, RDX, RAX);
+                WriteMovRegImm64(FCode, RCX, 3); // shift left 3 == *8
+                // shl rdx, cl  -> use 48 C1 E2 cl ??? no helper; instead mul by 8: lea rdx, [rdx*8]
+                // simpler: imul rdx, rdx, 8 => using imul r64, r/m64 with immediate not trivial
+                // use: mov rcx, 8; imul rdx, rcx
+                WriteMovRegImm64(FCode, RCX, 8);
+                // imul rdx, rcx (imul r64, r/m64) -> use WriteImulRegReg with dst=RDX src=RCX? which does imul dst,src
+                WriteImulRegReg(FCode, RDX, RCX);
+                // add rdi, rdx
+                WriteAddRegReg(FCode, RDI, RDX);
+                // mov rax, qword ptr [rdi]
+                WriteMovRegMem(FCode, RAX, RDI, 0);
+              end;
+              // store result into dest slot if applicable
+              if instr.Dest >= 0 then
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
             end
             else if instr.ImmStr = 'exit' then
             begin
@@ -991,6 +1110,20 @@ begin
       codeVA := $400000 + 4096;
       instrVA := codeVA + leaPos + 7;
       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + bufferOffset;
+      disp32 := Int64(dataVA) - Int64(instrVA);
+      FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
+    end;
+  end;
+
+  // patch env LEAs
+  if envAdded then
+  begin
+    for i := 0 to High(envLeaPositions) do
+    begin
+      leaPos := envLeaPositions[i];
+      codeVA := $400000 + 4096;
+      instrVA := codeVA + leaPos + 7;
+      dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + envOffset;
       disp32 := Int64(dataVA) - Int64(instrVA);
       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
     end;
