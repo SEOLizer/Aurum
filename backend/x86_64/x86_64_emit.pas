@@ -84,6 +84,9 @@ begin
   EmitRex(buf, 1, rexR, 0, rexB);
   EmitU8(buf, $8B);
   EmitU8(buf, $80 or (((reg and 7) shl 3) and $38) or (base and $7));
+  // if rm == 4 (RSP) we must emit SIB byte
+  if (base and 7) = 4 then
+    EmitU8(buf, $24); // scale=0, index=4 (no index), base=4 (RSP)
   EmitU32(buf, Cardinal(disp));
 end;
 procedure WriteMovMemReg(buf: TByteBuffer; base: Byte; disp: Integer; reg: Byte);
@@ -95,6 +98,9 @@ begin
   EmitRex(buf, 1, rexR, 0, rexB);
   EmitU8(buf, $89);
   EmitU8(buf, $80 or (((reg and 7) shl 3) and $38) or (base and $7));
+  // if rm == 4 (RSP) we must emit SIB byte
+  if (base and 7) = 4 then
+    EmitU8(buf, $24); // scale=0, index=4 (no index), base=4 (RSP)
   EmitU32(buf, Cardinal(disp));
 end;
 procedure WriteAddRegReg(buf: TByteBuffer; dst, src: Byte);
