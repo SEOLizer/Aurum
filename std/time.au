@@ -1,0 +1,15 @@
+// std/time.au
+// Simple time helpers backed by minimal builtins implemented in the emitter
+
+pub fn now_unix(): int64 {
+  // builtin implemented by emitter: returns seconds since epoch
+  return now_unix();
+}
+
+pub fn now_unix_ms(): int64 {
+  return now_unix_ms();
+}
+
+pub fn sleep_ms(ms: int64): void {
+  sleep_ms(ms);
+}
