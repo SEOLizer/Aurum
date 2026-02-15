@@ -1,0 +1,44 @@
+// std/geo.au
+// Minimal offline geolocation parsers: parse decimal degrees to microdegrees (int64)
+
+// Helper: parse optional sign and digits; returns tuple via global pattern not available, so implement as single function
+
+pub fn parse_lat(s: pchar): int64 {
+  // parse as decimal degrees: ddd.dddd -> microdegrees (degrees * 1e6)
+  var i: int64 := 0;
+  var sign: int64 := 1;
+  if s[0] = '-' {
+    sign := -1;
+    i := 1;
+  end;
+  var whole: int64 := 0;
+  while s[i] >= '0' and s[i] <= '9' {
+    whole := whole * 10 + (s[i] - '0');
+    i := i + 1;
+  }
+  var frac: int64 := 0;
+  var fracLen: int64 := 0;
+  if s[i] = '.' {
+    i := i + 1;
+    while s[i] >= '0' and s[i] <= '9' and fracLen < 6 {
+      frac := frac * 10 + (s[i] - '0');
+      fracLen := fracLen + 1;
+      i := i + 1;
+    end;
+    // skip remaining fractional digits
+    while s[i] >= '0' and s[i] <= '9' {
+      i := i + 1;
+    }
+  end;
+  // scale frac to 6 digits
+  while fracLen < 6 {
+    frac := frac * 10;
+    fracLen := fracLen + 1;
+  }
+  var result: int64 := whole * 1000000 + frac;
+  return sign * result;
+}
+
+pub fn parse_lon(s: pchar): int64 {
+  return parse_lat(s); // same format
+}
