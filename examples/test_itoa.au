@@ -1,5 +1,5 @@
 pub fn main(): int64 {
-  pub fn main(): int64 {
+fn main(): int64 {
   // Test itoa_to_buf with negative value, minWidth=5, padZero=1 -> expect "-00042"
   var r: int64 := itoa_to_buf(-42, STATIC_FMT_BUF, 0, 512, 5, 1);
   if r < 0 { print_str("ERR\n"); return 1; }
