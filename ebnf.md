@@ -371,4 +371,90 @@ fn main(): int64 {
   }
   return 0;
 }
-```
+
+1) Erweiterung der Typ-EBNF
+Neue Typvariante
+text
+Type           := PrimitiveType
+               | PointerType
+               | ArrayType
+               | StructType
+               | ClassType        // NEU
+               | NamedType ;
+Klassentypen inkl. Vererbung
+text
+ClassType      := 'class' [ Inheritance ] '{' { MemberDecl } '}' ;
+
+Inheritance    := '(' NamedType ')' ;   // z.B. class(TObject)
+
+MemberDecl     := FieldDecl
+               | MethodDecl
+               | CtorDecl
+               | DtorDecl ;
+2) Methoden, Konstruktor, Destruktor
+text
+MethodDecl     := 'fn' Ident '(' [ ParamList ] ')' [ ':' RetType ] MethodBlock ;
+
+CtorDecl       := 'constructor' Ident '(' [ ParamList ] ')' MethodBlock ;
+
+DtorDecl       := 'destructor' Ident '(' [ ParamList ] ')' MethodBlock ;
+
+MethodBlock    := Block ;   // wie bisher
+Wenn du’s näher an Pascal halten willst, kannst du als Konvention z. B. constructor Create und destructor Destroy erzwingen, das wäre dann eine semantische Regel, nicht Grammatik.
+
+3) Objektinstanzierung und Memberzugriff
+Primaries erweitern
+text
+Primary        := IntLit
+               | BoolLit
+               | StringLit
+               | CharLit
+               | Ident
+               | Call
+               | StructLit
+               | ArrayLit
+               | MemberAccess        // NEU
+               | NewExpr             // NEU
+               | '(' Expr ')' ;
+Memberzugriff (Feld/Methoden)
+text
+MemberAccess   := PrimaryNoMember '.' Ident [ '(' [ ArgList ] ')' ] ;
+
+PrimaryNoMember:= IntLit
+               | BoolLit
+               | StringLit
+               | CharLit
+               | Ident
+               | StructLit
+               | ArrayLit
+               | NewExpr
+               | '(' Expr ')' ;
+(Trick: PrimaryNoMember verhindert linksrekursive Definition bei MemberAccess.)
+
+Objekt-Erzeugung
+text
+NewExpr        := 'new' Type '(' [ ArgList ] ')' ;
+Semantisch: für einen class-Typ ruft das den Konstruktor; für Records/Structs könntest du es verbieten oder speziell behandeln.
+
+4) LValues an OO anpassen
+text
+LValue         := Ident
+               | FieldAccess
+               | IndexAccess
+               | MemberLValue ;
+
+MemberLValue   := PrimaryNoMember '.' Ident ;
+Damit kannst du obj.field := 42; oder self.count := self.count + 1; zulassen.
+
+5) Zusatz: implizites self und Vererbung (semantisch)
+Rein semantisch (nicht EBNF, aber wichtig für dein Design):
+
+In MethodDecl, CtorDecl, DtorDecl ist self (oder this) ein impliziter Parameter vom Typ der umgebenden ClassType.
+
+Bei Inheritance wird:
+
+die Basisklasse als erster versteckter Parent im Typgraphen hinterlegt,
+
+Member-Lookup entlang der Vererbungskette durchgeführt.
+
+Methoden können überschrieben werden, wenn Signatur kompatibel ist; ob du ein override-Keyword willst, ist eine spätere Erweiterung.
