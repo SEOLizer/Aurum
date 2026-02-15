@@ -46,7 +46,7 @@ begin
     lx.Free;
   end;
 
-  s := TSema.Create(d);
+  s := TSema.Create(d, nil);
   try
     s.Analyze(prog);
   finally

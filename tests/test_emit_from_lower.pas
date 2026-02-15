@@ -22,7 +22,7 @@ begin
     p := TParser.Create(lx, d);
     prog := p.ParseProgram;
     p.Free; lx.Free;
-    s := TSema.Create(d);
+    s := TSema.Create(d, nil);
     s.Analyze(prog);
     if d.HasErrors then begin d.PrintAll; Halt(1); end;
     s.Free;
