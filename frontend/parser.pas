@@ -286,11 +286,6 @@ begin
         Expect(tkColon);
         // require block for case body
         bodyStmt := ParseBlock;
-        // debug
-        if Assigned(bodyStmt) then
-          WriteLn('PARSER DBG: bodyStmt ptr=', PtrUInt(Pointer(bodyStmt)), ' kind=', NodeKindToStr(bodyStmt.Kind))
-        else
-          WriteLn('PARSER DBG: bodyStmt ptr=<nil>');
         caseObj := TAstCase.Create(valExpr, bodyStmt);
         SetLength(cases, Length(cases) + 1);
         cases[High(cases)] := caseObj;
