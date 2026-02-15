@@ -24,6 +24,7 @@ type
     FLabelCounter: Integer;
     FLocalMap: TStringList; // name -> local index (as object integer)
     FConstMap: TStringList; // name -> TConstValue (compile-time constants)
+    FBreakStack: TStringList; // stack of break labels
 
     function NewTemp: Integer;
     function NewLabel(const prefix: string): string;
@@ -57,28 +58,33 @@ end;
 { TIRLowering }
 
 constructor TIRLowering.Create(modul: TIRModule; diag: TDiagnostics);
-begin
-  inherited Create;
-  FModule := modul;
-  FDiag := diag;
-  FTempCounter := 0;
-  FLabelCounter := 0;
-  FLocalMap := TStringList.Create;
-  FLocalMap.Sorted := False;
-  FConstMap := TStringList.Create;
-  FConstMap.Sorted := False;
-end;
+  begin
+    inherited Create;
+    FModule := modul;
+    FDiag := diag;
+    FTempCounter := 0;
+    FLabelCounter := 0;
+    FLocalMap := TStringList.Create;
+    FLocalMap.Sorted := False;
+    FConstMap := TStringList.Create;
+    FConstMap.Sorted := False;
+    FBreakStack := TStringList.Create;
+    FBreakStack.Sorted := False;
+  end;
+
 
 destructor TIRLowering.Destroy;
-var
+  var
   i: Integer;
 begin
   FLocalMap.Free;
   for i := 0 to FConstMap.Count - 1 do
     TObject(FConstMap.Objects[i]).Free;
   FConstMap.Free;
+  FBreakStack.Free;
   inherited Destroy;
 end;
+
 
 function TIRLowering.NewTemp: Integer;
 begin
@@ -400,7 +406,13 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     whileNode: TAstWhile;
     startLabel, bodyLabel, exitLabel: string;
     i: Integer;
-begin
+    sw: TAstSwitch;
+    switchTmp: Integer;
+    endLbl, defaultLbl: string;
+    caseLabels: TStringList;
+    lbl: string;
+    caseTmp: Integer;
+  begin
   instr := Default(TIRInstr);
   Result := True;
   if stmt is TAstVarDecl then
@@ -488,35 +500,110 @@ begin
     Exit(True);
   end;
 
-  if stmt is TAstWhile then
-  begin
-    whileNode := TAstWhile(stmt);
-    startLabel := NewLabel('Lwhile');
-    bodyLabel := NewLabel('Lwhile_body');
-    exitLabel := NewLabel('Lwhile_end');
+    if stmt is TAstWhile then
+    begin
+      whileNode := TAstWhile(stmt);
+      startLabel := NewLabel('Lwhile');
+      bodyLabel := NewLabel('Lwhile_body');
+      exitLabel := NewLabel('Lwhile_end');
 
-    // start label
-    instr.Op := irLabel; instr.LabelName := startLabel; Emit(instr);
-    condTmp := LowerExpr(whileNode.Cond);
-    instr.Op := irBrFalse; instr.Src1 := condTmp; instr.LabelName := exitLabel; Emit(instr);
-    // body
-    LowerStmt(whileNode.Body);
-    // jump to start
-    instr.Op := irJmp; instr.LabelName := startLabel; Emit(instr);
-    // exit label
-    instr.Op := irLabel; instr.LabelName := exitLabel; Emit(instr);
-    Exit(True);
-  end;
+      // start label
+      instr.Op := irLabel; instr.LabelName := startLabel; Emit(instr);
+      condTmp := LowerExpr(whileNode.Cond);
+      instr.Op := irBrFalse; instr.Src1 := condTmp; instr.LabelName := exitLabel; Emit(instr);
+      // body (support break -> exitLabel)
+      FBreakStack.AddObject(exitLabel, nil);
+      LowerStmt(whileNode.Body);
+      FBreakStack.Delete(FBreakStack.Count - 1);
+      // jump to start
+      instr.Op := irJmp; instr.LabelName := startLabel; Emit(instr);
+      // exit label
+      instr.Op := irLabel; instr.LabelName := exitLabel; Emit(instr);
+      Exit(True);
+    end;
 
-  if stmt is TAstBlock then
-  begin
-    for i := 0 to High(TAstBlock(stmt).Stmts) do
-      LowerStmt(TAstBlock(stmt).Stmts[i]);
-    Exit(True);
-  end;
 
-  FDiag.Error('lowering: unsupported statement', stmt.Span);
-  Result := False;
-end;
+   if stmt is TAstBlock then
+   begin
+     for i := 0 to High(TAstBlock(stmt).Stmts) do
+       LowerStmt(TAstBlock(stmt).Stmts[i]);
+     Exit(True);
+   end;
+
+   if stmt is TAstBreak then
+   begin
+     if FBreakStack.Count = 0 then
+       FDiag.Error('break outside of loop/switch', stmt.Span)
+     else
+     begin
+       instr.Op := irJmp;
+       instr.LabelName := FBreakStack.Strings[FBreakStack.Count - 1];
+       Emit(instr);
+     end;
+     Exit(True);
+   end;
+
+   if stmt is TAstSwitch then
+   begin
+     // Lower switch by generating compares and branches
+      sw := TAstSwitch(stmt);
+      switchTmp := LowerExpr(sw.Expr);
+      endLbl := NewLabel('Lswitch_end');
+      defaultLbl := endLbl;
+      if Assigned(sw.Default) then
+        defaultLbl := NewLabel('Lswitch_default');
+
+      // For each case, create label and compare
+      caseLabels := TStringList.Create; try
+        for i := 0 to High(sw.Cases) do
+        begin
+          lbl := NewLabel('Lcase');
+          caseLabels.Add(lbl);
+          // lower case value
+          caseTmp := LowerExpr(sw.Cases[i].Value);
+          // cmp eq
+          instr.Op := irCmpEq; instr.Dest := NewTemp; instr.Src1 := switchTmp; instr.Src2 := caseTmp; Emit(instr);
+          // br true -> caseLbl
+          instr.Op := irBrTrue; instr.Src1 := instr.Dest; instr.LabelName := lbl; Emit(instr);
+        end;
+
+
+       // no match -> jump default or end
+       instr.Op := irJmp; instr.LabelName := defaultLbl; Emit(instr);
+
+       // emit case bodies
+       for i := 0 to High(sw.Cases) do
+       begin
+         instr.Op := irLabel; instr.LabelName := caseLabels[i]; Emit(instr);
+         // push break label for cases
+         FBreakStack.AddObject(endLbl, nil);
+         LowerStmt(sw.Cases[i].Body);
+         FBreakStack.Delete(FBreakStack.Count - 1);
+         // after case body, jump to end
+         instr.Op := irJmp; instr.LabelName := endLbl; Emit(instr);
+       end;
+
+       // default body
+       if Assigned(sw.Default) then
+       begin
+         instr.Op := irLabel; instr.LabelName := defaultLbl; Emit(instr);
+         FBreakStack.AddObject(endLbl, nil);
+         LowerStmt(sw.Default);
+         FBreakStack.Delete(FBreakStack.Count - 1);
+         instr.Op := irJmp; instr.LabelName := endLbl; Emit(instr);
+       end;
+
+       // end label
+       instr.Op := irLabel; instr.LabelName := endLbl; Emit(instr);
+     finally
+       caseLabels.Free;
+     end;
+     Exit(True);
+   end;
+
+   FDiag.Error('lowering: unsupported statement', stmt.Span);
+   Result := False;
+ end;
+
 
 end.
