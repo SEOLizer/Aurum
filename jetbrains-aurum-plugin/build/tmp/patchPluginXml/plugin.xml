@@ -1,0 +1,18 @@
+<idea-plugin version="2">
+  <idea-version since-build="243.21565" />
+  <id>org.aurum.aurumlang</id>
+  <name>Aurum Language Support</name>
+  <vendor>Andreas Röne</vendor>
+  <version>0.1.0</version>
+  <description>Syntax highlighting for the Aurum language (Aurum .au files).</description>
+  <depends>com.intellij.modules.lang</depends>
+  <extensions defaultExtensionNs="com.intellij">
+    <!-- Register language -->
+    <lang.language implementation="org.aurum.AurumLanguage" />
+    <!-- File type -->
+    <fileTypeFactory implementation="org.aurum.AurumFileTypeFactory" />
+    <!-- Syntax highlighter binding -->
+    <syntaxHighlighterFactory language="Aurum" implementation="org.aurum.AurumSyntaxHighlighterFactory" />
+  </extensions>
+  <application-components />
+</idea-plugin>
