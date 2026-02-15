@@ -30,7 +30,7 @@ begin
     l := TLexer.Create('fn main(): int64 { var i: int64 := 0; i := 1 + 2 * 3; print_str("hi\n"); return 0; }', 'test.au', d);
     p := TParser.Create(l, d);
     prog := p.ParseProgram;
-    s := TSema.Create(d);
+    s := TSema.Create(d, nil);
     s.Analyze(prog);
     modl := TIRModule.Create;
     lower := TIRLowering.Create(modl, d);

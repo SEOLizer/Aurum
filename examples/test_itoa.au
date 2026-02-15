@@ -1,0 +1,10 @@
+con TEST_BUF: pchar := "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+
+fn main(argc: int64, argv: pchar): int64 {
+  // Test itoa_to_buf with negative value, minWidth=5, padZero=1 -> expect "-00042"
+  var r: int64 := itoa_to_buf(-42, TEST_BUF, 0, 64, 5, 1);
+  if (r < 0) { print_str("ERR\n"); return 1; }
+  buf_put_byte(TEST_BUF, r, 0);
+  print_str(TEST_BUF);
+  return 0;
+}

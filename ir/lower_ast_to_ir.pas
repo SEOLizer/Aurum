@@ -289,9 +289,9 @@ begin
 end;
 
 function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
-var
+  var
   instr: TIRInstr;
-  t1, t2: Integer;
+  t1, t2, t3, t4, t5, t6: Integer;
   si: Integer;
   argTemps: array of Integer;
   ai: Integer;
@@ -570,16 +570,25 @@ begin
       // itoa_to_buf(val: int64, buf: pchar, idx: int64, buflen: int64) -> int64
       t1 := LowerExpr(TAstCall(expr).Args[0]);
       t2 := LowerExpr(TAstCall(expr).Args[1]);
-      t3 := LowerExpr(TAstCall(expr).Args[2]);
-      t4 := LowerExpr(TAstCall(expr).Args[3]);
-      instr.Op := irCallBuiltin;
-      instr.ImmStr := 'itoa_to_buf';
-      instr.Src1 := t1;
-      instr.Src2 := t2;
-      instr.LabelName := IntToStr(t3) + ',' + IntToStr(t4);
-      instr.Dest := NewTemp;
-      Emit(instr);
-      Exit(instr.Dest);
+       t3 := LowerExpr(TAstCall(expr).Args[2]);
+       t4 := LowerExpr(TAstCall(expr).Args[3]);
+       // optional extras: minWidth, padZero
+       if Length(TAstCall(expr).Args) > 4 then
+         t5 := LowerExpr(TAstCall(expr).Args[4])
+       else
+         t5 := -1;
+       if Length(TAstCall(expr).Args) > 5 then
+         t6 := LowerExpr(TAstCall(expr).Args[5])
+       else
+         t6 := -1;
+       instr.Op := irCallBuiltin;
+       instr.ImmStr := 'itoa_to_buf';
+       instr.Src1 := t1;
+       instr.Src2 := t2;
+       instr.LabelName := IntToStr(t3) + ',' + IntToStr(t4) + ',' + IntToStr(t5) + ',' + IntToStr(t6);
+       instr.Dest := NewTemp;
+       Emit(instr);
+       Exit(instr.Dest);
     end
     else
     begin

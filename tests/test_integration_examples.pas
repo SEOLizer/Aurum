@@ -1,54 +1,59 @@
 {$mode objfpc}{$H+}
 program test_integration_examples;
 
-uses SysUtils, Classes, BaseUnix;
+uses SysUtils, Classes, Process;
 
-function RunCommandCapture(cmd: string; out stdoutPath: string; out stderrPath: string): LongInt;
+function RunCmd(const cmd: string): LongInt;
 var
-  outf, errf: string;
-  fullCmd: string;
+  p: TProcess;
 begin
-  outf := '/tmp/integration_out.txt';
-  errf := '/tmp/integration_err.txt';
-  stdoutPath := outf;
-  stderrPath := errf;
-  fullCmd := cmd + ' > ' + outf + ' 2> ' + errf;
-  Result := fpSystem(fullCmd);
-end;
-
-function FileAsString(const path: string): string;
-var
-  s: TStringList;
-begin
-  s := TStringList.Create;
+  p := TProcess.Create(nil);
   try
-    if FileExists(path) then
-      s.LoadFromFile(path)
-    else
-      s.Text := '';
-    Result := s.Text;
+    p.Executable := '/bin/sh';
+    p.Parameters.Clear;
+    p.Parameters.Add('-c');
+    p.Parameters.Add(cmd);
+    p.Options := [poWaitOnExit];
+    p.Execute;
+    Result := p.ExitStatus;
   finally
-    s.Free;
+    p.Free;
   end;
 end;
 
-function TrimNewline(const s: string): string;
+function RunCmdCapture(const cmd: string; out output: string): LongInt;
+var
+  p: TProcess;
+  buf: array[0..4095] of Byte;
+  n: LongInt;
 begin
-  Result := s;
-  if (Length(Result) > 0) and (Result[Length(Result)] = #10) then
-    Result := Copy(Result, 1, Length(Result)-1);
-  if (Length(Result) > 0) and (Result[Length(Result)] = #13) then
-    Result := Copy(Result, 1, Length(Result)-1);
+  output := '';
+  p := TProcess.Create(nil);
+  try
+    p.Executable := '/bin/sh';
+    p.Parameters.Clear;
+    p.Parameters.Add('-c');
+    p.Parameters.Add(cmd);
+    p.Options := [poWaitOnExit, poUsePipes];
+    p.Execute;
+    repeat
+      n := p.Output.Read(buf, SizeOf(buf));
+      if n > 0 then
+        output := output + Copy(PAnsiChar(@buf[0]), 1, n);
+    until n <= 0;
+    Result := p.ExitStatus;
+  finally
+    p.Free;
+  end;
 end;
 
 var
   ret: LongInt;
-  outp, errp: string;
   txt: string;
   lines: TStringList;
 begin
   // Build compiler
-  ret := fpSystem('fpc -O2 -Mobjfpc -Sh aurumc.lpr -oaurumc');
+  ret := RunCmd('fpc -O2 -Mobjfpc -Sh -FUlib/ -Fuutil/ -Fufrontend/ -Fuir/ -Fubackend/ -Fubackend/x86_64/ -Fubackend/elf/ aurumc.lpr -oaurumc');
   if ret <> 0 then
   begin
     Writeln('ERROR: building aurumc failed with code ', ret);
@@ -56,20 +61,18 @@ begin
   end;
 
   // Compile and run use_math example
-  ret := fpSystem('./aurumc examples/use_math.au -o /tmp/use_math');
+  ret := RunCmd('./aurumc examples/use_math.au -o /tmp/use_math');
   if ret <> 0 then
   begin
     Writeln('ERROR: compiling use_math failed with code ', ret);
     Halt(1);
   end;
-  ret := RunCommandCapture('/tmp/use_math', outp, errp);
+  ret := RunCmdCapture('/tmp/use_math', txt);
   if ret <> 0 then
   begin
     Writeln('ERROR: running use_math failed with code ', ret);
-    Writeln('STDERR:'); Writeln(FileAsString(errp));
     Halt(1);
   end;
-  txt := FileAsString(outp);
   if txt <> '14'#10 then
   begin
     Writeln('ERROR: use_math output mismatch. Got:');
@@ -78,20 +81,18 @@ begin
   end;
 
   // Compile and run use_env example with arguments
-  ret := fpSystem('./aurumc examples/use_env.au -o /tmp/use_env');
+  ret := RunCmd('./aurumc examples/use_env.au -o /tmp/use_env');
   if ret <> 0 then
   begin
     Writeln('ERROR: compiling use_env failed with code ', ret);
     Halt(1);
   end;
-  ret := RunCommandCapture('/tmp/use_env foo bar', outp, errp);
+  ret := RunCmdCapture('/tmp/use_env foo bar', txt);
   if ret <> 0 then
   begin
     Writeln('ERROR: running use_env failed with code ', ret);
-    Writeln('STDERR:'); Writeln(FileAsString(errp));
     Halt(1);
   end;
-  txt := FileAsString(outp);
   lines := TStringList.Create;
   try
     lines.Text := txt;
@@ -114,7 +115,6 @@ begin
       Halt(1);
     end;
     // second line should equal program name (arg(0))
-    // program name can be /tmp/use_env or just use_env depending on platform; accept substring
     if Pos('use_env', lines[1]) = 0 then
     begin
       Writeln('ERROR: second line does not contain program name. Got: ', lines[1]);

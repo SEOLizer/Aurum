@@ -171,16 +171,18 @@ begin
   s.ParamTypes[2] := atInt64;
   AddSymbolToCurrent(s, NullSpan);
 
-  // itoa_to_buf(val: int64, buf: pchar, idx: int64, buflen: int64) -> int64
+  // itoa_to_buf(val: int64, buf: pchar, idx: int64, buflen: int64, minWidth: int64, padZero: int64) -> int64
   s := TSymbol.Create('itoa_to_buf');
   s.Kind := symFunc;
   s.DeclType := atInt64;
-  s.ParamCount := 4;
-  SetLength(s.ParamTypes, 4);
-  s.ParamTypes[0] := atInt64;
-  s.ParamTypes[1] := atPChar;
-  s.ParamTypes[2] := atInt64;
-  s.ParamTypes[3] := atInt64;
+  s.ParamCount := 6;
+  SetLength(s.ParamTypes, 6);
+  s.ParamTypes[0] := atInt64; // val
+  s.ParamTypes[1] := atPChar; // buf
+  s.ParamTypes[2] := atInt64; // idx
+  s.ParamTypes[3] := atInt64; // buflen
+  s.ParamTypes[4] := atInt64; // minWidth
+  s.ParamTypes[5] := atInt64; // padZero
   AddSymbolToCurrent(s, NullSpan);
 end;
 

@@ -49,6 +49,15 @@ linguist/
 
 # Test binaries produced during development
 tests/test_switch
+tests/test_codegen_widths
+tests/test_emit_create
+tests/test_emit_from_lower
+tests/test_emit_run
+tests/test_lower
+tests/test_emit_main_args
+tests/test_integration_examples
+tests/test_time_format
+tests/ppas.sh
 
 # Local editor/workspace
 .vscode/

@@ -144,17 +144,194 @@ pub fn iso_year(year: int64, month: int64, day: int64): int64 {
   return year;
 }
 
-// API-Skeleton für Formatter (Platzhalter)
-con NOT_IMPL: pchar := "(time.formatter not implemented)\0";
+// API: Formatter-Implementation (Aurum)
+// Statischer 512-Byte Puffer (nicht thread-safe)
+con STATIC_FMT_BUF: pchar := "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 
-pub fn format_unix(ts: int64, fmt: pchar, tz_offset: int64): pchar {
-  // Rückgabewert: statischer Puffer (hier Platzhalter)
-  return NOT_IMPL;
+// interne Hilfsfunktion: sichere Einzelbyte-Schreibung ins Buffer
+pub fn _put_byte(buf: pchar, buflen: int64, idx: int64, b: int64): int64 {
+  if idx >= buflen { return -1; }
+  // Builtin: buf_put_byte(buf, idx, b) -> int64
+  let r: int64 := buf_put_byte(buf, idx, b);
+  if r < 0 { return -1; }
+  return idx + 1;
 }
 
+// interne Hilfsfunktion: schreibe unsigned int als Dezimal in Buffer
+pub fn _write_uint(buf: pchar, buflen: int64, idx: int64, mut val: int64): int64 {
+  // special case 0
+  if val = 0 {
+    return _put_byte(buf, buflen, idx, Ord('0'));
+  }
+  var dv: int64 := 1;
+  // find highest power of 10
+  while val / dv >= 10 { dv = dv * 10; }
+  while dv > 0 {
+    var digit: int64 := (val / dv) % 10;
+    var newidx: int64 := _put_byte(buf, buflen, idx, Ord('0') + digit);
+    if newidx < 0 { return -1; }
+    idx = newidx;
+    dv = dv / 10;
+  }
+  return idx;
+}
+
+// Schreibe 2-stellige mit Nullpadding (00..99)
+pub fn _write_2pad(buf: pchar, buflen: int64, idx: int64, val: int64): int64 {
+  var tens: int64 := val / 10;
+  var units: int64 := val % 10;
+  var newidx: int64 := _put_byte(buf, buflen, idx, Ord('0') + tens);
+  if newidx < 0 { return -1; }
+  newidx = _put_byte(buf, buflen, newidx, Ord('0') + units);
+  return newidx;
+}
+
+// Schreibe 1- oder 2-stellige ohne Padding
+pub fn _write_1or2(buf: pchar, buflen: int64, idx: int64, val: int64): int64 {
+  if val >= 10 {
+    var tens: int64 := val / 10;
+    var units: int64 := val % 10;
+    var newidx: int64 := _put_byte(buf, buflen, idx, Ord('0') + tens);
+    if newidx < 0 { return -1; }
+    newidx = _put_byte(buf, buflen, newidx, Ord('0') + units);
+    return newidx;
+  } else {
+    return _put_byte(buf, buflen, idx, Ord('0') + val);
+  }
+}
+
+// Hauptfunktion: formatiere Unix-Timestamp in caller-Buffer
 pub fn format_unix_to_buf(ts: int64, fmt: pchar, tz_offset: int64, buf: pchar, buflen: int64): int64 {
-  // Noch nicht implementiert. Rückgabe: -1
-  return -1;
+  var idx: int64 := 0;
+  // lokale Zeit in Sekunden
+  var ts_local: int64 := ts + tz_offset;
+  var days: int64;
+  if ts_local >= 0 {
+    days = ts_local / 86400;
+  } else {
+    days = (ts_local - 86399) / 86400; // floor division
+  }
+  var secs_of_day: int64 := ts_local - days * 86400;
+  if secs_of_day < 0 { secs_of_day = secs_of_day + 86400; }
+
+  var year: int64 := civil_year_from_days(days);
+  var month: int64 := civil_month_from_days(days);
+  var day: int64 := civil_day_from_days(days);
+  var hour: int64 := secs_of_day / 3600;
+  var minute: int64 := (secs_of_day % 3600) / 60;
+  var second: int64 := secs_of_day % 60;
+
+  // iterate format string
+  var i: int64 := 0;
+  while fmt[i] <> 0 {
+    var c: int64 := fmt[i];
+    if c <> Ord('%') {
+      let ni := _put_byte(buf, buflen, idx, c);
+      if ni < 0 { return -1; }
+      idx = ni;
+      i = i + 1;
+      continue;
+    }
+    // token
+    i = i + 1;
+    var t: int64 := fmt[i];
+    if t = 0 { break; }
+    if t = Ord('%') {
+      let ni := _put_byte(buf, buflen, idx, Ord('%'));
+      if ni < 0 { return -1; }
+      idx = ni;
+      i = i + 1;
+      continue;
+    }
+    if t = Ord('Y') {
+      // 4-digit year (supports negative years poorly)
+      var y := year;
+      var d1000 := (y / 1000) % 10; if d1000 < 0 { d1000 = -d1000; }
+      var d100 := (y / 100) % 10; if d100 < 0 { d100 = -d100; }
+      var d10 := (y / 10) % 10; if d10 < 0 { d10 = -d10; }
+      var d1 := y % 10; if d1 < 0 { d1 = -d1; }
+      var ni := _put_byte(buf, buflen, idx, Ord('0') + d1000); if ni < 0 { return -1; }
+      ni = _put_byte(buf, buflen, ni, Ord('0') + d100); if ni < 0 { return -1; }
+      ni = _put_byte(buf, buflen, ni, Ord('0') + d10); if ni < 0 { return -1; }
+      ni = _put_byte(buf, buflen, ni, Ord('0') + d1); if ni < 0 { return -1; }
+      idx = ni; i = i + 1; continue;
+    }
+    if t = Ord('y') {
+      var v := year % 100; if v < 0 { v = -v; }
+      var ni := _write_2pad(buf, buflen, idx, v);
+      if ni < 0 { return -1; }
+      idx = ni; i = i + 1; continue;
+    }
+    if t = Ord('m') {
+      var ni := _write_2pad(buf, buflen, idx, month);
+      if ni < 0 { return -1; }
+      idx = ni; i = i + 1; continue;
+    }
+    if t = Ord('n') {
+      var ni := _write_1or2(buf, buflen, idx, month);
+      if ni < 0 { return -1; }
+      idx = ni; i = i + 1; continue;
+    }
+    if t = Ord('d') {
+      var ni := _write_2pad(buf, buflen, idx, day);
+      if ni < 0 { return -1; }
+      idx = ni; i = i + 1; continue;
+    }
+    if t = Ord('j') {
+      var ni := _write_1or2(buf, buflen, idx, day);
+      if ni < 0 { return -1; }
+      idx = ni; i = i + 1; continue;
+    }
+    if t = Ord('H') {
+      var ni := _write_2pad(buf, buflen, idx, hour);
+      if ni < 0 { return -1; }
+      idx = ni; i = i + 1; continue;
+    }
+    if t = Ord('G') {
+      var ni := _write_1or2(buf, buflen, idx, hour);
+      if ni < 0 { return -1; }
+      idx = ni; i = i + 1; continue;
+    }
+    if t = Ord('i') {
+      var ni := _write_2pad(buf, buflen, idx, minute);
+      if ni < 0 { return -1; }
+      idx = ni; i = i + 1; continue;
+    }
+    if t = Ord('s') {
+      var ni := _write_2pad(buf, buflen, idx, second);
+      if ni < 0 { return -1; }
+      idx = ni; i = i + 1; continue;
+    }
+    if t = Ord('U') {
+      // Unix timestamp in seconds (signed)
+      var val: int64 := ts;
+      if val < 0 {
+        var ni := _put_byte(buf, buflen, idx, Ord('-')); if ni < 0 { return -1; }
+        idx = ni;
+        val = -val;
+      }
+      var ni2 := _write_uint(buf, buflen, idx, val);
+      if ni2 < 0 { return -1; }
+      idx = ni2; i = i + 1; continue;
+    }
+
+    // Unknown token: write verbatim '%' and token char
+    var ni3 := _put_byte(buf, buflen, idx, Ord('%'));
+    if ni3 < 0 { return -1; }
+    ni3 = _put_byte(buf, buflen, ni3, t);
+    if ni3 < 0 { return -1; }
+    idx = ni3; i = i + 1;
+  }
+  // null-terminate
+  if idx >= buflen { return -1; }
+  let _ := buf_put_byte(buf, idx, 0);
+  return idx;
+}
+
+// Convenience: wrapper mit statischem Puffer (nicht thread-safe)
+pub fn format_unix(ts: int64, fmt: pchar, tz_offset: int64): pchar {
+  let res := format_unix_to_buf(ts, fmt, tz_offset, STATIC_FMT_BUF, 512);
+  return STATIC_FMT_BUF;
 }
 
 // Convenience: Beispiele und Tests werden später erweitert

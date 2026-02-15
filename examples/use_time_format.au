@@ -20,5 +20,10 @@ fn main(argc: int64, argv: pchar): int64 {
   print_str("day of year: "); print_int(doy); print_str("\n");
   print_str("weekday (0=Mon): "); print_int(w); print_str("\n");
 
+  // Demo: format current epoch times
+  let ts0: int64 := 0; // 1970-01-01T00:00:00Z
+  let s: pchar := format_unix(ts0, "%Y-%m-%d %H:%i:%s", 0);
+  print_str("formatted ts0: "); print_str(s); print_str("\n");
+
   return 0;
 }
