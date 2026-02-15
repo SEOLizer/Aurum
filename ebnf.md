@@ -1,4 +1,4 @@
-# Aurum v0.1 – Mini-Spezifikation
+# Aurum v0.1.2 – Mini-Spezifikation
 
 Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar durch saubere Trennung von Frontend/IR/Backend.
 
@@ -59,7 +59,7 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 * Unsigned Integers verwenden das Präfix `uin` (nicht `u`).
 * `int64` bleibt der primäre Standard-Integer der Sprache.
 
-### Typregeln (v0.1)
+### Typregeln (v0.1.2)
 
 * `if`/`while` Bedingungen müssen **bool** sein.
 * Vergleichsoperatoren liefern **bool**.
@@ -78,7 +78,7 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 * `co`   : readonly runtime-constant (immutable nach Init), lokaler Stackslot
 * `con`  : compile-time constant (muss konstante Initialisierung haben), **kein** lokaler Slot
 
-> Hinweis: `let` und `co` sind semantisch sehr ähnlich; in v0.1 sind beide nach Init unveränderlich. `co` ist für spätere Erweiterungen reserviert, falls `let` später stärker eingeschränkt wird.
+> Hinweis: `let` und `co` sind semantisch sehr ähnlich; in v0.1.2 sind beide nach Init unveränderlich. `co` ist für spätere Erweiterungen reserviert, falls `let` später stärker eingeschränkt wird.
 
 ### `con` Regeln
 
@@ -88,7 +88,7 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 
 ---
 
-## 4) Builtins (v0.1)
+## 4) Builtins (v0.1.2)
 
 Builtins werden vom Compiler als Spezialfälle behandelt (kein normales Linking nötig):
 
@@ -105,7 +105,7 @@ Minimaler Bootstrap (falls du `print_int` erst später willst):
 ## 5) Funktionen
 
 * Nur **globale** Funktionen
-* Keine closures, keine nested functions (v0.1)
+* Keine closures, keine nested functions (v0.1.2)
 
 ### ABI (Linux x86_64 SysV)
 
@@ -296,7 +296,7 @@ ConstPrimary   := IntLit | BoolLit | StringLit | CharLit | '(' ConstExpr ')' ;
 
 ---
 
-## 7) Semantikregeln (v0.1) (v0.1)
+## 7) Semantikregeln (v0.1.2) (v0.1.2)
 
 ### Namespaces / Scopes
 
@@ -312,7 +312,7 @@ ConstPrimary   := IntLit | BoolLit | StringLit | CharLit | '(' ConstExpr ')' ;
 
 ### Return-Regeln
 
-* Funktion mit Rückgabetyp `int64/bool/pchar` muss auf allen Pfaden `return <expr>;` liefern (v0.1: einfache syntaktische Prüfung reicht erstmal)
+* Funktion mit Rückgabetyp `int64/bool/pchar` muss auf allen Pfaden `return <expr>;` liefern (v0.1.2: einfache syntaktische Prüfung reicht erstmal)
 * Funktion mit `void` erlaubt `return;` oder gar keinen return (dann implizit `return;`)
 
 ### Bool-Regeln
@@ -322,7 +322,7 @@ ConstPrimary   := IntLit | BoolLit | StringLit | CharLit | '(' ConstExpr ')' ;
 
 ---
 
-## 8) Codegen-Anforderungen (Backend v0.1)
+## 8) Codegen-Anforderungen (Backend v0.1.2)
 
 ### Output
 

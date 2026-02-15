@@ -172,7 +172,7 @@ Später kannst du das in zwei Segmente splitten (RX / RW).
 - Integer-Ausdrücke + `print_int(expr)`
 - Minimal-itoa in mitgeliefertem Code (Runtime-Snippet, aber in dein Binary eingebettet)
 
-### v0.1
+### v0.1.2
 
 - `let`, `if`, `while`
 - Stackframe (RBP/RSP), einfache Registerstrategie
@@ -404,7 +404,7 @@ Wenn ich es brutal zusammenkoche, musst du für Aurum zuerst festlegen:
 6. Kontrollfluss (if/while/return)
 7. Ziel: Linux x86_64 ELF64
 
-# Aurum v0.1 – Keywords (aktualisiert)
+# Aurum v0.1.2 – Keywords (aktualisiert)
 
 ## Reservierte Keywords
 
