@@ -825,6 +825,8 @@ begin
               // compute length = buffer_end - rdi -> RCX
               EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $8E); EmitU32(FCode, 64);
               WriteSubRegReg(FCode, RCX, RDI);
+              // save length into RDX (stable) before RCX used as loop counter
+              WriteMovRegReg(FCode, RDX, RCX);
 
               // prepare destination pointer: dst = buf + idx
               if instr.Src2 >= 0 then
@@ -837,9 +839,41 @@ begin
                 WriteMovRegImm64(FCode, R9, 0);
               WriteAddRegReg(FCode, R8, R9); // R8 = dstptr
 
+              // Before copying, ensure (buflen - idx) >= length -> if not return -1
+              // load idx into RAX
+              if argTemp3 >= 0 then
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + argTemp3))
+              else
+                WriteMovRegImm64(FCode, RAX, 0);
+              // load buflen into RCX
+              if argTemp4 >= 0 then
+                WriteMovRegMem(FCode, RCX, RBP, SlotOffset(localCnt + argTemp4))
+              else
+                WriteMovRegImm64(FCode, RCX, 0);
+              // compute RCX = buflen - idx
+              WriteSubRegReg(FCode, RCX, RAX);
+              // compare RCX (remaining) with RDX (length)
+              // cmp rcx, rdx  -> 48 39 D1
+              EmitU8(FCode, $48); EmitU8(FCode, $39); EmitU8(FCode, $D1);
+              // if RCX >= RDX -> ok, jump to continue; else fallthrough to error handler
+              jgePos := FCode.Size;
+              WriteJgeRel32(FCode, 0);
+              // error handler: set return -1 and store
+              WriteMovRegImm64(FCode, RAX, UInt64(-1));
+              if instr.Dest >= 0 then WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+              // jump past normal copy to end
+              jmpDonePos := FCode.Size;
+              WriteJmpRel32(FCode, 0);
+              // continue normal copy (patch jge to here)
+              k := FCode.Size;
+              FCode.PatchU32LE(jgePos + 2, Cardinal(k - jgePos - 6));
+
               // copy loop: while RCX > 0 { mov al, [RDI]; mov [R8], al; inc RDI; inc R8; dec RCX }
+              // Note: RCX currently holds (buflen - idx) but we need loop counter = length -> reload from RDX
+              WriteMovRegReg(FCode, RCX, RDX);
+
               // cmp rcx, 0
-              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(FCode, 0);
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(0);
               nonZeroPos := FCode.Size;
               WriteJneRel32(FCode, 0);
               // fast path: if length == 0 return idx
@@ -859,9 +893,8 @@ begin
               // dec rcx
               WriteDecReg(FCode, RCX);
               // cmp rcx,0
-              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(FCode, 0);
-              // jne copy_start (jump back by appropriate rel32)
-              // reserve patch
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(0);
+              // reserve patch for loop back
               jneLoopPos := FCode.Size;
               WriteJneRel32(FCode, 0);
 
@@ -871,14 +904,16 @@ begin
                 WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + argTemp3))
               else
                 WriteMovRegImm64(FCode, RAX, 0);
-              // NOTE: RCX is zero here; length was overwritten. Use RDX to hold length if needed. For simplicity, return idx (no increment)
+              // add length from RDX
+              WriteAddRegReg(FCode, RAX, RDX);
 
               // store result
               if instr.Dest >= 0 then WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
 
-              // patch conversion loop jump
+              // patch loop/back and patch jmpDone (error jump past normal flow)
               k := FCode.Size;
               FCode.PatchU32LE(jneLoopPos + 2, Cardinal(loopStartPos - jneLoopPos - 6));
+              FCode.PatchU32LE(jmpDonePos + 1, Cardinal(k - jmpDonePos - 5));
             end
             else if instr.ImmStr = 'env_init' then
             begin
