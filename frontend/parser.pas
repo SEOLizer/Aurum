@@ -284,8 +284,11 @@ begin
         // parse single const expr
         valExpr := ParseExpr;
         Expect(tkColon);
-        // require block for case body
-        bodyStmt := ParseBlock;
+        // case body: allow either a block or a single statement
+        if Check(tkLBrace) then
+          bodyStmt := ParseBlock
+        else
+          bodyStmt := ParseStmt;
         caseObj := TAstCase.Create(valExpr, bodyStmt);
         SetLength(cases, Length(cases) + 1);
         cases[High(cases)] := caseObj;

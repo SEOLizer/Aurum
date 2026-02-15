@@ -94,14 +94,16 @@ Loop
 
 ### Typen
 
-| Typ     | Beschreibung                          |
-|---------|---------------------------------------|
-| `int64` | Signed 64-bit Integer                 |
-| `bool`  | `true` / `false`                      |
-| `void`  | Nur als Funktions-Rückgabetyp         |
-| `pchar` | Pointer auf nullterminierte Bytes     |
+| Typ       | Beschreibung                          |
+|-----------|---------------------------------------|
+| `int64`   | Signed 64-bit Integer                 |
+| `int`     | Alias für `int64` (konventionell)     |
+| `bool`    | `true` / `false`                      |
+| `void`    | Nur als Funktions-Rückgabetyp         |
+| `pchar`   | Pointer auf nullterminierte Bytes     |
+| `string`  | Alias für `pchar` (nullterminierte Bytes)
 
-Keine impliziten Casts — alle Typen müssen explizit übereinstimmen.
+Hinweis: `int` und `string` sind derzeit Alias-Typen (bzw. Abkürzungen) — `int` wird intern als `int64` behandelt, `string` wird als `pchar` gemappt. Keine impliziten Casts — alle Typen müssen explizit übereinstimmen.
 
 ### Operatoren
 
@@ -165,6 +167,42 @@ fn main(): int64 {
 }
 ```
 
+#### switch / case
+
+switch/case wurde ergänzt und unterstützt nun fallweise sowohl Block‑Bodies als auch einzelne Statements. `break` beendet die nächsthöhere Schleife oder den aktuellen switch‑Fall.
+
+Beispiel (Block‑Bodies):
+
+```aurum
+fn classify(x: int64): int64 {
+  switch (x % 3) {
+    case 0: {
+      print_str("divisible by 3\n");
+      return 0;
+    }
+    case 1: {
+      print_str("remainder 1\n");
+      return 1;
+    }
+    default: {
+      print_str("other\n");
+      return 2;
+    }
+  }
+}
+```
+
+Beispiel (Single‑Statement‑Bodies):
+
+```aurum
+switch (n) {
+  case 0: print_str("zero\n");
+  case 1: print_str("one\n");
+  default: print_str("many\n");
+}
+```
+
+Hinweis: `case`‑Labels müssen momentan Ganzzahlen (int/int64) sein; Semantik und Codegen behandeln `int` als 64‑Bit.
 ### Funktionen
 
 Funktionen sind global, folgen der SysV ABI (Parameter in Registern) und unterstützen bis zu 6 Parameter:
@@ -250,7 +288,7 @@ fn main(): int64 {
 ### Reservierte Keywords
 
 ```
-fn  var  let  co  con  if  else  while  return  true  false  extern
+fn  var  let  co  con  if  else  while  switch  case  break  default  return  true  false  extern
 ```
 
 `extern` ist für zukünftige Erweiterungen reserviert.
@@ -384,6 +422,16 @@ examples/                   Beispielprogramme in Aurum
 - **Jedes Token trägt SourceSpan**: Fehlermeldungen enthalten immer Datei, Zeile und Spalte.
 
 ---
+
+## Editor-Hervorhebung & Grammatik
+
+- Eine initiale TextMate/VSCode‑Grammatik liegt im Repo unter `syntaxes/aurum.tmLanguage.json`. Sie deckt Keywords, Typen, Literale, Kommentare und grundlegende Konstrukte ab und wird iterativ verfeinert.
+- Kurzfristig wird ein pragmatisches Mapping per `.gitattributes` genutzt, damit GitHub‑Highlighting sofort sichtbar ist: `*.au linguist-language=Rust` (Fallback).
+- Ziel: Contribution zur GitHub‑Linguist‑Bibliothek mit einer finalen TextMate‑Grammatik, damit `.au`‑Dateien nativ auf GitHub hervorgehoben werden.
+
+Hinweis zum Testen lokal (VSCode)
+- Öffne das Repo in VSCode und nutze den "Extension Development Host", um `syntaxes/aurum.tmLanguage.json` zu laden.
+- Mit "Developer: Inspect TM Scopes" kannst du Token‑Scopes prüfen.
 
 ## Grammatik (EBNF)
 
