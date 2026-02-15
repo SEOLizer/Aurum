@@ -1677,17 +1677,7 @@ begin
        instrVA := codeVA + leaPos + 7;
        dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + FStringOffsets[sidx];
        disp32 := Int64(dataVA) - Int64(instrVA);
-       // log lea patch for debugging
-       try
-         AssignFile(lf, '/tmp/emitter_patch_log.txt');
-         if FileExists('/tmp/emitter_patch_log.txt') then Append(lf) else Rewrite(lf);
-         try
-           WriteLn(lf, Format('LEA_PATCH pos=%d strIndex=%d instrVA=0x%x dataVA=0x%x disp32=%d (0x%x)', [leaPos, sidx, instrVA, dataVA, disp32, Cardinal(disp32)]));
-         finally
-           CloseFile(lf);
-         end;
-       except end;
-       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
+        FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
      end;
   end;
 
@@ -1701,16 +1691,6 @@ begin
       instrVA := codeVA + leaPos + 7;
       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + bufferOffset;
       disp32 := Int64(dataVA) - Int64(instrVA);
-      // log buffer lea patch
-      try
-        AssignFile(lf, '/tmp/emitter_patch_log.txt');
-        if FileExists('/tmp/emitter_patch_log.txt') then Append(lf) else Rewrite(lf);
-        try
-          WriteLn(lf, Format('BUF_LEA_PATCH pos=%d instrVA=0x%x dataVA=0x%x disp32=%d (0x%x)', [leaPos, instrVA, dataVA, disp32, Cardinal(disp32)]));
-        finally
-          CloseFile(lf);
-        end;
-      except end;
       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
     end;
   end;
@@ -1725,16 +1705,6 @@ begin
       instrVA := codeVA + leaPos + 7;
       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + envOffset;
       disp32 := Int64(dataVA) - Int64(instrVA);
-      // log env lea patch
-      try
-        AssignFile(lf, '/tmp/emitter_patch_log.txt');
-        if FileExists('/tmp/emitter_patch_log.txt') then Append(lf) else Rewrite(lf);
-        try
-          WriteLn(lf, Format('ENV_LEA_PATCH pos=%d instrVA=0x%x dataVA=0x%x disp32=%d (0x%x)', [leaPos, instrVA, dataVA, disp32, Cardinal(disp32)]));
-        finally
-          CloseFile(lf);
-        end;
-      except end;
       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
     end;
   end;
@@ -1756,29 +1726,6 @@ begin
     begin
       jmpPos := FJumpPatches[i].Pos;
       rel32 := Int64(targetPos) - Int64(jmpPos + FJumpPatches[i].JmpSize);
-
-      // detailed patch logging for debugging
-      try
-        AssignFile(lf, '/tmp/emitter_patch_log.txt');
-        if FileExists('/tmp/emitter_patch_log.txt') then Append(lf) else Rewrite(lf);
-        try
-          WriteLn(lf, Format('PATCH idx=%d jmpPos=%d label=%s targetPos=%d jmpSize=%d rel32=%d',
-            [i, jmpPos, FJumpPatches[i].LabelName, targetPos, FJumpPatches[i].JmpSize, rel32]));
-          // dump nearby bytes
-          startOff := jmpPos - 8;
-          if startOff < 0 then startOff := 0;
-          endOff := jmpPos + 16;
-          if endOff > FCode.Size - 1 then endOff := FCode.Size - 1;
-          sBytes := '';
-          for off := startOff to endOff do
-            sBytes := sBytes + Format('%02x ', [FCode.ReadU8(off)]);
-          WriteLn(lf, Format('BYTES @%d..%d: %s', [startOff, endOff, sBytes]));
-        finally
-          CloseFile(lf);
-        end;
-      except
-        // ignore logging errors
-      end;
 
       if FJumpPatches[i].JmpSize = 5 then
         FCode.PatchU32LE(jmpPos + 1, Cardinal(rel32)) // jmp rel32: opcode at pos, rel32 at pos+1
