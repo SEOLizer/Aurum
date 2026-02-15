@@ -1,0 +1,11 @@
+con LIMIT: int64 := 5;
+con NL: pchar := "\n";
+
+fn main(): int64 {
+  var i: int64 := 0;
+  let x: int64 := LIMIT;
+  co start: int64 := 1;
+  print_int(i);
+  print_str(NL);
+  return 0;
+}

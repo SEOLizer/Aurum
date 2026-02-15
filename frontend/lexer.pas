@@ -14,7 +14,7 @@ type
     // Keywords
     tkFn, tkVar, tkLet, tkCo, tkCon,
     tkIf, tkElse, tkWhile, tkReturn,
-    tkTrue, tkFalse, tkExtern,
+    tkTrue, tkFalse, tkExtern, tkCase, tkSwitch, tkBreak, tkDefault,
     // Operatoren
     tkPlus, tkMinus, tkStar, tkSlash, tkPercent,
     tkAssign,
@@ -89,6 +89,10 @@ begin
     tkTrue:      Result := 'true';
     tkFalse:     Result := 'false';
     tkExtern:    Result := 'extern';
+    tkCase:      Result := 'case';
+    tkSwitch:    Result := 'switch';
+    tkBreak:     Result := 'break';
+    tkDefault:   Result := 'default';
     tkPlus:      Result := '+';
     tkMinus:     Result := '-';
     tkStar:      Result := '*';
@@ -305,6 +309,10 @@ begin
     'true':   Result := tkTrue;
     'false':  Result := tkFalse;
     'extern': Result := tkExtern;
+    'case':   Result := tkCase;
+    'switch': Result := tkSwitch;
+    'break':  Result := tkBreak;
+    'default':Result := tkDefault;
   else
     Result := tkIdent;
   end;

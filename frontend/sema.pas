@@ -294,6 +294,9 @@ var
   s: TSymbol;
   sym: TSymbol;
   vtype, ctype, rtype: TAurumType;
+  sw: TAstSwitch;
+  caseVal: TAstExpr;
+  cvtype: TAurumType;
 begin
   if stmt = nil then Exit;
 
@@ -382,6 +385,37 @@ begin
         begin
           if not TypeEqual(FCurrentReturn, atVoid) then
             FDiag.Error('missing return value for non-void function', ret.Span);
+        end;
+      end;
+    nkBreak:
+      begin
+        // break allowed in switch/while; semantic check for presence of enclosing loop/switch omitted for simplicity
+        Exit;
+      end;
+    nkSwitch:
+      begin
+        // switch statement
+        sw := TAstSwitch(stmt);
+        ctype := CheckExpr(sw.Expr);
+        if not TypeEqual(ctype, atInt64) then
+          FDiag.Error('switch expression must be int64', sw.Expr.Span);
+        // check cases
+        for i := 0 to High(sw.Cases) do
+        begin
+          // case value must be constant int
+          caseVal := sw.Cases[i].Value;
+          cvtype := CheckExpr(caseVal);
+          if not TypeEqual(cvtype, atInt64) then
+            FDiag.Error('case label must be int64', caseVal.Span);
+          PushScope;
+          CheckStmt(sw.Cases[i].Body);
+          PopScope;
+        end;
+        if Assigned(sw.Default) then
+        begin
+          PushScope;
+          CheckStmt(sw.Default);
+          PopScope;
         end;
       end;
     nkBlock:

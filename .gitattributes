@@ -1,0 +1,3 @@
+# Linguist mappings
+# Map Aurum source files to Rust highlighting as a pragmatic fallback until an upstream grammar is merged.
+*.au linguist-language=Rust

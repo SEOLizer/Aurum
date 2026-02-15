@@ -23,7 +23,7 @@ type
     nkIntLit, nkStrLit, nkBoolLit, nkIdent,
     nkBinOp, nkUnaryOp, nkCall,
     // Statements
-    nkVarDecl, nkAssign, nkIf, nkWhile, nkReturn,
+    nkVarDecl, nkAssign, nkIf, nkWhile, nkReturn, nkBreak, nkSwitch,
     nkBlock, nkExprStmt,
     // Top-Level
     nkFuncDecl, nkConDecl, nkProgram
@@ -197,6 +197,36 @@ type
     property ElseBranch: TAstStmt read FElseBranch;
   end;
 
+  { Break-Statement: break; }
+  TAstBreak = class(TAstStmt)
+  public
+    constructor Create(aSpan: TSourceSpan);
+  end;
+
+  { Switch-Statement: switch (expr) { case val: stmt ... default: stmt }
+    Cases are modelled as array of (ValueExpr, BodyStmt) }
+  TAstCase = class
+  public
+    Value: TAstExpr;
+    Body: TAstStmt;
+    constructor Create(aValue: TAstExpr; aBody: TAstStmt);
+    destructor Destroy; override;
+  end;
+  TAstCaseList = array of TAstCase;
+
+  TAstSwitch = class(TAstStmt)
+  private
+    FExpr: TAstExpr;
+    FCases: TAstCaseList;
+    FDefault: TAstStmt;
+  public
+    constructor Create(aExpr: TAstExpr; const aCases: TAstCaseList; aDefault: TAstStmt; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property Expr: TAstExpr read FExpr;
+    property Cases: TAstCaseList read FCases;
+    property Default: TAstStmt read FDefault;
+  end;
+
   { While-Statement: while (cond) body }
   TAstWhile = class(TAstStmt)
   private
@@ -320,9 +350,11 @@ function StrToAurumType(const s: string): TAurumType;
 begin
   case s of
     'int64': Result := atInt64;
+    'int':   Result := atInt64; // alias
     'bool':  Result := atBool;
     'void':  Result := atVoid;
     'pchar': Result := atPChar;
+    'string': Result := atPChar; // map string to pchar for now
   else
     Result := atUnresolved;
   end;
@@ -353,6 +385,8 @@ begin
     nkIf:        Result := 'If';
     nkWhile:     Result := 'While';
     nkReturn:    Result := 'Return';
+    nkBreak:     Result := 'Break';
+    nkSwitch:    Result := 'Switch';
     nkBlock:     Result := 'Block';
     nkExprStmt:  Result := 'ExprStmt';
     nkFuncDecl:  Result := 'FuncDecl';
@@ -556,6 +590,49 @@ begin
   FCond.Free;
   FThenBranch.Free;
   FElseBranch.Free; // nil.Free ist sicher in FPC
+  inherited Destroy;
+end;
+
+{ TAstBreak }
+constructor TAstBreak.Create(aSpan: TSourceSpan);
+begin
+  inherited Create(nkBreak, aSpan);
+end;
+
+{ TAstSwitch }
+constructor TAstSwitch.Create(aExpr: TAstExpr; const aCases: TAstCaseList; aDefault: TAstStmt; aSpan: TSourceSpan);
+begin
+  inherited Create(nkSwitch, aSpan);
+  FExpr := aExpr;
+  FCases := aCases;
+  FDefault := aDefault;
+end;
+
+destructor TAstSwitch.Destroy;
+var i: Integer;
+begin
+  FExpr.Free;
+  for i := 0 to High(FCases) do
+  begin
+    FCases[i].Free;
+  end;
+  SetLength(FCases, 0);
+  FDefault.Free;
+  inherited Destroy;
+end;
+
+{ TAstCase }
+constructor TAstCase.Create(aValue: TAstExpr; aBody: TAstStmt);
+begin
+  inherited Create;
+  Value := aValue;
+  Body := aBody;
+end;
+
+destructor TAstCase.Destroy;
+begin
+  Value.Free;
+  Body.Free;
   inherited Destroy;
 end;
 

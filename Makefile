@@ -30,6 +30,11 @@ test: $(TESTS)
 	if [ $$fail -eq 1 ]; then echo "FEHLER: Einige Tests fehlgeschlagen"; exit 1; fi; \
 	echo "=== Alle Tests bestanden ==="
 
+.PHONY: syntax-test
+syntax-test:
+	@echo "=== Syntax Grammar Tests ==="
+	@tests/syntax/test_grammar.sh
+
 tests/test_%: tests/test_%.pas
 	@mkdir -p lib
 	$(FPC) $(FPCFLAGS) $(DEBUG_FLAGS) $< -o$@
