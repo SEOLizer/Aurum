@@ -607,16 +607,17 @@ begin
       if decl is TAstFuncDecl then
       begin
         fn := TAstFuncDecl(decl);
-        // Prüfe ob Funktion public ist (IsPublic Property existiert im AST)
-        // Für jetzt importieren wir alle Funktionen
-        
+        // Nur öffentliche Funktionen importieren
+        if not fn.IsPublic then
+          Continue;
+
         // Prüfe auf Konflikte
         if ResolveSymbol(fn.Name) <> nil then
         begin
           FDiag.Error('import conflicts with existing symbol: ' + fn.Name, imp.Span);
           Continue;
         end;
-        
+
         sym := TSymbol.Create(fn.Name);
         sym.Kind := symFunc;
         sym.DeclType := fn.ReturnType;

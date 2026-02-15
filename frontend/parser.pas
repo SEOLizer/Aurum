@@ -214,7 +214,7 @@ begin
     retType := atVoid; // default
 
   body := ParseBlock;
-  Result := TAstFuncDecl.Create(name, params, retType, body, FCurTok.Span);
+  Result := TAstFuncDecl.Create(name, params, retType, body, FCurTok.Span, isPub);
 end;
 
 function TParser.ParseConDecl(isPub: Boolean): TAstConDecl;

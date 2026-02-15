@@ -365,21 +365,23 @@ type
   end;
   TAstParamList = array of TAstParam;
 
-  // Funktionsdeklaration: fn name(params): retType { body }
+  // Funktionsdeklaration: [pub] fn name(params): retType { body }
   TAstFuncDecl = class(TAstNode)
   private
     FName: string;
     FParams: TAstParamList;
     FReturnType: TAurumType;
     FBody: TAstBlock;
+    FIsPublic: Boolean;
   public
     constructor Create(const aName: string; const aParams: TAstParamList;
-      aReturnType: TAurumType; aBody: TAstBlock; aSpan: TSourceSpan);
+      aReturnType: TAurumType; aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False);
     destructor Destroy; override;
     property Name: string read FName;
     property Params: TAstParamList read FParams;
     property ReturnType: TAurumType read FReturnType;
     property Body: TAstBlock read FBody;
+    property IsPublic: Boolean read FIsPublic;
   end;
 
   { Con-Deklaration (Top-Level): con NAME: type := constExpr; }
@@ -1001,13 +1003,14 @@ end;
 
 constructor TAstFuncDecl.Create(const aName: string;
   const aParams: TAstParamList; aReturnType: TAurumType;
-  aBody: TAstBlock; aSpan: TSourceSpan);
+  aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False);
 begin
   inherited Create(nkFuncDecl, aSpan);
   FName := aName;
   FParams := aParams;
   FReturnType := aReturnType;
   FBody := aBody;
+  FIsPublic := aIsPublic;
 end;
 
 destructor TAstFuncDecl.Destroy;

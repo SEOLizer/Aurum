@@ -1,0 +1,9 @@
+// Test: private functions should not be accessible
+
+import test.math;
+
+fn main(): int64 {
+    // private_helper is not marked as pub, so this should fail
+    var x: int64 := private_helper();
+    return 0;
+}

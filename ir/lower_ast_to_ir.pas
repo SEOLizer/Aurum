@@ -239,6 +239,10 @@ begin
       node := unitAST.Decls[j];
       if node is TAstFuncDecl then
       begin
+        // Only lower public functions from imported units
+        if not TAstFuncDecl(node).IsPublic then
+          Continue;
+
         // Check if function already exists (avoid duplicates)
         fn := FModule.FindFunction(TAstFuncDecl(node).Name);
         if not Assigned(fn) then
