@@ -1,0 +1,20 @@
+// std/io.au
+// Einfache I/O-Wrapper um vorhandene builtins (print_str, print_int, exit)
+
+pub fn print(s: pchar): void {
+  print_str(s);
+}
+
+pub fn println(s: pchar): void {
+  print_str(s);
+  print_str("\n");
+}
+
+pub fn print_intln(x: int64): void {
+  print_int(x);
+  print_str("\n");
+}
+
+pub fn exit_proc(code: int64): void {
+  exit(code);
+}

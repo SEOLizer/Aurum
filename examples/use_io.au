@@ -1,0 +1,8 @@
+// examples/use_io.au
+import std.io;
+
+fn main(): int64 {
+  println("hello from std.io");
+  print_intln(42);
+  return 0;
+}
