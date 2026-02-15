@@ -1,0 +1,27 @@
+<application>
+  <component name="LangManager">
+    <option name="languageName" value="JAVA" />
+  </component>
+  <component name="NotRoamableUiSettings">
+    <option name="presentationModeIdeScale" value="1.75" />
+  </component>
+  <component name="PropertyService"><![CDATA[{
+  "keyToString": {
+    "LAST_EXTRACTOR_SCRIPTS_CLEANUP_VERSION/data/aggregators": "IU-243.21565.193",
+    "fileTypeChangedCounter": "1",
+    "migrated.non.roamable.values.from.general.settings": "true"
+  },
+  "keyToStringList": {
+    "fileTypeDetectors": [
+      "com.intellij.ide.scratch.ScratchFileServiceImpl$Detector",
+      "com.intellij.profiler.ultimate.hprof.impl.HprofFileTypeDetector",
+      "com.intellij.docker.dockerFile.DockerFileTypeDetector",
+      "com.intellij.javascript.debugger.sourcemap.SourceMapFileType$MyFileTypeDetector",
+      "com.intellij.database.vfs.DbStorageFileType$Detector",
+      "com.jetbrains.nodejs.util.NodeFileTypeDetector$JavaScriptFileTypeDetector",
+      "com.jetbrains.nodejs.util.NodeFileTypeDetector$TypeScriptFileTypeDetector",
+      "org.jetbrains.plugins.textmate.TextMateFileType$TextMateFileDetector"
+    ]
+  }
+}]]></component>
+</application>

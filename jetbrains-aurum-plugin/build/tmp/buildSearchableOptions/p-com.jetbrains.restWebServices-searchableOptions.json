@@ -1,0 +1,2 @@
+{"id":"preferences.keymap","name":"|b|messages.KeyMapBundle|k|keymap.display.name|","entries":[{"hit":"|b|messages.RSBundle|k|restful.client.service.display.name|","path":"ActionManager"},{"hit":"|b|messages.RSBundle|k|restful.service.display.name|","path":"ActionManager"}]}
+{"id":"fileTemplates","name":"|b|messages.IdeBundle|k|title.file.templates|","entries":[{"hit":"JAX-RS Client"},{"hit":"JAX-RS Resource"},{"hit":"rest.cxf.webservice"},{"hit":"rest.cxf.webservice.interface"}]}
