@@ -4,7 +4,7 @@ unit sema;
 interface
 
 uses
-  SysUtils, Classes, ast, diag, lexer;
+  SysUtils, Classes, ast, diag, lexer, unit_manager;
 
 type
   TSymbolKind = (symVar, symLet, symCon, symFunc);
@@ -26,16 +26,22 @@ type
     FDiag: TDiagnostics;
     FScopes: array of TStringList; // each contains name -> TSymbol as object
     FCurrentReturn: TAurumType;
+    FUnitManager: TUnitManager;
+    FImportedUnits: TStringList; // Alias -> UnitPath for resolving qualified names
     procedure PushScope;
     procedure PopScope;
     procedure AddSymbolToCurrent(sym: TSymbol; span: TSourceSpan);
     function ResolveSymbol(const name: string): TSymbol;
+    function ResolveQualifiedName(const qualifier, name: string; span: TSourceSpan): TSymbol;
     procedure DeclareBuiltinFunctions;
+    procedure ProcessImports(prog: TAstProgram);
+    procedure ImportUnit(imp: TAstImportDecl);
     function TypeEqual(a, b: TAurumType): Boolean;
     function CheckExpr(expr: TAstExpr): TAurumType;
     procedure CheckStmt(stmt: TAstStmt);
   public
-    constructor Create(d: TDiagnostics);
+    constructor Create(d: TDiagnostics; um: TUnitManager);
+    destructor Destroy; override;
     procedure Analyze(prog: TAstProgram);
   end;
 
@@ -514,15 +520,166 @@ begin
   end;
 end;
 
-constructor TSema.Create(d: TDiagnostics);
+constructor TSema.Create(d: TDiagnostics; um: TUnitManager);
 begin
   inherited Create;
   FDiag := d;
+  FUnitManager := um;
+  FImportedUnits := TStringList.Create;
+  FImportedUnits.Sorted := False;
   SetLength(FScopes, 0);
   // create global scope
   PushScope;
   DeclareBuiltinFunctions;
   FCurrentReturn := atVoid;
+end;
+
+destructor TSema.Destroy;
+var
+  i: Integer;
+begin
+  // Nur das StringList freigeben, nicht die referenzierten Units
+  // (die gehören dem UnitManager)
+  if Assigned(FImportedUnits) then
+    FImportedUnits.Free;
+  inherited Destroy;
+end;
+
+procedure TSema.ProcessImports(prog: TAstProgram);
+{ Verarbeitet alle Import-Deklarationen im Programm }
+var
+  i: Integer;
+  decl: TAstNode;
+begin
+  if not Assigned(prog) then Exit;
+  
+  for i := 0 to High(prog.Decls) do
+  begin
+    decl := prog.Decls[i];
+    if decl is TAstImportDecl then
+      ImportUnit(TAstImportDecl(decl));
+  end;
+end;
+
+procedure TSema.ImportUnit(imp: TAstImportDecl);
+{ Importiert eine Unit und registriert ihre Symbole }
+var
+  upath: string;
+  loadedUnit: TLoadedUnit;
+  alias: string;
+  i, j: Integer;
+  decl: TAstNode;
+  fn: TAstFuncDecl;
+  sym: TSymbol;
+begin
+  upath := imp.UnitPath;
+  alias := imp.Alias;
+
+  // Unit muss bereits vom UnitManager geladen sein
+  if not Assigned(FUnitManager) then
+  begin
+    FDiag.Error('internal error: no unit manager', imp.Span);
+    Exit;
+  end;
+
+  loadedUnit := FUnitManager.FindUnit(upath);
+  if not Assigned(loadedUnit) then
+  begin
+    FDiag.Error('unit not loaded: ' + upath, imp.Span);
+    Exit;
+  end;
+
+  // Registriere Alias für qualifizierte Zugriffe
+  if alias = '' then
+    alias := ExtractFileName(StringReplace(upath, '.', '/', [rfReplaceAll]));
+  if not Assigned(FImportedUnits) then
+    FImportedUnits := TStringList.Create;
+  FImportedUnits.AddObject(alias, TObject(loadedUnit));
+  
+  // Importiere öffentliche Symbole (pub) in den globalen Scope
+  if Assigned(loadedUnit.AST) then
+  begin
+    for i := 0 to High(loadedUnit.AST.Decls) do
+    begin
+      decl := loadedUnit.AST.Decls[i];
+      
+      // Nur Funktionen für jetzt (später auch Variablen/Types)
+      if decl is TAstFuncDecl then
+      begin
+        fn := TAstFuncDecl(decl);
+        // Nur öffentliche Funktionen importieren
+        if not fn.IsPublic then
+          Continue;
+
+        // Prüfe auf Konflikte
+        if ResolveSymbol(fn.Name) <> nil then
+        begin
+          FDiag.Error('import conflicts with existing symbol: ' + fn.Name, imp.Span);
+          Continue;
+        end;
+
+        sym := TSymbol.Create(fn.Name);
+        sym.Kind := symFunc;
+        sym.DeclType := fn.ReturnType;
+        sym.ParamCount := Length(fn.Params);
+        SetLength(sym.ParamTypes, sym.ParamCount);
+        for j := 0 to sym.ParamCount - 1 do
+          sym.ParamTypes[j] := fn.Params[j].ParamType;
+        AddSymbolToCurrent(sym, fn.Span);
+      end;
+    end;
+  end;
+end;
+
+function TSema.ResolveQualifiedName(const qualifier, name: string; span: TSourceSpan): TSymbol;
+{ Löst einen qualifizierten Namen (z.B. "io.print") auf }
+var
+  idx: Integer;
+  loadedUnit: TLoadedUnit;
+  i, j: Integer;
+  decl: TAstNode;
+  fn: TAstFuncDecl;
+begin
+  Result := nil;
+  
+  // Finde Unit mit diesem Alias
+  idx := FImportedUnits.IndexOf(qualifier);
+  if idx < 0 then
+  begin
+    FDiag.Error('unknown module alias: ' + qualifier, span);
+    Exit;
+  end;
+  
+  loadedUnit := TLoadedUnit(FImportedUnits.Objects[idx]);
+  if not Assigned(loadedUnit.AST) then
+  begin
+    FDiag.Error('unit has no AST: ' + qualifier, span);
+    Exit;
+  end;
+  
+  // Suche Symbol in der Unit
+  for i := 0 to High(loadedUnit.AST.Decls) do
+  begin
+    decl := loadedUnit.AST.Decls[i];
+    if decl is TAstFuncDecl then
+    begin
+      fn := TAstFuncDecl(decl);
+      if fn.Name = name then
+      begin
+        Result := TSymbol.Create(name);
+        Result.Kind := symFunc;
+        Result.DeclType := fn.ReturnType;
+        Result.ParamCount := Length(fn.Params);
+        SetLength(Result.ParamTypes, Result.ParamCount);
+        for j := 0 to Result.ParamCount - 1 do
+          Result.ParamTypes[j] := fn.Params[j].ParamType;
+        Exit;
+      end;
+    end;
+  end;
+  
+  if Result = nil then
+    FDiag.Error('symbol not found in module ' + qualifier + ': ' + name, span);
 end;
 
 procedure TSema.Analyze(prog: TAstProgram);
@@ -535,6 +692,9 @@ var
   sym: TSymbol;
   itype: TAurumType;
 begin
+  // Phase 0: Verarbeite Imports
+  ProcessImports(prog);
+  
   // First pass: register top-level functions and constants
   for i := 0 to High(prog.Decls) do
   begin
