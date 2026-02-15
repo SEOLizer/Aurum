@@ -49,7 +49,7 @@
           "patterns": [
             {
               "name": "constant.character.escape.aurum",
-              "match": "\\\\(n|r|t|\\\\|\"|0)"
+              "match": "\\\\(n|r|t|\\\\|\\\"|0)"
             }
           ]
         }
@@ -59,7 +59,7 @@
       "patterns": [
         {
           "name": "constant.numeric.integer.aurum",
-          "match": "\b-?[0-9]+\b"
+          "match": "\\b-?[0-9]+\\b"
         }
       ]
     },
@@ -67,7 +67,7 @@
       "patterns": [
         {
           "name": "keyword.control.aurum",
-          "match": "\b(fn|var|let|co|con|if|else|while|return|true|false|extern)\b"
+          "match": "\\b(fn|var|let|co|con|if|else|while|return|true|false|extern)\\b"
         }
       ]
     },
@@ -75,7 +75,7 @@
       "patterns": [
         {
           "name": "storage.type.aurum",
-          "match": "\b(int64|bool|void|pchar)\b"
+          "match": "\\b(int64|bool|void|pchar)\\b"
         }
       ]
     },
@@ -83,7 +83,7 @@
       "patterns": [
         {
           "name": "storage.modifier.aurum",
-          "match": "\b(var|let|co|con)\b"
+          "match": "\\b(var|let|co|con)\\b"
         }
       ]
     },
@@ -91,7 +91,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.aurum",
-          "match": "\b(print_str|print_int|exit)\b"
+          "match": "\\b(print_str|print_int|exit)\\b"
         }
       ]
     },
@@ -107,7 +107,7 @@
       "patterns": [
         {
           "name": "keyword.operator.aurum",
-          "match": ":=|==|!=|<=|>=|&&|\|\||!|\+|\-|\*|/|%|<|>"
+          "match": ":=|==|!=|<=|>=|&&|\\|\\||!|\\+|\\-|\\*|/|%|<|>"
         },
         {
           "name": "punctuation.aurum",
@@ -119,7 +119,7 @@
       "patterns": [
         {
           "name": "variable.other.aurum",
-          "match": "\b[A-Za-z_][A-Za-z0-9_]*\b"
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
         }
       ]
     }
