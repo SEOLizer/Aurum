@@ -25,8 +25,8 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 * **Int64**: Dezimal: `0` oder `[1-9][0-9]*` (optional führendes `-` als unary operator)
 * **Stringliteral**: `" ... "` mit Escapes:
 
-    * `\n`, `\r`, `\t`, `\\`, `\"`, `\0`
-    * Ergebnis ist **nullterminiert** im `.rodata`
+  * `\n`, `\r`, `\t`, `\\`, `\"`, `\0`
+  * Ergebnis ist **nullterminiert** im `.rodata`
 
 ### Keywords (reserviert)
 
@@ -46,16 +46,24 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 
 ### Primitive Typen
 
-* `int64`  (signed 64-bit)
+* `int64`  (signed 64-bit, bestehender Haupttyp)
+* `int8`, `int16`, `int32`, `int64`  (signed Integer-Familie, Kurzform: **int**)
+* `uint8`, `uint16`, `uint32`, `uint64`  (unsigned Integer-Familie, Kurzform: **uint**)
 * `bool`   (`true` / `false`)
 * `void`   (nur als Funktionsrückgabetyp)
 * `pchar`  (Pointer, 64-bit; bei Stringliteralen: Adresse auf nullterminierte Bytes)
+
+### Namensregeln
+
+* Signed Integers verwenden das Präfix `int`.
+* Unsigned Integers verwenden das Präfix `uin` (nicht `u`).
+* `int64` bleibt der primäre Standard-Integer der Sprache.
 
 ### Typregeln (v0.1)
 
 * `if`/`while` Bedingungen müssen **bool** sein.
 * Vergleichsoperatoren liefern **bool**.
-* Arithmetikoperatoren arbeiten auf **int64**.
+* Arithmetikoperatoren arbeiten auf Integer-Typen gleicher Breite; implizites Widening zu größeren `int`-Typen ist erlaubt.
 * Logikoperatoren `&&`, `||`, `!` arbeiten auf **bool**; `&&`/`||` sind **short-circuit**.
 * `pchar` ist nur minimal unterstützt (Stringliterale + Übergabe an Builtins).
 
@@ -109,8 +117,8 @@ Minimaler Bootstrap (falls du `print_int` erst später willst):
 
 * Compiler generiert `_start`:
 
-    * ruft `main()`
-    * ruft `exit(rax)`
+  * ruft `main()`
+  * ruft `exit(rax)`
 
 ---
 
