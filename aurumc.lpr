@@ -23,7 +23,6 @@ var
   emit: TX86_64Emitter;
   codeBuf, dataBuf: TByteBuffer;
   entryVA: UInt64;
-  entryOffset: Integer;
   basePath: string;
 begin
   if ParamCount < 1 then
