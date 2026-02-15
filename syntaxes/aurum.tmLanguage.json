@@ -9,6 +9,7 @@
     { "include": "#types" },
     { "include": "#storage" },
     { "include": "#builtins" },
+    { "include": "#declarations" },
     { "include": "#functions" },
     { "include": "#operators" },
     { "include": "#identifiers" }
@@ -67,7 +68,7 @@
       "patterns": [
         {
           "name": "keyword.control.aurum",
-          "match": "\\b(fn|var|let|co|con|if|else|while|return|true|false|extern)\\b"
+          "match": "\\b(fn|var|let|co|con|if|else|while|return|true|false|extern|case|switch|break|default)\\b"
         }
       ]
     },
@@ -75,7 +76,7 @@
       "patterns": [
         {
           "name": "storage.type.aurum",
-          "match": "\\b(int64|bool|void|pchar)\\b"
+          "match": "\\b(int8|int16|int32|int64|int|bool|void|pchar|string)\\b"
         }
       ]
     },
@@ -84,6 +85,14 @@
         {
           "name": "storage.modifier.aurum",
           "match": "\\b(var|let|co|con)\\b"
+        },
+        {
+          "name": "meta.declaration.variable.aurum",
+          "match": "\\b(var|let|co)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "storage.modifier.aurum" },
+            "2": { "name": "entity.name.variable.aurum" }
+          }
         }
       ]
     },
@@ -92,6 +101,25 @@
         {
           "name": "support.function.builtin.aurum",
           "match": "\\b(print_str|print_int|exit)\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "meta.declaration.constant.aurum",
+          "begin": "\\bcon\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*(int8|int16|int32|int64|int|bool|void|pchar|string)\\s*:=\\s*",
+          "beginCaptures": {
+            "0": { "name": "keyword.declaration.con.aurum" },
+            "1": { "name": "entity.name.constant.aurum" },
+            "2": { "name": "storage.type.aurum" }
+          },
+          "end": ";",
+          "patterns": [
+            { "include": "#strings" },
+            { "include": "#numbers" },
+            { "include": "#keywords" }
+          ]
         }
       ]
     },

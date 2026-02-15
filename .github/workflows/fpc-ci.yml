@@ -2,7 +2,7 @@ name: FPC CI
 
 on:
   push:
-    branches: [ main, feat/tests/if-parser ]
+    branches: [ main, feat/tests/if-parser, feat/syntax/aurum-grammar ]
   pull_request:
     branches: [ main ]
 
@@ -26,3 +26,4 @@ jobs:
         run: |
           set -e
           make test
+          make syntax-test
