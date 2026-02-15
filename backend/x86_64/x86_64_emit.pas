@@ -843,7 +843,7 @@ begin
 
                // sign handling: support negative values (set RBX=1 if negative, and negate RAX)
                WriteMovRegImm64(FCode, RBX, 0);
-               EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F8); EmitU8(0); // cmp rax,0
+               EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F8); EmitU8(FCode, 0); // cmp rax,0
                nonZeroPos := FCode.Size;
                WriteJgeRel32(FCode, 0);
                // negative: neg rax ; set sign flag RBX = 1
