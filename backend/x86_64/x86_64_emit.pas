@@ -157,8 +157,13 @@ procedure WriteJneRel32(buf: TByteBuffer; rel32: Cardinal);
 begin EmitU8(buf,$0F); EmitU8(buf,$85); EmitU32(buf, rel32); end;
 procedure WriteJgeRel32(buf: TByteBuffer; rel32: Cardinal);
 begin EmitU8(buf,$0F); EmitU8(buf,$8D); EmitU32(buf, rel32); end;
+
+procedure WriteJleRel32(buf: TByteBuffer; rel32: Cardinal);
+begin EmitU8(buf,$0F); EmitU8(buf,$8E); EmitU32(buf, rel32); end;
+
 procedure WriteJmpRel32(buf: TByteBuffer; rel32: Cardinal);
 begin EmitU8(buf,$E9); EmitU32(buf, rel32); end;
+
 
 procedure WriteDecReg(buf: TByteBuffer; reg: Byte);
 begin
@@ -305,8 +310,9 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   envOffset: UInt64;
   envLeaPositions: array of Integer;
   len: Integer;
-  nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
-  targetPos, jmpPos: Integer;
+   nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
+   targetPos, jmpPos: Integer;
+   jmpAfterPadPos: Integer;
   // for call/abi
   argCount: Integer;
   argTemps: array of Integer;
