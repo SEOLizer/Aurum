@@ -1,0 +1,24 @@
+// examples/use_time_format.au
+// Einfaches Beispiel zur Demonstration der numerischen Datumsfunktionen
+
+fn main(argc: int64, argv: pchar): int64 {
+  // Beispiel: 2026-02-15
+  let y: int64 := 2026;
+  let m: int64 := 2;
+  let d: int64 := 15;
+
+  // Berechnungen
+  let days: int64 := days_from_civil(y, m, d);
+  let doy: int64 := day_of_year(y, m, d);
+  let w: int64 := weekday(y, m, d); // 0=Mon
+
+  print_str("Date info:\n");
+  print_str("year: "); print_int(y); print_str("\n");
+  print_str("month: "); print_int(m); print_str("\n");
+  print_str("day: "); print_int(d); print_str("\n");
+  print_str("days since epoch: "); print_int(days); print_str("\n");
+  print_str("day of year: "); print_int(doy); print_str("\n");
+  print_str("weekday (0=Mon): "); print_int(w); print_str("\n");
+
+  return 0;
+}
