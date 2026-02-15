@@ -1,0 +1,8 @@
+pub fn main(): int64 {
+  // Test itoa_to_buf with negative value, minWidth=5, padZero=1 -> expect "-00042"
+  var r: int64 := itoa_to_buf(-42, STATIC_FMT_BUF, 0, 512, 5, 1);
+  if r < 0 { print_str("ERR\n"); return 1; }
+  buf_put_byte(STATIC_FMT_BUF, r, 0);
+  print_str(STATIC_FMT_BUF);
+  return 0;
+}
