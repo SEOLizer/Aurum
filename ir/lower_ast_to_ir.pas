@@ -463,6 +463,45 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
   if stmt is TAstVarDecl then
   begin
     loc := AllocLocal(TAstVarDecl(stmt).Name, TAstVarDecl(stmt).DeclType);
+    // If initializer is constant integer and the local has narrower signed width, constant fold
+    if (TAstVarDecl(stmt).InitExpr is TAstIntLit) then
+    begin
+      var lit := TAstIntLit(TAstVarDecl(stmt).InitExpr).Value;
+      ltype := GetLocalType(loc);
+      if (ltype <> atUnresolved) and (ltype <> atInt64) then
+      begin
+        // determine width in bits
+        width := 64;
+        case ltype of
+          atInt8, atUInt8: width := 8;
+          atInt16, atUInt16: width := 16;
+          atInt32, atUInt32: width := 32;
+          atInt64, atUInt64: width := 64;
+        end;
+        var mask := (UInt64(1) shl width) - 1;
+        var truncated := UInt64(lit) and mask;
+        if (ltype in [atInt8, atInt16, atInt32, atInt64]) then
+        begin
+          // signed interpretation
+          var half := UInt64(1) shl (width - 1);
+          var signedVal: Int64;
+          if truncated >= half then
+            signedVal := Int64(truncated - (UInt64(1) shl width))
+          else
+            signedVal := Int64(truncated);
+          tmp := NewTemp;
+          instr.Op := irConstInt; instr.Dest := tmp; instr.ImmInt := signedVal; Emit(instr);
+        end
+        else
+        begin
+          // unsigned: store zero-extended value
+          tmp := NewTemp;
+          instr.Op := irConstInt; instr.Dest := tmp; instr.ImmInt := Int64(truncated); Emit(instr);
+        end;
+        instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := tmp; Emit(instr);
+        Exit(True);
+      end;
+    end;
     tmp := LowerExpr(TAstVarDecl(stmt).InitExpr);
     // If local has narrower integer width, truncate before store
     ltype := GetLocalType(loc);

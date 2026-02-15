@@ -317,6 +317,7 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   sBytes: string;
   // integer width helpers
   mask64: UInt64;
+  sh: Integer;
 begin
   // reset patch arrays
   SetLength(FLeaPositions, 0);
@@ -577,21 +578,22 @@ begin
              slotIdx := localCnt + instr.Dest;
              WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
            end;
-         irSExt:
-           begin
-             // sign-extend src1 (width in ImmInt) into dest
-             slotIdx := localCnt + instr.Src1;
-             // load into RAX as appropriate
-             case instr.ImmInt of
-               8: WriteMovSxRegMem8(FCode, RAX, RBP, SlotOffset(slotIdx));
-               16: WriteMovSxRegMem16(FCode, RAX, RBP, SlotOffset(slotIdx));
-               32: WriteMovSxRegMem32(FCode, RAX, RBP, SlotOffset(slotIdx));
-             else
-               // default: just mov 64-bit
-               WriteMovRegMem(FCode, RAX, RBP, SlotOffset(slotIdx));
-             end;
-             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
-           end;
+          irSExt:
+            begin
+              // sign-extend src1 (width in ImmInt) into dest using shl/sar sequence
+              slotIdx := localCnt + instr.Src1;
+              WriteMovRegMem(FCode, RAX, RBP, SlotOffset(slotIdx));
+              // if width < 64: shift left by (64-width) and arithmetic shift right back
+              if instr.ImmInt < 64 then
+              begin
+                sh := 64 - instr.ImmInt;
+                // shl rax, sh  -> 48 C1 E0 sh
+                EmitU8(FCode, $48); EmitU8(FCode, $C1); EmitU8(FCode, $E0); EmitU8(FCode, Byte(sh));
+                // sar rax, sh  -> 48 C1 F8 sh
+                EmitU8(FCode, $48); EmitU8(FCode, $C1); EmitU8(FCode, $F8); EmitU8(FCode, Byte(sh));
+              end;
+              WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+            end;
          irZExt:
            begin
              // zero-extend src1 (width in ImmInt) into dest
