@@ -27,3 +27,10 @@ tests/test_codegen
 
 # Erzeugte Aurum-Binaries
 /tmp/*.au.out
+
+# Debug artifacts
+debug_parse
+debug_parse_file
+debug_parse_file.pas
+tests/test_if
+
