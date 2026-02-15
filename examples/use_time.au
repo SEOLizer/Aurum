@@ -1,0 +1,12 @@
+// examples/use_time.au
+import std.time;
+import std.io;
+
+fn main(): int64 {
+  let t := now_unix();
+  print_int(t);
+  print_str("\n");
+  // small sleep to demonstrate
+  sleep_ms(1);
+  return 0;
+}
