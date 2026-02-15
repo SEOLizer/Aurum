@@ -2,7 +2,8 @@
 program test_codegen_widths;
 
 uses
-  SysUtils, Classes,
+  SysUtils,
+  Classes,
   fpcunit, testregistry, consoletestrunner,
   diag, lexer, parser, ast, sema, ir, lower_ast_to_ir;
 
@@ -10,30 +11,22 @@ type
   TCodegenWidthsTest = class(TTestCase)
   private
     FDiag: TDiagnostics;
-    function ParseAndLower(const path: string): TIRModule;
+    function ParseAndLower(const src, fname: string): TIRModule;
   published
-    procedure TestLowerEmitsExtendOrTruncOps;
+    procedure TestConstFoldInt8SignedValue;
+    procedure TestConstFoldUInt8UnsignedValue;
+    procedure TestNonLiteralInitEmitsTruncAndExt;
   end;
 
-function TCodegenWidthsTest.ParseAndLower(const path: string): TIRModule;
+function TCodegenWidthsTest.ParseAndLower(const src, fname: string): TIRModule;
 var
-  sl: TStringList;
-  src: string;
   lex: TLexer;
   p: TParser;
   prog: TAstProgram;
   s: TSema;
 begin
-  sl := TStringList.Create;
-  try
-    sl.LoadFromFile(path);
-    src := sl.Text;
-  finally
-    sl.Free;
-  end;
-
   FDiag := TDiagnostics.Create;
-  lex := TLexer.Create(src, path, FDiag);
+  lex := TLexer.Create(src, fname, FDiag);
   try
     p := TParser.Create(lex, FDiag);
     try
@@ -44,7 +37,6 @@ begin
       finally
         s.Free;
       end;
-      // Lower
       Result := TIRLowering.Create(TIRModule.Create, FDiag).Lower(prog);
     finally
       p.Free;
@@ -55,27 +47,107 @@ begin
   end;
 end;
 
-procedure TCodegenWidthsTest.TestLowerEmitsExtendOrTruncOps;
+procedure TCodegenWidthsTest.TestConstFoldInt8SignedValue;
+{ var a: int8 := 130 should const-fold to irConstInt(-126) }
 var
   modl: TIRModule;
   f: TIRFunction;
   i, j: Integer;
-  found: Boolean;
+  foundMinus126: Boolean;
 begin
-  modl := ParseAndLower('examples/int_widths.au');
+  modl := ParseAndLower(
+    'fn main(): int64 {' + LineEnding +
+    '  var a: int8 := 130;' + LineEnding +
+    '  return a;' + LineEnding +
+    '}',
+    'test_int8.au'
+  );
   try
-    found := False;
+    foundMinus126 := False;
+    // look in main function for irConstInt with value -126
     for i := 0 to High(modl.Functions) do
     begin
       f := modl.Functions[i];
+      if f.Name <> 'main' then Continue;
       for j := 0 to High(f.Instructions) do
       begin
-        case f.Instructions[j].Op of
-          irSExt, irZExt, irTrunc: found := True;
-        end;
+        if (f.Instructions[j].Op = irConstInt) and
+           (f.Instructions[j].ImmInt = -126) then
+          foundMinus126 := True;
       end;
     end;
-    AssertTrue(found, 'Expected at least one SExt/ZExt/Trunc in lowered IR for width handling');
+    AssertTrue('Expected irConstInt(-126) for int8 := 130', foundMinus126);
+  finally
+    modl.Free;
+  end;
+end;
+
+procedure TCodegenWidthsTest.TestConstFoldUInt8UnsignedValue;
+{ var b: uint8 := 250 should const-fold to irConstInt(250) }
+var
+  modl: TIRModule;
+  f: TIRFunction;
+  i, j: Integer;
+  found250: Boolean;
+begin
+  modl := ParseAndLower(
+    'fn main(): int64 {' + LineEnding +
+    '  var b: uint8 := 250;' + LineEnding +
+    '  return b;' + LineEnding +
+    '}',
+    'test_uint8.au'
+  );
+  try
+    found250 := False;
+    for i := 0 to High(modl.Functions) do
+    begin
+      f := modl.Functions[i];
+      if f.Name <> 'main' then Continue;
+      for j := 0 to High(f.Instructions) do
+      begin
+        if (f.Instructions[j].Op = irConstInt) and
+           (f.Instructions[j].ImmInt = 250) then
+          found250 := True;
+      end;
+    end;
+    AssertTrue('Expected irConstInt(250) for uint8 := 250', found250);
+  finally
+    modl.Free;
+  end;
+end;
+
+procedure TCodegenWidthsTest.TestNonLiteralInitEmitsTruncAndExt;
+{ When init value is non-literal (e.g. a + b), Trunc/SExt/ZExt IR ops are emitted }
+var
+  modl: TIRModule;
+  f: TIRFunction;
+  i, j: Integer;
+  foundTrunc, foundExt: Boolean;
+begin
+  modl := ParseAndLower(
+    'fn main(): int64 {' + LineEnding +
+    '  var x: int64 := 10;' + LineEnding +
+    '  var y: int8 := x;' + LineEnding +  // non-literal init -> trunc
+    '  var z: int64 := y;' + LineEnding +  // load from y -> SExt
+    '  return z;' + LineEnding +
+    '}',
+    'test_nonlit.au'
+  );
+  try
+    foundTrunc := False;
+    foundExt := False;
+    for i := 0 to High(modl.Functions) do
+    begin
+      f := modl.Functions[i];
+      if f.Name <> 'main' then Continue;
+      for j := 0 to High(f.Instructions) do
+      begin
+        if f.Instructions[j].Op = irTrunc then foundTrunc := True;
+        if f.Instructions[j].Op = irSExt then foundExt := True;
+      end;
+    end;
+    AssertTrue('Expected irTrunc for non-literal int8 init', foundTrunc);
+    AssertTrue('Expected irSExt when loading int8 local', foundExt);
   finally
     modl.Free;
   end;
@@ -90,4 +162,5 @@ begin
     app.Run;
   finally
     app.Free;
-  end.
+  end;
+end.

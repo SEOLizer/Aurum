@@ -237,6 +237,7 @@ var
   cv2: TConstValue;
   ltype: TAurumType;
   w: Integer;
+  loc: Integer;
 begin
   instr := Default(TIRInstr);
   if expr is TAstIntLit then
@@ -294,16 +295,28 @@ begin
       Emit(instr);
       Exit(t1);
     end;
+    // check if this local was const-folded at declaration (literal init with narrow type)
+    loc := ResolveLocal(TAstIdent(expr).Name);
+    if loc < 0 then
+      FDiag.Error('use of undeclared local ' + TAstIdent(expr).Name, expr.Span);
+    if (loc >= 0) and (loc < Length(FLocalConst)) and Assigned(FLocalConst[loc]) then
+    begin
+      // emit the pre-computed constant value directly (already sign/zero-extended)
+      t1 := NewTemp;
+      instr.Op := irConstInt;
+      instr.Dest := t1;
+      instr.ImmInt := FLocalConst[loc].IntVal;
+      Emit(instr);
+      Exit(t1);
+    end;
     // otherwise load from local variable
     t1 := NewTemp;
     instr.Op := irLoadLocal;
     instr.Dest := t1;
-    instr.Src1 := ResolveLocal(TAstIdent(expr).Name);
-    if instr.Src1 < 0 then
-      FDiag.Error('use of undeclared local ' + TAstIdent(expr).Name, expr.Span);
+    instr.Src1 := loc;
     Emit(instr);
     // If local has narrower width, extend (sign or zero) to 64-bit for operations
-    ltype := GetLocalType(instr.Src1);
+    ltype := GetLocalType(loc);
     if (ltype <> atUnresolved) and (ltype <> atInt64) then
     begin
       w := 64;
@@ -500,7 +513,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
           // signed interpretation
           half := UInt64(1) shl (width - 1);
           if truncated >= half then
-            signedVal := Int64(truncated - (UInt64(1) shl width))
+            signedVal := Int64(truncated) - Int64(UInt64(1) shl width)
           else
             signedVal := Int64(truncated);
           // record local constant for future loads instead of emitting store
@@ -553,7 +566,27 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
       FDiag.Error('assignment to undeclared variable: ' + TAstAssign(stmt).Name, stmt.Span);
       Exit(False);
     end;
+    // invalidate any const-folded value for this local
+    if (loc < Length(FLocalConst)) and Assigned(FLocalConst[loc]) then
+    begin
+      FLocalConst[loc].Free;
+      FLocalConst[loc] := nil;
+    end;
     tmp := LowerExpr(TAstAssign(stmt).Value);
+    // truncate if local has narrower integer width
+    ltype := GetLocalType(loc);
+    if (ltype <> atUnresolved) and (ltype <> atInt64) and (ltype <> atUInt64) then
+    begin
+      width := 64;
+      case ltype of
+        atInt8, atUInt8: width := 8;
+        atInt16, atUInt16: width := 16;
+        atInt32, atUInt32: width := 32;
+      end;
+      instr.Op := irTrunc; instr.Dest := NewTemp; instr.Src1 := tmp;
+      instr.ImmInt := width; Emit(instr);
+      tmp := instr.Dest;
+    end;
     instr.Op := irStoreLocal;
     instr.Dest := loc;
     instr.Src1 := tmp;
