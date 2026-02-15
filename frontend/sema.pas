@@ -244,16 +244,14 @@ var
     nkIndexAccess:
       begin
         // resolve object and index
-        var obj := TAstIndexAccess(expr).Obj;
-        var idx := TAstIndexAccess(expr).Index;
-        var objType := CheckExpr(obj);
-        var idxType := CheckExpr(idx);
-        if not IsIntegerType(idxType) then
-          FDiag.Error('array index must be integer', idx.Span);
+        CheckExpr(TAstIndexAccess(expr).Obj);
+        CheckExpr(TAstIndexAccess(expr).Index);
+        if not IsIntegerType(CheckExpr(TAstIndexAccess(expr).Index)) then
+          FDiag.Error('array index must be integer', TAstIndexAccess(expr).Index.Span);
         // if indexing an identifier with array metadata, return element type
-        if obj is TAstIdent then
+        if TAstIndexAccess(expr).Obj is TAstIdent then
         begin
-          var s := ResolveSymbol(TAstIdent(obj).Name);
+          s := ResolveSymbol(TAstIdent(TAstIndexAccess(expr).Obj).Name);
           if Assigned(s) and (s.ArrayLen <> 0) then
           begin
             Result := s.DeclType;
@@ -280,8 +278,7 @@ var
       end;
     nkArrayLit:
       begin
-        var al := TAstArrayLit(expr);
-        if Length(al.Items) = 0 then
+        if Length(TAstArrayLit(expr).Items) = 0 then
         begin
           // empty array literal: type unresolved until context gives it
           Result := atUnresolved;
@@ -289,14 +286,14 @@ var
         else
         begin
           // infer from first item
-          var firstType := CheckExpr(al.Items[0]);
-          for i := 1 to High(al.Items) do
+          atype := CheckExpr(TAstArrayLit(expr).Items[0]);
+          for i := 1 to High(TAstArrayLit(expr).Items) do
           begin
-            var it := CheckExpr(al.Items[i]);
-            if not TypeEqual(it, firstType) then
-              FDiag.Error('array literal items must have same type', al.Items[i].Span);
+            ot := CheckExpr(TAstArrayLit(expr).Items[i]);
+            if not TypeEqual(ot, atype) then
+              FDiag.Error('array literal items must have same type', TAstArrayLit(expr).Items[i].Span);
           end;
-          Result := firstType;
+          Result := atype;
         end;
       end;
     nkBinOp:
