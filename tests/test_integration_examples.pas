@@ -1,7 +1,7 @@
 {$mode objfpc}{$H+}
 program test_integration_examples;
 
-uses SysUtils, Process;
+uses SysUtils, Classes, Process;
 
 function RunCmd(const cmd: string): LongInt;
 var
