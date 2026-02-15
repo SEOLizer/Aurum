@@ -70,7 +70,6 @@ begin
     begin
       f := modl.Functions[i];
       if f.Name <> 'main' then Continue;
-      var j: Integer;
       for j := 0 to High(f.Instructions) do
       begin
         case f.Instructions[j].Op of
