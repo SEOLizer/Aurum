@@ -247,6 +247,38 @@ Drei eingebaute Funktionen stehen ohne Import zur Verfügung:
 | `print_int(x)`    | `int64 -> void`        | Gibt Integer als Dezimalzahl aus    |
 | `exit(code)`      | `int64 -> void`        | Beendet das Programm mit Exit-Code  |
 
+Standard-Units
+
+Ein Satz von Standard-Units befindet sich im Verzeichnis `std/` und liefert ergonomische Bibliotheksfunktionen:
+
+- std/math.au – Integer-Hilfen (abs64, min64, max64, div64, mod64, times_two)
+- std/io.au   – I/O-Wrappers (print, println, print_intln, exit_proc)
+- std/env.au  – Environment-API (init, arg_count, arg)
+
+Import-Beispiel
+
+```aurum
+import std.math;
+import std.io;
+import std.env; // optional
+
+fn main(argc: int64, argv: pchar): int64 {
+  // Seit der aktuellen Version initialisiert der Compiler automatisch argc/argv,
+  // daher ist ein manuelles init nicht mehr zwingend, bleibt jedoch verfügbar.
+  // init(argc, argv);
+
+  print_intln(arg_count());
+  print_str(arg(0));
+  print_str("\n");
+  return 0;
+}
+```
+
+CI / Integrationstests
+
+- Die GitHub Actions CI baut den Compiler, führt Unit-Tests und zusätzlich kompiliert und führt die Beispielprogramme in `examples/` aus, um die Laufzeitintegration zu prüfen.
+
+
 ```aurum
 fn main(): int64 {
   print_int(0);

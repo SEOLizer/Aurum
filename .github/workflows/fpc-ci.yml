@@ -36,7 +36,7 @@ jobs:
       - name: Run example integration tests
         run: |
           set -e
-          ./aurumc examples/use_env.au -o /tmp/use_env || true
-          /tmp/use_env arg1 arg2 || true
-          ./aurumc examples/use_math.au -o /tmp/use_math || true
-          /tmp/use_math || true
+          ./aurumc examples/use_env.au -o /tmp/use_env
+          /tmp/use_env arg1 arg2
+          ./aurumc examples/use_math.au -o /tmp/use_math
+          /tmp/use_math
