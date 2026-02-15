@@ -1,0 +1,16 @@
+// Beispiel: Repeat-Until Schleife
+// Berechnet 2^10 durch wiederholtes Verdoppeln
+
+fn main(): int64 {
+    var x: int64 := 1;
+    var count: int64 := 0;
+
+    repeat {
+        x := x * 2;
+        count := count + 1;
+    } until count >= 10;
+
+    print_int(x);  // Erwartet: 1024
+    print_str("\n");
+    return 0;
+}

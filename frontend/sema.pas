@@ -157,10 +157,17 @@ end;
 function IsIntegerType(t: TAurumType): Boolean;
 begin
   case t of
-    atInt8, atInt16, atInt32, atInt64, atUInt8, atUInt16, atUInt32, atUInt64: Result := True;
+    atInt8, atInt16, atInt32, atInt64,
+    atUInt8, atUInt16, atUInt32, atUInt64,
+    atISize, atUSize: Result := True;
   else
     Result := False;
   end;
+end;
+
+function IsNumericType(t: TAurumType): Boolean;
+begin
+  Result := IsIntegerType(t) or (t in [atF32, atF64]);
 end;
 
 function TSema.TypeEqual(a, b: TAurumType): Boolean;
@@ -191,6 +198,20 @@ begin
     nkIntLit: Result := atInt64;
     nkStrLit: Result := atPChar;
     nkBoolLit: Result := atBool;
+    nkCharLit: Result := atChar;
+    nkFieldAccess:
+      begin
+        CheckExpr(TAstFieldAccess(expr).Obj);
+        // field access type resolution is deferred until structs are fully implemented
+        Result := atUnresolved;
+      end;
+    nkIndexAccess:
+      begin
+        CheckExpr(TAstIndexAccess(expr).Obj);
+        CheckExpr(TAstIndexAccess(expr).Index);
+        // index access type resolution deferred until arrays are fully implemented
+        Result := atUnresolved;
+      end;
     nkIdent:
       begin
         ident := TAstIdent(expr);
@@ -398,6 +419,36 @@ begin
         CheckStmt(wh.Body);
         PopScope;
       end;
+    nkFor:
+      begin
+        // for varName := startExpr to/downto endExpr do body
+        with TAstFor(stmt) do
+        begin
+          vtype := CheckExpr(StartExpr);
+          if not IsIntegerType(vtype) then
+            FDiag.Error('for loop start must be integer', StartExpr.Span);
+          ctype := CheckExpr(EndExpr);
+          if not IsIntegerType(ctype) then
+            FDiag.Error('for loop end must be integer', EndExpr.Span);
+          // declare loop variable
+          PushScope;
+          sym := TSymbol.Create(VarName);
+          sym.Kind := symVar;
+          sym.DeclType := atInt64;
+          AddSymbolToCurrent(sym, Span);
+          CheckStmt(Body);
+          PopScope;
+        end;
+      end;
+    nkRepeatUntil:
+      begin
+        PushScope;
+        CheckStmt(TAstRepeatUntil(stmt).Body);
+        PopScope;
+        ctype := CheckExpr(TAstRepeatUntil(stmt).Cond);
+        if not TypeEqual(ctype, atBool) then
+          FDiag.Error('repeat-until condition must be bool', TAstRepeatUntil(stmt).Cond.Span);
+      end;
     nkReturn:
       begin
         ret := TAstReturn(stmt);
@@ -505,6 +556,11 @@ begin
       for j := 0 to sym.ParamCount - 1 do
         sym.ParamTypes[j] := fn.Params[j].ParamType;
       AddSymbolToCurrent(sym, fn.Span);
+    end
+    else if node is TAstTypeDecl then
+    begin
+      // type declarations: register as named types (future work)
+      // for now, skip
     end
     else if node is TAstConDecl then
     begin

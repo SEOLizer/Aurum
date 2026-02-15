@@ -39,6 +39,24 @@ type
     procedure TestKeywordTrue;
     procedure TestKeywordFalse;
     procedure TestKeywordExtern;
+    // Neue Keywords (Phase 2)
+    procedure TestKeywordUnit;
+    procedure TestKeywordImport;
+    procedure TestKeywordPub;
+    procedure TestKeywordAs;
+    procedure TestKeywordType;
+    procedure TestKeywordStruct;
+    procedure TestKeywordFor;
+    procedure TestKeywordTo;
+    procedure TestKeywordDownto;
+    procedure TestKeywordDo;
+    procedure TestKeywordRepeat;
+    procedure TestKeywordUntil;
+    // Char-Literal
+    procedure TestCharLiteral;
+    procedure TestCharLiteralEscape;
+    // Neue Delimiter
+    procedure TestNewDelimiters;
     // Operatoren
     procedure TestOperatorsArith;
     procedure TestOperatorAssign;
@@ -268,6 +286,130 @@ procedure TLexerTest.TestKeywordExtern;
 var l: TLexer;
 begin
   l := Lex('extern'); try AssertToken(l.NextToken, tkExtern, 'extern'); finally l.Free; end;
+end;
+
+// --- Neue Keywords (Phase 2) ---
+
+procedure TLexerTest.TestKeywordUnit;
+var l: TLexer;
+begin
+  l := Lex('unit'); try AssertToken(l.NextToken, tkUnit, 'unit'); finally l.Free; end;
+end;
+
+procedure TLexerTest.TestKeywordImport;
+var l: TLexer;
+begin
+  l := Lex('import'); try AssertToken(l.NextToken, tkImport, 'import'); finally l.Free; end;
+end;
+
+procedure TLexerTest.TestKeywordPub;
+var l: TLexer;
+begin
+  l := Lex('pub'); try AssertToken(l.NextToken, tkPub, 'pub'); finally l.Free; end;
+end;
+
+procedure TLexerTest.TestKeywordAs;
+var l: TLexer;
+begin
+  l := Lex('as'); try AssertToken(l.NextToken, tkAs, 'as'); finally l.Free; end;
+end;
+
+procedure TLexerTest.TestKeywordType;
+var l: TLexer;
+begin
+  l := Lex('type'); try AssertToken(l.NextToken, tkType, 'type'); finally l.Free; end;
+end;
+
+procedure TLexerTest.TestKeywordStruct;
+var l: TLexer;
+begin
+  l := Lex('struct'); try AssertToken(l.NextToken, tkStruct, 'struct'); finally l.Free; end;
+end;
+
+procedure TLexerTest.TestKeywordFor;
+var l: TLexer;
+begin
+  l := Lex('for'); try AssertToken(l.NextToken, tkFor, 'for'); finally l.Free; end;
+end;
+
+procedure TLexerTest.TestKeywordTo;
+var l: TLexer;
+begin
+  l := Lex('to'); try AssertToken(l.NextToken, tkTo, 'to'); finally l.Free; end;
+end;
+
+procedure TLexerTest.TestKeywordDownto;
+var l: TLexer;
+begin
+  l := Lex('downto'); try AssertToken(l.NextToken, tkDownto, 'downto'); finally l.Free; end;
+end;
+
+procedure TLexerTest.TestKeywordDo;
+var l: TLexer;
+begin
+  l := Lex('do'); try AssertToken(l.NextToken, tkDo, 'do'); finally l.Free; end;
+end;
+
+procedure TLexerTest.TestKeywordRepeat;
+var l: TLexer;
+begin
+  l := Lex('repeat'); try AssertToken(l.NextToken, tkRepeat, 'repeat'); finally l.Free; end;
+end;
+
+procedure TLexerTest.TestKeywordUntil;
+var l: TLexer;
+begin
+  l := Lex('until'); try AssertToken(l.NextToken, tkUntil, 'until'); finally l.Free; end;
+end;
+
+// --- Char-Literal ---
+
+procedure TLexerTest.TestCharLiteral;
+var
+  l: TLexer;
+  t: TToken;
+begin
+  l := Lex('''a''');
+  try
+    t := l.NextToken;
+    AssertTokenKind(t, tkCharLit);
+    AssertEquals('a', t.Value);
+  finally
+    l.Free;
+  end;
+end;
+
+procedure TLexerTest.TestCharLiteralEscape;
+var
+  l: TLexer;
+  t: TToken;
+begin
+  l := Lex('''\n''');
+  try
+    t := l.NextToken;
+    AssertTokenKind(t, tkCharLit);
+    AssertEquals(#10, t.Value);
+  finally
+    l.Free;
+  end;
+end;
+
+// --- Neue Delimiter ---
+
+procedure TLexerTest.TestNewDelimiters;
+var
+  l: TLexer;
+begin
+  l := Lex('[ ] . @');
+  try
+    AssertTokenKind(l.NextToken, tkLBracket);
+    AssertTokenKind(l.NextToken, tkRBracket);
+    AssertTokenKind(l.NextToken, tkDot);
+    AssertTokenKind(l.NextToken, tkAt);
+    AssertTokenKind(l.NextToken, tkEOF);
+  finally
+    l.Free;
+  end;
 end;
 
 // --- Operatoren ---

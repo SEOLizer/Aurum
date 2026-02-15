@@ -25,12 +25,12 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 * **Int64**: Dezimal: `0` oder `[1-9][0-9]*` (optional führendes `-` als unary operator)
 * **Stringliteral**: `" ... "` mit Escapes:
 
-  * `\n`, `\r`, `\t`, `\\`, `\"`, `\0`
-  * Ergebnis ist **nullterminiert** im `.rodata`
+    * `\n`, `\r`, `\t`, `\\`, `\"`, `\0`
+    * Ergebnis ist **nullterminiert** im `.rodata`
 
 ### Keywords (reserviert)
 
-`fn var let co con if else while return true false extern`
+`fn var let co con if else while return true false extern unit import pub as`
 
 ### Operatoren / Trennzeichen
 
@@ -117,8 +117,8 @@ Minimaler Bootstrap (falls du `print_int` erst später willst):
 
 * Compiler generiert `_start`:
 
-  * ruft `main()`
-  * ruft `exit(rax)`
+    * ruft `main()`
+    * ruft `exit(rax)`
 
 ---
 
@@ -127,105 +127,176 @@ Minimaler Bootstrap (falls du `print_int` erst später willst):
 ### Startsymbol
 
 ```
-Program     := { TopDecl } ;
+Program        := [ UnitDecl ] { ImportDecl } { TopDecl } ;
 ```
+
+> Konvention: **Eine Datei = ein Unit**. Der Compiler kann den Dateinamen als Default-Unitnamen verwenden, wenn `unit` fehlt (optional), empfohlen ist aber ein explizites `unit`.
+
+### Units und Imports
+
+```
+UnitDecl       := 'unit' UnitPath ';' ;
+UnitPath       := Ident { '.' Ident } ;          // z.B. std.io oder math.vec3
+
+ImportDecl     := 'import' UnitPath [ VersionSpec ] [ ImportTail ] ';' ;
+VersionSpec    := '@' Version ;                  // optional, später
+Version        := IntLit '.' IntLit [ '.' IntLit ] ;
+
+ImportTail     := [ 'as' Ident ] [ SelectiveImport ]
+               | SelectiveImport [ 'as' Ident ]
+               | /* leer */ ;
+
+SelectiveImport:= '{' ImportItem { ',' ImportItem } '}' ;
+ImportItem     := Ident [ 'as' Ident ] ;
+```
+
+Semantik-Intention:
+
+* **Kein globaler Namespace**: Zugriff auf fremde Symbole nur über `import`.
+* `import std.io;` macht Symbole als `std.io.<Name>` verfügbar.
+* `import std.io as io;` macht Symbole als `io.<Name>` verfügbar.
+* `import std.io { print_str as ps, exit };` importiert selektiv als lokale Namen (`ps`, `exit`).
 
 ### Top-Level Deklarationen
 
 ```
-TopDecl     := FuncDecl | ConDecl ;
+TopDecl        := PubDecl | FuncDecl | ConDecl | TypeDecl ;
+PubDecl        := 'pub' ( FuncDecl | ConDecl | TypeDecl ) ;
 
-ConDecl     := 'con' Ident ':' Type ':=' ConstExpr ';' ;
+ConDecl        := 'con' Ident ':' Type ':=' ConstExpr ';' ;
 
-FuncDecl    := 'fn' Ident '(' [ ParamList ] ')' [ ':' RetType ] Block ;
+TypeDecl       := 'type' Ident '=' Type ';' ;
 
-ParamList   := Param { ',' Param } ;
-Param       := Ident ':' Type ;
+FuncDecl       := 'fn' Ident '(' [ ParamList ] ')' [ ':' RetType ] Block ;
 
-RetType     := Type | 'void' ;
+ParamList      := Param { ',' Param } ;
+Param          := Ident ':' Type ;
+
+RetType        := Type | 'void' ;
 ```
 
 ### Blöcke und Statements
 
 ```
-Block       := '{' { Stmt } '}' ;
+Block          := '{' { Stmt } '}' ;
 
-Stmt        := VarDecl
-            | LetDecl
-            | CoDecl
-            | AssignStmt
-            | IfStmt
-            | WhileStmt
-            | ReturnStmt
-            | ExprStmt
-            | Block ;
+Stmt           := VarDecl
+               | LetDecl
+               | CoDecl
+               | AssignStmt
+               | IfStmt
+               | WhileStmt
+               | ForStmt
+               | RepeatUntilStmt
+               | ReturnStmt
+               | ExprStmt
+               | Block ;
 
-VarDecl     := 'var' Ident ':' Type ':=' Expr ';' ;
-LetDecl     := 'let' Ident ':' Type ':=' Expr ';' ;
-CoDecl      := 'co'  Ident ':' Type ':=' Expr ';' ;
+VarDecl        := 'var' Ident ':' Type ':=' Expr ';' ;
+LetDecl        := 'let' Ident ':' Type ':=' Expr ';' ;
+CoDecl         := 'co'  Ident ':' Type ':=' Expr ';' ;
 
-AssignStmt  := LValue ':=' Expr ';' ;
-LValue      := Ident ;
+AssignStmt     := LValue ':=' Expr ';' ;
+LValue         := Ident | FieldAccess | IndexAccess ;
 
-IfStmt      := 'if' '(' Expr ')' Stmt [ 'else' Stmt ] ;
+IfStmt         := 'if' '(' Expr ')' Stmt [ 'else' Stmt ] ;
 
-WhileStmt   := 'while' '(' Expr ')' Stmt ;
+WhileStmt      := 'while' '(' Expr ')' Stmt ;
 
-ReturnStmt  := 'return' [ Expr ] ';' ;
+ForStmt        := 'for' Ident ':=' Expr ( 'to' | 'downto' ) Expr 'do' Stmt ;
 
-ExprStmt    := Expr ';' ;
+RepeatUntilStmt:= 'repeat' Block 'until' '(' Expr ')' ';' ;
+
+ReturnStmt     := 'return' [ Expr ] ';' ;
+
+ExprStmt       := Expr ';' ;
+```
+
+### Typen
+
+```
+Type           := PrimitiveType
+               | PointerType
+               | ArrayType
+               | StructType
+               | NamedType ;
+
+NamedType      := Ident { '.' Ident } ;          // inkl. qualifizierter Typnamen (z.B. std.io.String)
+
+PrimitiveType  := 'int8' | 'int16' | 'int32' | 'int64'
+               | 'uint8' | 'uint16' | 'uint32' | 'uint64'
+               | 'bool' | 'pchar' | 'void'
+               | 'f32' | 'f64'
+               | 'usize' | 'isize'
+               | 'char' ;
+
+PointerType    := '*' Type ;
+
+ArrayType      := '[' IntLit ']' Type ;          // z.B. [4]f64
+
+StructType     := 'struct' '{' { FieldDecl } '}' ;
+FieldDecl      := Ident ':' Type ';' ;
+```
+
+### Struktur- und Array-Literale
+
+```
+Primary        := IntLit
+               | BoolLit
+               | StringLit
+               | CharLit
+               | Ident
+               | Call
+               | StructLit
+               | ArrayLit
+               | '(' Expr ')' ;
+
+StructLit      := Type '{' [ FieldInit { ',' FieldInit } ] '}' ;
+FieldInit      := Ident ':' Expr ;
+
+ArrayLit       := '[' [ Expr { ',' Expr } ] ']' ;
 ```
 
 ### Ausdrücke (Operatorpräzedenz)
 
-Notation: EBNF ist hier als Präzedenzkaskade geschrieben.
-
 ```
-Expr        := OrExpr ;
+Expr           := OrExpr ;
 
-OrExpr      := AndExpr { '||' AndExpr } ;
-AndExpr     := CmpExpr { '&&' CmpExpr } ;
+OrExpr         := AndExpr { '||' AndExpr } ;
+AndExpr        := CmpExpr { '&&' CmpExpr } ;
 
-CmpExpr     := AddExpr [ ( '==' | '!=' | '<' | '<=' | '>' | '>=' ) AddExpr ] ;
+CmpExpr        := AddExpr [ ( '==' | '!=' | '<' | '<=' | '>' | '>=' ) AddExpr ] ;
 
-AddExpr     := MulExpr { ( '+' | '-' ) MulExpr } ;
-MulExpr     := UnaryExpr { ( '*' | '/' | '%' ) UnaryExpr } ;
+AddExpr        := MulExpr { ( '+' | '-' ) MulExpr } ;
+MulExpr        := UnaryExpr { ( '*' | '/' | '%' ) UnaryExpr } ;
 
-UnaryExpr   := ( '!' | '-' ) UnaryExpr | Primary ;
+UnaryExpr      := ( '!' | '-' ) UnaryExpr | Primary ;
 
-Primary     := IntLit
-            | BoolLit
-            | StringLit
-            | Ident
-            | Call
-            | '(' Expr ')' ;
+Call           := Ident '(' [ ArgList ] ')' ;
+ArgList        := Expr { ',' Expr } ;
 
-Call        := Ident '(' [ ArgList ] ')' ;
-ArgList     := Expr { ',' Expr } ;
-
-BoolLit     := 'true' | 'false' ;
+BoolLit        := 'true' | 'false' ;
+CharLit        := '\'' ( EscapedChar | CharBody ) '\'' ;
 ```
 
 ### Konstante Ausdrücke (für `con`)
 
 ```
-ConstExpr   := ConstOrExpr ;
+ConstExpr      := ConstOrExpr ;
 
-ConstOrExpr := ConstAndExpr { '||' ConstAndExpr } ;
-ConstAndExpr:= ConstCmpExpr { '&&' ConstCmpExpr } ;
-ConstCmpExpr:= ConstAddExpr [ ( '==' | '!=' | '<' | '<=' | '>' | '>=' ) ConstAddExpr ] ;
-ConstAddExpr:= ConstMulExpr { ( '+' | '-' ) ConstMulExpr } ;
-ConstMulExpr:= ConstUnaryExpr { ( '*' | '/' | '%' ) ConstUnaryExpr } ;
+ConstOrExpr    := ConstAndExpr { '||' ConstAndExpr } ;
+ConstAndExpr   := ConstCmpExpr { '&&' ConstCmpExpr } ;
+ConstCmpExpr   := ConstAddExpr [ ( '==' | '!=' | '<' | '<=' | '>' | '>=' ) ConstAddExpr ] ;
+ConstAddExpr   := ConstMulExpr { ( '+' | '-' ) ConstMulExpr } ;
+ConstMulExpr   := ConstUnaryExpr { ( '*' | '/' | '%' ) ConstUnaryExpr } ;
 ConstUnaryExpr := ( '!' | '-' ) ConstUnaryExpr | ConstPrimary ;
 
-ConstPrimary := IntLit | BoolLit | StringLit | '(' ConstExpr ')' ;
+ConstPrimary   := IntLit | BoolLit | StringLit | CharLit | '(' ConstExpr ')' ;
 ```
-
-> In v0.1 gelten `con`-Ausdrücke als "foldable". Keine Identifiers in ConstExpr (außer du erlaubst später `con`-Referenzen).
 
 ---
 
-## 7) Semantikregeln (v0.1)
+## 7) Semantikregeln (v0.1) (v0.1)
 
 ### Namespaces / Scopes
 

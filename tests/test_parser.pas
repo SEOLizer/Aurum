@@ -15,6 +15,16 @@ type
     procedure TestParseFunctionSimple;
     procedure TestParseVarLetCoAndAssignPrecedence;
     procedure TestParseConTopLevel;
+    // Neue Tests (Phase 2)
+    procedure TestParseUnitDecl;
+    procedure TestParseImportDecl;
+    procedure TestParsePubFn;
+    procedure TestParseForLoopTo;
+    procedure TestParseForLoopDownto;
+    procedure TestParseRepeatUntil;
+    procedure TestParseCharLiteral;
+    procedure TestParseFieldAccess;
+    procedure TestParseIndexAccess;
   end;
 
 function TParserTest.ParseProgramFromSource(const src: string): TAstProgram;
@@ -118,6 +128,201 @@ begin
     AssertEquals('LIMIT', con.Name);
     AssertTrue(con.InitExpr is TAstIntLit);
     AssertEquals(5, TAstIntLit(con.InitExpr).Value);
+  finally
+    prog.Free;
+  end;
+end;
+
+// --- Neue Tests (Phase 2) ---
+
+procedure TParserTest.TestParseUnitDecl;
+var
+  prog: TAstProgram;
+  u: TAstUnitDecl;
+begin
+  prog := ParseProgramFromSource('unit foo; fn main(): int64 { return 0; }');
+  try
+    AssertEquals(2, Length(prog.Decls));
+    AssertTrue(prog.Decls[0] is TAstUnitDecl);
+    u := TAstUnitDecl(prog.Decls[0]);
+    AssertEquals('foo', u.UnitPath);
+  finally
+    prog.Free;
+  end;
+end;
+
+procedure TParserTest.TestParseImportDecl;
+var
+  prog: TAstProgram;
+  imp: TAstImportDecl;
+begin
+  // Import uses identifier paths (not string literals)
+  prog := ParseProgramFromSource('import std.io; fn main(): int64 { return 0; }');
+  try
+    AssertEquals(2, Length(prog.Decls));
+    AssertTrue(prog.Decls[0] is TAstImportDecl);
+    imp := TAstImportDecl(prog.Decls[0]);
+    AssertEquals('std.io', imp.UnitPath);
+    AssertEquals('', imp.Alias);
+  finally
+    prog.Free;
+  end;
+end;
+
+procedure TParserTest.TestParsePubFn;
+var
+  prog: TAstProgram;
+  f: TAstFuncDecl;
+begin
+  // Test that pub fn parses (IsPublic not stored in AST yet)
+  prog := ParseProgramFromSource('pub fn main(): int64 { return 0; }');
+  try
+    AssertEquals(1, Length(prog.Decls));
+    AssertTrue(prog.Decls[0] is TAstFuncDecl);
+    f := TAstFuncDecl(prog.Decls[0]);
+    AssertEquals('main', f.Name);
+    // Note: IsPublic is parsed but not stored in AST yet
+  finally
+    prog.Free;
+  end;
+end;
+
+procedure TParserTest.TestParseForLoopTo;
+var
+  prog: TAstProgram;
+  f: TAstFuncDecl;
+  forStmt: TAstFor;
+  blk: TAstBlock;
+begin
+  prog := ParseProgramFromSource('fn main(): int64 { for i := 0 to 5 do { print_int(i); } return 0; }');
+  try
+    f := TAstFuncDecl(prog.Decls[0]);
+    blk := f.Body;
+    AssertTrue(blk.Stmts[0] is TAstFor);
+    forStmt := TAstFor(blk.Stmts[0]);
+    AssertEquals('i', forStmt.VarName);
+    AssertFalse(forStmt.IsDownto);
+    AssertTrue(forStmt.StartExpr is TAstIntLit);
+    AssertTrue(forStmt.EndExpr is TAstIntLit);
+    AssertTrue(forStmt.Body is TAstBlock);
+  finally
+    prog.Free;
+  end;
+end;
+
+procedure TParserTest.TestParseForLoopDownto;
+var
+  prog: TAstProgram;
+  f: TAstFuncDecl;
+  forStmt: TAstFor;
+  blk: TAstBlock;
+begin
+  prog := ParseProgramFromSource('fn main(): int64 { for i := 10 downto 1 do print_int(i); return 0; }');
+  try
+    f := TAstFuncDecl(prog.Decls[0]);
+    blk := f.Body;
+    AssertTrue(blk.Stmts[0] is TAstFor);
+    forStmt := TAstFor(blk.Stmts[0]);
+    AssertEquals('i', forStmt.VarName);
+    AssertTrue(forStmt.IsDownto);
+  finally
+    prog.Free;
+  end;
+end;
+
+procedure TParserTest.TestParseRepeatUntil;
+var
+  prog: TAstProgram;
+  f: TAstFuncDecl;
+  repeatStmt: TAstRepeatUntil;
+  blk: TAstBlock;
+begin
+  prog := ParseProgramFromSource('fn main(): int64 { var x: int64 := 0; repeat { x := x + 1; } until x > 5; return x; }');
+  try
+    f := TAstFuncDecl(prog.Decls[0]);
+    blk := f.Body;
+    AssertTrue(blk.Stmts[1] is TAstRepeatUntil);
+    repeatStmt := TAstRepeatUntil(blk.Stmts[1]);
+    AssertTrue(repeatStmt.Body is TAstBlock);
+    AssertTrue(repeatStmt.Cond is TAstBinOp);
+  finally
+    prog.Free;
+  end;
+end;
+
+procedure TParserTest.TestParseCharLiteral;
+var
+  prog: TAstProgram;
+  f: TAstFuncDecl;
+  ret: TAstReturn;
+  charLit: TAstCharLit;
+  blk: TAstBlock;
+begin
+  prog := ParseProgramFromSource('fn main(): int64 { return ''A''; }');
+  try
+    f := TAstFuncDecl(prog.Decls[0]);
+    blk := f.Body;
+    AssertTrue(blk.Stmts[0] is TAstReturn);
+    ret := TAstReturn(blk.Stmts[0]);
+    AssertTrue(ret.Value is TAstCharLit);
+    charLit := TAstCharLit(ret.Value);
+    AssertEquals('A', charLit.Value);
+  finally
+    prog.Free;
+  end;
+end;
+
+procedure TParserTest.TestParseFieldAccess;
+var
+  prog: TAstProgram;
+  f: TAstFuncDecl;
+  exprStmt: TAstExprStmt;
+  fieldAcc: TAstFieldAccess;
+  blk: TAstBlock;
+  ident: TAstIdent;
+begin
+  prog := ParseProgramFromSource('fn main(): int64 { print_int(obj.field); return 0; }');
+  try
+    f := TAstFuncDecl(prog.Decls[0]);
+    blk := f.Body;
+    AssertTrue(blk.Stmts[0] is TAstExprStmt);
+    exprStmt := TAstExprStmt(blk.Stmts[0]);
+    AssertTrue(exprStmt.Expr is TAstCall);
+    // first arg is field access
+    AssertTrue(TAstCall(exprStmt.Expr).Args[0] is TAstFieldAccess);
+    fieldAcc := TAstFieldAccess(TAstCall(exprStmt.Expr).Args[0]);
+    AssertTrue(fieldAcc.Obj is TAstIdent);
+    ident := TAstIdent(fieldAcc.Obj);
+    AssertEquals('obj', ident.Name);
+    AssertEquals('field', fieldAcc.Field);
+  finally
+    prog.Free;
+  end;
+end;
+
+procedure TParserTest.TestParseIndexAccess;
+var
+  prog: TAstProgram;
+  f: TAstFuncDecl;
+  exprStmt: TAstExprStmt;
+  idxAcc: TAstIndexAccess;
+  blk: TAstBlock;
+  ident: TAstIdent;
+begin
+  prog := ParseProgramFromSource('fn main(): int64 { print_int(arr[0]); return 0; }');
+  try
+    f := TAstFuncDecl(prog.Decls[0]);
+    blk := f.Body;
+    AssertTrue(blk.Stmts[0] is TAstExprStmt);
+    exprStmt := TAstExprStmt(blk.Stmts[0]);
+    AssertTrue(exprStmt.Expr is TAstCall);
+    // first arg is index access
+    AssertTrue(TAstCall(exprStmt.Expr).Args[0] is TAstIndexAccess);
+    idxAcc := TAstIndexAccess(TAstCall(exprStmt.Expr).Args[0]);
+    AssertTrue(idxAcc.Obj is TAstIdent);
+    ident := TAstIdent(idxAcc.Obj);
+    AssertEquals('arr', ident.Name);
+    AssertTrue(idxAcc.Index is TAstIntLit);
   finally
     prog.Free;
   end;

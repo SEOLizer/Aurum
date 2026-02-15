@@ -1,0 +1,27 @@
+// Beispiel: For-Schleife (als while implementiert)
+// Berechnet Summe von 1 bis 5
+
+fn main(): int64 {
+    var sum: int64 := 0;
+    var i: int64 := 1;
+
+    // Aufwärts zählen
+    while i <= 5 {
+        sum := sum + i;
+        i := i + 1;
+    }
+    print_int(sum);  // Erwartet: 15
+    print_str("\n");
+
+    // Abwärts zählen
+    sum := 0;
+    i := 5;
+    while i >= 1 {
+        sum := sum + i;
+        i := i - 1;
+    }
+    print_int(sum);  // Erwartet: 15
+    print_str("\n");
+
+    return 0;
+}

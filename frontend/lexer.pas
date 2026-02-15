@@ -10,11 +10,13 @@ uses
 type
   TTokenKind = (
     // Literale
-    tkIntLit, tkStrLit, tkIdent,
+    tkIntLit, tkStrLit, tkCharLit, tkIdent,
     // Keywords
     tkFn, tkVar, tkLet, tkCo, tkCon,
     tkIf, tkElse, tkWhile, tkReturn,
     tkTrue, tkFalse, tkExtern, tkCase, tkSwitch, tkBreak, tkDefault,
+    tkUnit, tkImport, tkPub, tkAs, tkType, tkStruct,
+    tkFor, tkTo, tkDownto, tkDo, tkRepeat, tkUntil,
     // Operatoren
     tkPlus, tkMinus, tkStar, tkSlash, tkPercent,
     tkAssign,
@@ -23,7 +25,8 @@ type
     tkAnd, tkOr, tkNot,
     // Trennzeichen
     tkLParen, tkRParen, tkLBrace, tkRBrace,
-    tkColon, tkComma, tkSemicolon,
+    tkLBracket, tkRBracket,
+    tkColon, tkComma, tkSemicolon, tkDot, tkAt,
     // Sonstiges
     tkEOF, tkError
   );
@@ -57,6 +60,7 @@ type
       startLine, startCol, len: Integer): TToken;
     function ReadNumber: TToken;
     function ReadString: TToken;
+    function ReadCharLit: TToken;
     function ReadIdentOrKeyword: TToken;
     function LookupKeyword(const s: string): TTokenKind;
   public
@@ -76,6 +80,7 @@ begin
   case kind of
     tkIntLit:    Result := 'IntLit';
     tkStrLit:    Result := 'StrLit';
+    tkCharLit:   Result := 'CharLit';
     tkIdent:     Result := 'Ident';
     tkFn:        Result := 'fn';
     tkVar:       Result := 'var';
@@ -93,6 +98,18 @@ begin
     tkSwitch:    Result := 'switch';
     tkBreak:     Result := 'break';
     tkDefault:   Result := 'default';
+    tkUnit:      Result := 'unit';
+    tkImport:    Result := 'import';
+    tkPub:       Result := 'pub';
+    tkAs:        Result := 'as';
+    tkType:      Result := 'type';
+    tkStruct:    Result := 'struct';
+    tkFor:       Result := 'for';
+    tkTo:        Result := 'to';
+    tkDownto:    Result := 'downto';
+    tkDo:        Result := 'do';
+    tkRepeat:    Result := 'repeat';
+    tkUntil:     Result := 'until';
     tkPlus:      Result := '+';
     tkMinus:     Result := '-';
     tkStar:      Result := '*';
@@ -112,9 +129,13 @@ begin
     tkRParen:    Result := ')';
     tkLBrace:    Result := '{';
     tkRBrace:    Result := '}';
+    tkLBracket:  Result := '[';
+    tkRBracket:  Result := ']';
     tkColon:     Result := ':';
     tkComma:     Result := ',';
     tkSemicolon: Result := ';';
+    tkDot:       Result := '.';
+    tkAt:        Result := '@';
     tkEOF:       Result := 'EOF';
     tkError:     Result := 'ERROR';
   end;
@@ -294,25 +315,96 @@ begin
     FCol - startCol);
 end;
 
+function TLexer.ReadCharLit: TToken;
+var
+  startLine, startCol: Integer;
+  ch: string;
+  c: Char;
+begin
+  startLine := FLine;
+  startCol := FCol;
+  Advance; // öffnendes '
+  ch := '';
+  if IsAtEnd then
+  begin
+    FDiag.Error('unterminated char literal',
+      MakeSpan(startLine, startCol, 1, FFileName));
+    Result := MakeToken(tkError, '', startLine, startCol, 1);
+    Exit;
+  end;
+  if CurrentChar = '\' then
+  begin
+    Advance;
+    if IsAtEnd then
+    begin
+      FDiag.Error('unterminated char literal escape',
+        MakeSpan(startLine, startCol, 1, FFileName));
+      Result := MakeToken(tkError, '', startLine, startCol, 1);
+      Exit;
+    end;
+    c := CurrentChar;
+    case c of
+      'n':  ch := #10;
+      'r':  ch := #13;
+      't':  ch := #9;
+      '\':  ch := '\';
+      '''': ch := '''';
+      '0':  ch := #0;
+    else
+      FDiag.Error('unknown escape in char literal: \' + c,
+        MakeSpan(FLine, FCol - 1, 2, FFileName));
+      ch := c;
+    end;
+    Advance;
+  end
+  else
+  begin
+    ch := CurrentChar;
+    Advance;
+  end;
+  if IsAtEnd or (CurrentChar <> '''') then
+  begin
+    FDiag.Error('unterminated char literal, expected closing quote',
+      MakeSpan(startLine, startCol, 1, FFileName));
+    Result := MakeToken(tkError, ch, startLine, startCol, 1);
+    Exit;
+  end;
+  Advance; // schließendes '
+  Result := MakeToken(tkCharLit, ch, startLine, startCol,
+    FCol - startCol);
+end;
+
 function TLexer.LookupKeyword(const s: string): TTokenKind;
 begin
   case s of
-    'fn':     Result := tkFn;
-    'var':    Result := tkVar;
-    'let':    Result := tkLet;
-    'co':     Result := tkCo;
-    'con':    Result := tkCon;
-    'if':     Result := tkIf;
-    'else':   Result := tkElse;
-    'while':  Result := tkWhile;
-    'return': Result := tkReturn;
-    'true':   Result := tkTrue;
-    'false':  Result := tkFalse;
-    'extern': Result := tkExtern;
-    'case':   Result := tkCase;
-    'switch': Result := tkSwitch;
-    'break':  Result := tkBreak;
-    'default':Result := tkDefault;
+    'fn':      Result := tkFn;
+    'var':     Result := tkVar;
+    'let':     Result := tkLet;
+    'co':      Result := tkCo;
+    'con':     Result := tkCon;
+    'if':      Result := tkIf;
+    'else':    Result := tkElse;
+    'while':   Result := tkWhile;
+    'return':  Result := tkReturn;
+    'true':    Result := tkTrue;
+    'false':   Result := tkFalse;
+    'extern':  Result := tkExtern;
+    'case':    Result := tkCase;
+    'switch':  Result := tkSwitch;
+    'break':   Result := tkBreak;
+    'default': Result := tkDefault;
+    'unit':    Result := tkUnit;
+    'import':  Result := tkImport;
+    'pub':     Result := tkPub;
+    'as':      Result := tkAs;
+    'type':    Result := tkType;
+    'struct':  Result := tkStruct;
+    'for':     Result := tkFor;
+    'to':      Result := tkTo;
+    'downto':  Result := tkDownto;
+    'do':      Result := tkDo;
+    'repeat':  Result := tkRepeat;
+    'until':   Result := tkUntil;
   else
     Result := tkIdent;
   end;
@@ -387,6 +479,13 @@ begin
     Exit;
   end;
 
+  // Char literals
+  if c = '''' then
+  begin
+    Result := ReadCharLit;
+    Exit;
+  end;
+
   // Identifier / Keywords
   if c in ['A'..'Z', 'a'..'z', '_'] then
   begin
@@ -406,6 +505,10 @@ begin
     '}': begin Advance; Result := MakeToken(tkRBrace, '}', startLine, startCol, 1); end;
     ',': begin Advance; Result := MakeToken(tkComma, ',', startLine, startCol, 1); end;
     ';': begin Advance; Result := MakeToken(tkSemicolon, ';', startLine, startCol, 1); end;
+    '.': begin Advance; Result := MakeToken(tkDot, '.', startLine, startCol, 1); end;
+    '@': begin Advance; Result := MakeToken(tkAt, '@', startLine, startCol, 1); end;
+    '[': begin Advance; Result := MakeToken(tkLBracket, '[', startLine, startCol, 1); end;
+    ']': begin Advance; Result := MakeToken(tkRBracket, ']', startLine, startCol, 1); end;
 
     '/': begin
       Advance;
