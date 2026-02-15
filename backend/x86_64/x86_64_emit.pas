@@ -615,7 +615,7 @@ begin
              begin
                // buf_put_byte(buf: pchar, idx: int64, b: int64) -> int64
                // Extra arg (b) passed via instr.LabelName (single temp index)
-               var argTemp3: Integer;
+
                argTemp3 := -1;
                if instr.LabelName <> '' then
                  argTemp3 := StrToIntDef(instr.LabelName, -1);
