@@ -1665,14 +1665,24 @@ begin
   begin
     leaPos := FLeaPositions[i];
     sidx := FLeaStrIndex[i];
-    if (sidx >= 0) and (sidx < Length(FStringOffsets)) then
-    begin
-      codeVA := $400000 + 4096;
-      instrVA := codeVA + leaPos + 7;
-      dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + FStringOffsets[sidx];
-      disp32 := Int64(dataVA) - Int64(instrVA);
-      FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
-    end;
+      if (sidx >= 0) and (sidx < Length(FStringOffsets)) then
+     begin
+       codeVA := $400000 + 4096;
+       instrVA := codeVA + leaPos + 7;
+       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + FStringOffsets[sidx];
+       disp32 := Int64(dataVA) - Int64(instrVA);
+       // log lea patch for debugging
+       try
+         AssignFile(lf, '/tmp/emitter_patch_log.txt');
+         if FileExists('/tmp/emitter_patch_log.txt') then Append(lf) else Rewrite(lf);
+         try
+           WriteLn(lf, Format('LEA_PATCH pos=%d strIndex=%d instrVA=0x%x dataVA=0x%x disp32=%d (0x%x)', [leaPos, sidx, instrVA, dataVA, disp32, Cardinal(disp32)]));
+         finally
+           CloseFile(lf);
+         end;
+       except end;
+       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
+     end;
   end;
 
   // patch buffer LEAs for print_int
@@ -1685,6 +1695,16 @@ begin
       instrVA := codeVA + leaPos + 7;
       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + bufferOffset;
       disp32 := Int64(dataVA) - Int64(instrVA);
+      // log buffer lea patch
+      try
+        AssignFile(lf, '/tmp/emitter_patch_log.txt');
+        if FileExists('/tmp/emitter_patch_log.txt') then Append(lf) else Rewrite(lf);
+        try
+          WriteLn(lf, Format('BUF_LEA_PATCH pos=%d instrVA=0x%x dataVA=0x%x disp32=%d (0x%x)', [leaPos, instrVA, dataVA, disp32, Cardinal(disp32)]));
+        finally
+          CloseFile(lf);
+        end;
+      except end;
       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
     end;
   end;
@@ -1699,6 +1719,16 @@ begin
       instrVA := codeVA + leaPos + 7;
       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + envOffset;
       disp32 := Int64(dataVA) - Int64(instrVA);
+      // log env lea patch
+      try
+        AssignFile(lf, '/tmp/emitter_patch_log.txt');
+        if FileExists('/tmp/emitter_patch_log.txt') then Append(lf) else Rewrite(lf);
+        try
+          WriteLn(lf, Format('ENV_LEA_PATCH pos=%d instrVA=0x%x dataVA=0x%x disp32=%d (0x%x)', [leaPos, instrVA, dataVA, disp32, Cardinal(disp32)]));
+        finally
+          CloseFile(lf);
+        end;
+      except end;
       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
     end;
   end;
