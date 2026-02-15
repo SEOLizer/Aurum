@@ -23,12 +23,14 @@ type
     FTempCounter: Integer;
     FLabelCounter: Integer;
     FLocalMap: TStringList; // name -> local index (as object integer)
+    FLocalTypes: array of TAurumType; // index -> declared local type
     FConstMap: TStringList; // name -> TConstValue (compile-time constants)
     FBreakStack: TStringList; // stack of break labels
 
     function NewTemp: Integer;
     function NewLabel(const prefix: string): string;
-    function AllocLocal(const name: string): Integer;
+    function AllocLocal(const name: string; aType: TAurumType): Integer;
+    function GetLocalType(idx: Integer): TAurumType;
     function ResolveLocal(const name: string): Integer;
     procedure Emit(instr: TIRInstr);
 
@@ -98,7 +100,7 @@ begin
   Inc(FLabelCounter);
 end;
 
-function TIRLowering.AllocLocal(const name: string): Integer;
+function TIRLowering.AllocLocal(const name: string; aType: TAurumType): Integer;
 var
   idx: Integer;
 begin
@@ -111,6 +113,17 @@ begin
   Result := FCurrentFunc.LocalCount;
   FCurrentFunc.LocalCount := FCurrentFunc.LocalCount + 1;
   FLocalMap.AddObject(name, IntToObj(Result));
+  // ensure FLocalTypes has same length
+  SetLength(FLocalTypes, FCurrentFunc.LocalCount);
+  FLocalTypes[Result] := aType;
+end;
+
+function TIRLowering.GetLocalType(idx: Integer): TAurumType;
+begin
+  if (idx >= 0) and (idx < Length(FLocalTypes)) then
+    Result := FLocalTypes[idx]
+  else
+    Result := atUnresolved;
 end;
 
 procedure TIRLowering.Emit(instr: TIRInstr);
@@ -141,10 +154,15 @@ begin
       FCurrentFunc := fn;
       FLocalMap.Clear;
       FTempCounter := 0;
-      fn.ParamCount := Length(TAstFuncDecl(node).Params);
-      fn.LocalCount := fn.ParamCount;
-      for j := 0 to fn.ParamCount - 1 do
-        FLocalMap.AddObject(TAstFuncDecl(node).Params[j].Name, IntToObj(j));
+       fn.ParamCount := Length(TAstFuncDecl(node).Params);
+       fn.LocalCount := fn.ParamCount;
+       SetLength(FLocalTypes, fn.LocalCount);
+       for j := 0 to fn.ParamCount - 1 do
+       begin
+         FLocalMap.AddObject(TAstFuncDecl(node).Params[j].Name, IntToObj(j));
+         FLocalTypes[j] := TAstFuncDecl(node).Params[j].ParamType;
+       end;
+
       // lower statements sequentially
       for j := 0 to High(TAstFuncDecl(node).Body.Stmts) do
       begin
@@ -208,6 +226,8 @@ var
   ai: Integer;
   ci: Integer;
   cv2: TConstValue;
+  ltype: TAurumType;
+  w: Integer;
 begin
   instr := Default(TIRInstr);
   if expr is TAstIntLit then
@@ -273,6 +293,28 @@ begin
     if instr.Src1 < 0 then
       FDiag.Error('use of undeclared local ' + TAstIdent(expr).Name, expr.Span);
     Emit(instr);
+    // If local has narrower width, extend (sign or zero) to 64-bit for operations
+    ltype := GetLocalType(instr.Src1);
+    if (ltype <> atUnresolved) and (ltype <> atInt64) then
+    begin
+      w := 64;
+      case ltype of
+        atInt8, atUInt8: w := 8;
+        atInt16, atUInt16: w := 16;
+        atInt32, atUInt32: w := 32;
+        atInt64, atUInt64: w := 64;
+      end;
+      if (ltype = atUInt8) or (ltype = atUInt16) or (ltype = atUInt32) or (ltype = atUInt64) then
+      begin
+        instr.Op := irZExt; instr.Dest := NewTemp; instr.Src1 := t1; instr.ImmInt := w; Emit(instr);
+        Exit(instr.Dest);
+      end
+      else
+      begin
+        instr.Op := irSExt; instr.Dest := NewTemp; instr.Src1 := t1; instr.ImmInt := w; Emit(instr);
+        Exit(instr.Dest);
+      end;
+    end;
     Exit(t1);
   end;
   if expr is TAstBinOp then
@@ -412,13 +454,31 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     caseLabels: TStringList;
     lbl: string;
     caseTmp: Integer;
+    ltype: TAurumType;
+    width: Integer;
+    w: Integer;
   begin
   instr := Default(TIRInstr);
   Result := True;
   if stmt is TAstVarDecl then
   begin
-    loc := AllocLocal(TAstVarDecl(stmt).Name);
+    loc := AllocLocal(TAstVarDecl(stmt).Name, TAstVarDecl(stmt).DeclType);
     tmp := LowerExpr(TAstVarDecl(stmt).InitExpr);
+    // If local has narrower integer width, truncate before store
+    ltype := GetLocalType(loc);
+    if (ltype <> atUnresolved) and (ltype <> atInt64) then
+    begin
+      // determine width in bits
+      width := 64;
+      case ltype of
+        atInt8, atUInt8: width := 8;
+        atInt16, atUInt16: width := 16;
+        atInt32, atUInt32: width := 32;
+        atInt64, atUInt64: width := 64;
+      end;
+      instr.Op := irTrunc; instr.Dest := NewTemp; instr.Src1 := tmp; instr.ImmInt := width; Emit(instr);
+      tmp := instr.Dest;
+    end;
     instr.Op := irStoreLocal;
     instr.Dest := loc;
     instr.Src1 := tmp;
