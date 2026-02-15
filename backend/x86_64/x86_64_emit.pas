@@ -686,12 +686,7 @@ begin
                 // compute address = argv_base + index*8
                 // rdx = index * 8
                 WriteMovRegReg(FCode, RDX, RAX);
-                WriteMovRegImm64(FCode, RCX, 3); // shift left 3 == *8
-                // shl rdx, cl  -> use 48 C1 E2 cl ??? no helper; instead mul by 8: lea rdx, [rdx*8]
-                // simpler: imul rdx, rdx, 8 => using imul r64, r/m64 with immediate not trivial
-                // use: mov rcx, 8; imul rdx, rcx
                 WriteMovRegImm64(FCode, RCX, 8);
-                // imul rdx, rcx (imul r64, r/m64) -> use WriteImulRegReg with dst=RDX src=RCX? which does imul dst,src
                 WriteImulRegReg(FCode, RDX, RCX);
                 // add rdi, rdx
                 WriteAddRegReg(FCode, RDI, RDX);
@@ -701,6 +696,106 @@ begin
               // store result into dest slot if applicable
               if instr.Dest >= 0 then
                 WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+            end
+            else if instr.ImmStr = 'now_unix' then
+            begin
+              // Use clock_gettime(CLOCK_REALTIME, &ts) syscall (228) to get seconds
+              // sub rsp,16
+              EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $EC); EmitU32(FCode, 16);
+              // rdi = CLOCK_REALTIME (0)
+              WriteMovRegImm64(FCode, RDI, 0);
+              // rsi = rsp (timespec pointer)
+              WriteMovRegReg(FCode, RSI, RSP);
+              // syscall number for clock_gettime = 228
+              WriteMovRegImm64(FCode, RAX, 228);
+              WriteSyscall(FCode);
+              // mov rax, qword ptr [rsp]  ; tv_sec
+              WriteMovRegMem(FCode, RAX, RSP, 0);
+              // add rsp,16
+              EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $C4); EmitU32(FCode, 16);
+              if instr.Dest >= 0 then
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+            end
+            else if instr.ImmStr = 'now_unix_ms' then
+            begin
+              // Use clock_gettime to get seconds and nanoseconds, compute ms = sec*1000 + nsec/1_000_000
+              EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $EC); EmitU32(FCode, 16);
+              WriteMovRegImm64(FCode, RDI, 0);
+              WriteMovRegReg(FCode, RSI, RSP);
+              WriteMovRegImm64(FCode, RAX, 228);
+              WriteSyscall(FCode);
+              // rax = tv_sec ; rcx = tv_nsec
+              WriteMovRegMem(FCode, RAX, RSP, 0);
+              WriteMovRegMem(FCode, RCX, RSP, 8);
+              // multiply sec by 1000
+              WriteMovRegImm64(FCode, R8, 1000);
+              WriteImulRegReg(FCode, RAX, R8); // rax = sec * 1000
+              // rcx = rcx / 1000000
+              WriteMovRegImm64(FCode, R9, 1000000);
+              // prepare for idiv: move rcx into rdx:rax for division
+              WriteMovRegReg(FCode, RDX, RCX);
+              // use mov rax, rcx then cqo then idiv r9
+              WriteMovRegReg(FCode, RAX, RDX);
+              WriteCqo(FCode);
+              WriteIdivReg(FCode, R9);
+              // now rax = nsec/1000000
+              // add to seconds*1000 (in R8? actually earlier we stored seconds*1000 in RAX then overwritten; redo approach)
+              // Simpler: recompute: load sec into r10, mul 1000 into r10, then compute nsec/1e6 into r11 and add
+              // load sec into r10
+              WriteMovRegMem(FCode, R10, RSP, 0);
+              WriteMovRegImm64(FCode, R8, 1000);
+              WriteImulRegReg(FCode, R10, R8); // r10 = sec*1000
+              // load nsec into r11
+              WriteMovRegMem(FCode, R11, RSP, 8);
+              WriteMovRegImm64(FCode, R9, 1000000);
+              WriteMovRegReg(FCode, RAX, R11);
+              WriteCqo(FCode);
+              WriteIdivReg(FCode, R9); // rax = nsec/1000000
+              // add r10 + rax -> result in rax
+              WriteAddRegReg(FCode, RAX, R10);
+              // cleanup stack
+              EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $C4); EmitU32(FCode, 16);
+              if instr.Dest >= 0 then
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+            end
+            else if instr.ImmStr = 'sleep_ms' then
+            begin
+              // sleep_ms(ms): convert ms -> timespec and call nanosleep (syscall 35)
+              // load ms into RAX
+              if instr.Src1 >= 0 then
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
+              else
+                WriteMovRegImm64(FCode, RAX, 0);
+              // seconds = ms / 1000 -> in RDX
+              WriteMovRegReg(FCode, RDX, RAX);
+              WriteMovRegImm64(FCode, RCX, 1000);
+              // div rdx by rcx -> use idiv: sign extend RAX into RDX:RAX then idiv rcx (we have RAX=ms)
+              // move ms into RAX for idiv
+              WriteMovRegReg(FCode, RAX, RAX);
+              WriteCqo(FCode); // sign extend RAX into RDX:RAX
+              WriteMovRegImm64(FCode, RCX, 1000);
+              WriteIdivReg(FCode, RCX);
+              // after idiv: quotient in RAX (seconds), remainder in RDX (ms%1000)
+              // move seconds to [rsp-16] and nsec to [rsp-8] and call nanosleep
+              // sub rsp,16
+              EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $EC); EmitU32(FCode, 16);
+              // store seconds at [rsp]
+              WriteMovMemReg(FCode, RSP, 0, RAX);
+              // compute nsec = remainder * 1000000
+              // remainder currently in RDX
+              WriteMovRegReg(FCode, RCX, RDX);
+              WriteMovRegImm64(FCode, R8, 1000000);
+              WriteImulRegReg(FCode, RCX, R8);
+              // store nsec at [rsp+8]
+              WriteMovMemReg(FCode, RSP, 8, RCX);
+              // prepare args: rdi = rsp (timespec*), rsi = 0
+              WriteMovRegReg(FCode, RDI, RSP);
+              WriteMovRegImm64(FCode, RSI, 0);
+              // syscall number for nanosleep = 35
+              WriteMovRegImm64(FCode, RAX, 35);
+              WriteSyscall(FCode);
+              // add rsp,16
+              EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $C4); EmitU32(FCode, 16);
             end
             else if instr.ImmStr = 'exit' then
             begin
