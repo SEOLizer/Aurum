@@ -1,0 +1,28 @@
+name: FPC CI
+
+on:
+  push:
+    branches: [ main, feat/tests/if-parser ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install FreePascal
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fpc
+
+      - name: Show FPC version
+        run: fpc -v
+
+      - name: Build and run tests
+        run: |
+          set -e
+          make test
