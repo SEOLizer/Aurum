@@ -294,9 +294,11 @@ begin
       else if Accept(tkDefault) then
       begin
         Expect(tkColon);
-        defaultBody := ParseStmt;
+        // default body must be a block
+        defaultBody := ParseBlock;
         Continue;
       end
+
       else
       begin
         // unexpected token inside switch
