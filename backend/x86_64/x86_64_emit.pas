@@ -599,15 +599,15 @@ begin
              case instr.ImmInt of
                8: WriteMovzxRegMem8(FCode, RAX, RBP, SlotOffset(slotIdx));
                16: WriteMovzxRegMem16(FCode, RAX, RBP, SlotOffset(slotIdx));
-               32:
-                 begin
-                   WriteMovEAXMem32(FCode, RBP, SlotOffset(slotIdx));
-                   // now eax zero-extends to rax automatically
-                   WriteMovRegReg(FCode, RAX, RAX); // noop to keep pattern
-                 end;
-             else
-               WriteMovRegMem(FCode, RAX, RBP, SlotOffset(slotIdx));
-             end;
+                32:
+                  begin
+                    // mov eax, dword ptr [base+disp] zero-extends into rax implicitly
+                    WriteMovEAXMem32(FCode, RBP, SlotOffset(slotIdx));
+                    // result already zero-extended into RAX
+                  end;
+              else
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(slotIdx));
+              end;
              WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
            end;
          irTrunc:
