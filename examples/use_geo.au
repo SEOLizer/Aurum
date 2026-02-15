@@ -1,0 +1,13 @@
+// examples/use_geo.au
+import std.geo;
+import std.io;
+
+fn main(): int64 {
+  let lat := parse_lat("48.1371");
+  let lon := parse_lon("11.5754");
+  print_int(lat);
+  print_str("\n");
+  print_int(lon);
+  print_str("\n");
+  return 0;
+}
