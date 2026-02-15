@@ -1,0 +1,13 @@
+fn test_widths(): int64 {
+  var a: int8 := 130;      // will be truncated to 8-bit on store
+  var b: uint8 := 250;    // unsigned 8-bit
+  var x: int64 := a + b;   // arithmetic promoted to 64-bit
+  print_int(x);
+  print_str("\n");
+  return x;
+}
+
+fn main(): int64 {
+  test_widths();
+  return 0;
+}

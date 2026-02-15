@@ -10,7 +10,16 @@ uses
 type
   { --- Aurum-Typsystem --- }
 
-  TAurumType = (atUnresolved, atInt64, atBool, atVoid, atPChar);
+  TAurumType = (
+    atUnresolved,
+    // signed integer widths
+    atInt8, atInt16, atInt32, atInt64,
+    // unsigned integer widths
+    atUInt8, atUInt16, atUInt32, atUInt64,
+    atBool,
+    atVoid,
+    atPChar
+  );
 
   { --- Speicherklassen --- }
 
@@ -339,18 +348,34 @@ function AurumTypeToStr(t: TAurumType): string;
 begin
   case t of
     atUnresolved: Result := '<unresolved>';
+    atInt8:       Result := 'int8';
+    atInt16:      Result := 'int16';
+    atInt32:      Result := 'int32';
     atInt64:      Result := 'int64';
+    atUInt8:      Result := 'uint8';
+    atUInt16:     Result := 'uint16';
+    atUInt32:     Result := 'uint32';
+    atUInt64:     Result := 'uint64';
     atBool:       Result := 'bool';
     atVoid:       Result := 'void';
     atPChar:      Result := 'pchar';
+  else
+    Result := '<unknown>';
   end;
 end;
 
 function StrToAurumType(const s: string): TAurumType;
 begin
   case s of
+    'int8':  Result := atInt8;
+    'int16': Result := atInt16;
+    'int32': Result := atInt32;
     'int64': Result := atInt64;
     'int':   Result := atInt64; // alias
+    'uint8': Result := atUInt8;
+    'uint16': Result := atUInt16;
+    'uint32': Result := atUInt32;
+    'uint64': Result := atUInt64;
     'bool':  Result := atBool;
     'void':  Result := atVoid;
     'pchar': Result := atPChar;

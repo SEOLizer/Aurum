@@ -15,6 +15,10 @@ type
     irCmpEq, irCmpNeq, irCmpLt, irCmpLe, irCmpGt, irCmpGe,
     irNot, irAnd, irOr,
     irLoadLocal, irStoreLocal,
+    // width/sign helpers
+    irSExt,    // sign-extend Src1 to ImmInt bits -> Dest
+    irZExt,    // zero-extend Src1 to ImmInt bits -> Dest
+    irTrunc,   // truncate Src1 to ImmInt bits -> Dest
     irCallBuiltin, irCall,
     irJmp, irBrTrue, irBrFalse,
     irLabel,
@@ -26,7 +30,7 @@ type
     Dest: Integer; // destination temp / local index
     Src1: Integer;
     Src2: Integer;
-    ImmInt: Int64;
+    ImmInt: Int64; // usage depends on Op: e.g., const int or width bits for ext/trunc
     ImmStr: string;
     LabelName: string;
   end;

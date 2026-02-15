@@ -34,3 +34,22 @@ debug_parse_file
 debug_parse_file.pas
 tests/test_if
 
+# Additional debug artifacts and temp files (local-only)
+debug_*
+debug_dump_tokens*
+debug_free_steps*
+debug_free_stepwise*
+debug_inspect_cases*
+debug_manual_switch*
+debug_parse_switch*
+
+# linguist contribution bundle / cloned fork
+linguist-contrib-aurum.tar.gz
+linguist/
+
+# Test binaries produced during development
+tests/test_switch
+
+# Local editor/workspace
+.vscode/
+
