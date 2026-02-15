@@ -110,11 +110,8 @@ begin
             emit.EmitFromIR(module);
             codeBuf := emit.GetCodeBuffer;
             dataBuf := emit.GetDataBuffer;
-            entryOffset := emit.GetFunctionOffset('main');
-            if entryOffset < 0 then
-              entryVA := $400000 + 4096
-            else
-              entryVA := $400000 + 4096 + UInt64(entryOffset);
+            // Entry point is the generated _start placed at code base + 0x1000
+            entryVA := $400000 + 4096;
             WriteElf64(outputFile, codeBuf, dataBuf, entryVA);
             FpChmod(PChar(outputFile), 493);
             WriteLn('Wrote ', outputFile);
