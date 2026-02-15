@@ -1,0 +1,8 @@
+// examples/use_math.au
+import std.math;
+
+fn main(): int64 {
+  let s := add_pub(3, 4);
+  print_int(times_two(s));
+  return 0;
+}
