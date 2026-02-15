@@ -44,6 +44,7 @@ type
     LocalCount: Integer; // number of local slots
     ParamCount: Integer;
     constructor Create(const AName: string);
+    destructor Destroy; override;
     procedure Emit(const instr: TIRInstr);
   end;
 
@@ -71,6 +72,13 @@ begin
   ParamCount := 0;
 end;
 
+destructor TIRFunction.Destroy;
+begin
+  // Clear instruction list (no heap objects inside, but release array memory)
+  Instructions := nil;
+  inherited Destroy;
+end;
+
 procedure TIRFunction.Emit(const instr: TIRInstr);
 begin
   SetLength(Instructions, Length(Instructions) + 1);
@@ -89,7 +97,14 @@ begin
 end;
 
 destructor TIRModule.Destroy;
+var
+  i: Integer;
 begin
+  // free owned functions
+  for i := 0 to High(Functions) do
+    if Assigned(Functions[i]) then
+      Functions[i].Free;
+  SetLength(Functions, 0);
   Strings.Free;
   inherited Destroy;
 end;
