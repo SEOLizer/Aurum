@@ -322,8 +322,10 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   // integer width helpers
   mask64: UInt64;
   sh: Integer;
-  argTemp3: Integer;
-  argTemp4: Integer;
+   argTemp3: Integer;
+   argTemp4: Integer;
+   argTemp5: Integer;
+   argTemp6: Integer;
 begin
   // reset patch arrays
   SetLength(FLeaPositions, 0);
