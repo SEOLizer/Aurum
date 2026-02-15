@@ -54,7 +54,7 @@ procedure TArrayStaticTest.TestStaticArrayInitAndIndex;
 var
   modl: TIRModule;
   f: TIRFunction;
-  i: Integer;
+  i, j: Integer;
   foundStore0, foundStore1, foundStore2, foundLoad1: Boolean;
 begin
   modl := ParseAndLower(
