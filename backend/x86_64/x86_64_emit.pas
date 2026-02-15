@@ -42,7 +42,7 @@ uses
   Math;
 
 const
-  RAX = 0; RCX = 1; RDX = 2; RBX = 3; RSP = 4; RBP = 5; RSI = 6; RDI = 7; R8 = 8; R9 = 9;
+  RAX = 0; RCX = 1; RDX = 2; RBX = 3; RSP = 4; RBP = 5; RSI = 6; RDI = 7; R8 = 8; R9 = 9; R10 = 10; R11 = 11; R12 = 12; R13 = 13; R14 = 14; R15 = 15;
   ParamRegs: array[0..5] of Byte = (RDI, RSI, RDX, RCX, R8, R9);
 
 procedure EmitU8(b: TByteBuffer; v: Byte); begin b.WriteU8(v); end;
@@ -139,6 +139,15 @@ begin
   EmitU8(buf, $F8 or (src and $7));
 end;
 procedure WriteTestRaxRax(buf: TByteBuffer); begin EmitU8(buf,$48); EmitU8(buf,$85); EmitU8(buf,$C0); end;
+procedure WriteTestRegReg(buf: TByteBuffer; r1, r2: Byte);
+var rexR, rexB: Integer;
+begin
+  rexR := (r1 shr 3) and 1;
+  rexB := (r2 shr 3) and 1;
+  EmitRex(buf, 1, rexR, 0, rexB);
+  EmitU8(buf, $85);
+  EmitU8(buf, $C0 or (((r1 and 7) shl 3) and $38) or (r2 and $7));
+end;
 procedure WriteSyscall(buf: TByteBuffer); begin EmitU8(buf,$0F); EmitU8(buf,$05); end;
 procedure WriteLeaRsiRipDisp(buf: TByteBuffer; disp32: Cardinal); begin EmitU8(buf,$48); EmitU8(buf,$8D); EmitU8(buf,$35); EmitU32(buf, disp32); end;
 
@@ -959,7 +968,7 @@ begin
                  WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + argTemp3))
                else
                  WriteMovRegImm64(FCode, RAX, 0);
-               WriteSubRegReg(FCode, RCX, RAX;);
+               WriteSubRegReg(FCode, RCX, RAX);
                // compare remaining (RCX) with requiredLen (R12)
                EmitU8(FCode, $48); EmitU8(FCode, $39); EmitU8(FCode, $D1); // cmp rcx, r12 placeholder
                jgePos := FCode.Size;
