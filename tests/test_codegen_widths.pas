@@ -37,7 +37,16 @@ begin
       finally
         s.Free;
       end;
-      Result := TIRLowering.Create(TIRModule.Create, FDiag).Lower(prog);
+      // create lowering with owned module, call Lower and free lowering afterwards
+      var lower: TIRLowering;
+      var modl: TIRModule;
+      modl := TIRModule.Create;
+      lower := TIRLowering.Create(modl, FDiag);
+      try
+        Result := lower.Lower(prog);
+      finally
+        lower.Free;
+      end;
     finally
       p.Free;
     end;
