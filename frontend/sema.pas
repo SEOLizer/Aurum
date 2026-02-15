@@ -154,9 +154,22 @@ begin
   AddSymbolToCurrent(s, NullSpan);
 end;
 
+function IsIntegerType(t: TAurumType): Boolean;
+begin
+  case t of
+    atInt8, atInt16, atInt32, atInt64, atUInt8, atUInt16, atUInt32, atUInt64: Result := True;
+  else
+    Result := False;
+  end;
+end;
+
 function TSema.TypeEqual(a, b: TAurumType): Boolean;
 begin
-  Result := a = b;
+  // exact match
+  if a = b then Exit(True);
+  // treat any integer widths as compatible for now
+  if IsIntegerType(a) and IsIntegerType(b) then Exit(True);
+  Result := False;
 end;
 
 function TSema.CheckExpr(expr: TAstExpr): TAurumType;
@@ -199,18 +212,31 @@ begin
         lt := CheckExpr(bin.Left);
         rt := CheckExpr(bin.Right);
         case bin.Op of
-          tkPlus, tkMinus, tkStar, tkSlash, tkPercent:
-            begin
-              if not TypeEqual(lt, atInt64) or not TypeEqual(rt, atInt64) then
-                FDiag.Error('type error: arithmetic requires int64 operands', bin.Span);
-              Result := atInt64;
-            end;
-          tkEq, tkNeq, tkLt, tkLe, tkGt, tkGe:
-            begin
-              if not TypeEqual(lt, atInt64) or not TypeEqual(rt, atInt64) then
-                FDiag.Error('type error: comparison requires int64 operands', bin.Span);
-              Result := atBool;
-            end;
+           tkPlus, tkMinus, tkStar, tkSlash, tkPercent:
+             begin
+               if not IsIntegerType(lt) or not IsIntegerType(rt) then
+                 FDiag.Error('type error: arithmetic requires integer operands', bin.Span);
+               // promote to 64-bit for now
+               Result := atInt64;
+             end;
+           tkEq, tkNeq, tkLt, tkLe, tkGt, tkGe:
+             begin
+               if (IsIntegerType(lt) and IsIntegerType(rt)) then
+               begin
+                 Result := atBool;
+               end
+               else if (TypeEqual(lt, atPChar) and TypeEqual(rt, atPChar)) then
+               begin
+                 // pointer/string comparison
+                 Result := atBool;
+               end
+               else
+               begin
+                 FDiag.Error('type error: comparison requires integer or pchar operands', bin.Span);
+                 Result := atUnresolved;
+               end;
+             end;
+
           tkAnd, tkOr:
             begin
               if not TypeEqual(lt, atBool) or not TypeEqual(rt, atBool) then
@@ -230,8 +256,8 @@ begin
         ot := CheckExpr(un.Operand);
         if un.Op = tkMinus then
         begin
-          if not TypeEqual(ot, atInt64) then
-            FDiag.Error('type error: unary - requires int64', un.Span);
+          if not IsIntegerType(ot) then
+            FDiag.Error('type error: unary - requires integer', un.Span);
           Result := atInt64;
         end
         else if un.Op = tkNot then
@@ -397,16 +423,16 @@ begin
         // switch statement
         sw := TAstSwitch(stmt);
         ctype := CheckExpr(sw.Expr);
-        if not TypeEqual(ctype, atInt64) then
-          FDiag.Error('switch expression must be int64', sw.Expr.Span);
+        if not IsIntegerType(ctype) then
+          FDiag.Error('switch expression must be integer', sw.Expr.Span);
         // check cases
         for i := 0 to High(sw.Cases) do
         begin
           // case value must be constant int
           caseVal := sw.Cases[i].Value;
           cvtype := CheckExpr(caseVal);
-          if not TypeEqual(cvtype, atInt64) then
-            FDiag.Error('case label must be int64', caseVal.Span);
+          if not IsIntegerType(cvtype) then
+            FDiag.Error('case label must be integer', caseVal.Span);
           PushScope;
           CheckStmt(sw.Cases[i].Body);
           PopScope;
