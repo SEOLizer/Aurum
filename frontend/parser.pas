@@ -536,7 +536,6 @@ begin
   end;
 
   Expect(tkColon);
-  var arrayLen: Integer;
   declType := ParseTypeEx(arrayLen);
 
   Expect(tkAssign);
