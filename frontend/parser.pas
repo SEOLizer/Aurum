@@ -49,6 +49,7 @@ type
 
     function ParseType: TAurumType;
     function ParseParamList: TAstParamList;
+    function ParseArrayLiteral: TAstExpr;
   public
     constructor Create(lexer: TLexer; diag: TDiagnostics);
     destructor Destroy; override;
@@ -597,6 +598,8 @@ var
   expr: TAstExpr;
   name: string;
   valExpr: TAstExpr;
+  arrExpr: TAstExpr;
+  indexExpr: TAstExpr;
 begin
   expr := ParseExpr;
   // Assignment pattern: ident := expr ;
@@ -611,10 +614,20 @@ begin
     expr.Free;
     Exit(TAstAssign.Create(name, valExpr, valExpr.Span));
   end
-  else if ((expr is TAstFieldAccess) or (expr is TAstIndexAccess)) and Check(tkAssign) then
+  else if (expr is TAstIndexAccess) and Check(tkAssign) then
   begin
-    // TODO: full LValue assignment for field/index access
-    FDiag.Error('field/index assignment not yet supported', expr.Span);
+    // transfer ownership from index access to array assign
+    TAstArrayIndex(expr).TransferOwnership(arrExpr, indexExpr);
+    expr.Free; // free the old TAstArrayIndex node
+
+    Advance; // consume ':='
+    valExpr := ParseExpr;
+    Expect(tkSemicolon);
+    Exit(TAstArrayAssign.Create(arrExpr, indexExpr, valExpr, valExpr.Span));
+  end
+  else if (expr is TAstFieldAccess) and Check(tkAssign) then
+  begin
+    FDiag.Error('field assignment not yet supported', expr.Span);
     Advance; // consume ':='
     valExpr := ParseExpr;
     Expect(tkSemicolon);
@@ -755,6 +768,14 @@ begin
     Exit(TAstIntLit.Create(v, span));
   end;
 
+  if Check(tkFloatLit) then
+  begin
+    s := FCurTok.Value;
+    span := FCurTok.Span;
+    Advance;
+    Exit(TAstFloatLit.Create(s, span));
+  end;
+
   if Check(tkStrLit) then
   begin
     s := FCurTok.Value;
@@ -791,6 +812,9 @@ begin
     Expect(tkRParen);
     Exit(e);
   end;
+
+  if Check(tkLBracket) then
+    Exit(ParseArrayLiteral);
 
   // unexpected primary
   FDiag.Error('unexpected token in expression: ' + TokenKindToStr(FCurTok.Kind), FCurTok.Span);
@@ -868,6 +892,12 @@ end;
 function TParser.ParseType: TAurumType;
 var s: string;
 begin
+  if Accept(tkArray) then // Check for array keyword first
+  begin
+    Result := atArray;
+    Exit;
+  end;
+
   if Check(tkIdent) then
   begin
     s := FCurTok.Value;
@@ -879,6 +909,26 @@ begin
     FDiag.Error('expected type name', FCurTok.Span);
     Result := atUnresolved;
   end;
+end;
+
+function TParser.ParseArrayLiteral: TAstExpr;
+var
+  items: TAstExprList;
+  item: TAstExpr;
+  span: TSourceSpan;
+begin
+  span := FCurTok.Span;
+  Expect(tkLBracket);
+  items := nil;
+  while not Check(tkRBracket) and not Check(tkEOF) do
+  begin
+    item := ParseExpr;
+    SetLength(items, Length(items) + 1);
+    items[High(items)] := item;
+    if not Accept(tkComma) then Break;
+  end;
+  Expect(tkRBracket);
+  Result := TAstArrayLit.Create(items, span);
 end;
 
 function TParser.ParseParamList: TAstParamList;

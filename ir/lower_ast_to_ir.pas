@@ -359,6 +359,26 @@ begin
     
     Exit(resultTemp);
   end;
+  if expr is TAstIndexAccess then
+  begin
+    // Index-Zugriff: obj[index] -> load element
+    // Lower object expression (should return array base address)
+    t1 := LowerExpr(TAstIndexAccess(expr).Obj);
+    
+    // Lower index expression (should return integer)
+    t2 := LowerExpr(TAstIndexAccess(expr).Index);
+    
+    // Load element: dest = array_base[index]
+    resultTemp := NewTemp;
+    instr.Op := irLoadElem;
+    instr.Dest := resultTemp;
+    instr.Src1 := t1;  // array base address
+    instr.Src2 := t2;  // index
+    instr.ImmInt := 0; // element size offset (8 bytes per element)
+    Emit(instr);
+    
+    Exit(resultTemp);
+  end;
   if expr is TAstIdent then
   begin
     // check if this is a compile-time constant (con)

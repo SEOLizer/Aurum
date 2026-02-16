@@ -227,25 +227,41 @@ begin
          else
            Result := atArray; // leeres Array ist auch atArray
        end;
-     nkArrayIndex:
-       begin
-         // Array-Index: arr[i] gibt Element-Typ zurück
-         // Für jetzt nehmen wir an, dass alle Arrays int64-Elemente haben
-         // TODO: Echte Element-Typ-Tracking implementieren
-         
-         // Prüfe dass Array-Expression tatsächlich ein Array ist
-         atype := CheckExpr(TAstArrayIndex(expr).ArrayExpr);
-         if not TypeEqual(atype, atArray) then
-           FDiag.Error(Format('indexing non-array type: got %s', [AurumTypeToStr(atype)]), TAstArrayIndex(expr).ArrayExpr.Span);
-         
-         // Prüfe dass Index ein Integer ist
-         atype := CheckExpr(TAstArrayIndex(expr).Index);
-         if not IsIntegerType(atype) then
-           FDiag.Error(Format('array index must be integer, got %s', [AurumTypeToStr(atype)]), TAstArrayIndex(expr).Index.Span);
-         
-         // Array-Indexing gibt Element-Typ zurück (für jetzt: int64)
-         Result := atInt64; // TODO: Echten Element-Typ verwenden
-       end;
+      nkArrayIndex:
+        begin
+          // Array-Index: arr[i] gibt Element-Typ zurück
+          // Für jetzt nehmen wir an, dass alle Arrays int64-Elemente haben
+          // TODO: Echte Element-Typ-Tracking implementieren
+          
+          // Prüfe dass Array-Expression tatsächlich ein Array ist
+          atype := CheckExpr(TAstArrayIndex(expr).ArrayExpr);
+          if not TypeEqual(atype, atArray) then
+            FDiag.Error(Format('indexing non-array type: got %s', [AurumTypeToStr(atype)]), TAstArrayIndex(expr).ArrayExpr.Span);
+          
+          // Prüfe dass Index ein Integer ist
+          atype := CheckExpr(TAstArrayIndex(expr).Index);
+          if not IsIntegerType(atype) then
+            FDiag.Error(Format('array index must be integer, got %s', [AurumTypeToStr(atype)]), TAstArrayIndex(expr).Index.Span);
+          
+          // Array-Indexing gibt Element-Typ zurück (für jetzt: int64)
+          Result := atInt64; // TODO: Echten Element-Typ verwenden
+        end;
+      nkIndexAccess:
+        begin
+          // Generischer Index-Zugriff: obj[index]
+          // Prüfe dass das Objekt ein Array ist
+          atype := CheckExpr(TAstIndexAccess(expr).Obj);
+          if not TypeEqual(atype, atArray) then
+            FDiag.Error(Format('indexing non-array type: got %s', [AurumTypeToStr(atype)]), TAstIndexAccess(expr).Obj.Span);
+          
+          // Prüfe dass Index ein Integer ist
+          atype := CheckExpr(TAstIndexAccess(expr).Index);
+          if not IsIntegerType(atype) then
+            FDiag.Error(Format('array index must be integer, got %s', [AurumTypeToStr(atype)]), TAstIndexAccess(expr).Index.Span);
+          
+          // Index-Zugriff gibt Element-Typ zurück (für jetzt: int64)
+          Result := atInt64;
+        end;
      nkIdent:
       begin
         ident := TAstIdent(expr);

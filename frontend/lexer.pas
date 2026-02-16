@@ -10,12 +10,12 @@ uses
 type
   TTokenKind = (
     // Literale
-    tkIntLit, tkStrLit, tkCharLit, tkIdent,
+    tkIntLit, tkFloatLit, tkStrLit, tkCharLit, tkIdent,
     // Keywords
     tkFn, tkVar, tkLet, tkCo, tkCon,
     tkIf, tkElse, tkWhile, tkReturn,
     tkTrue, tkFalse, tkExtern, tkCase, tkSwitch, tkBreak, tkDefault,
-    tkUnit, tkImport, tkPub, tkAs, tkType, tkStruct,
+    tkUnit, tkImport, tkPub, tkAs, tkType, tkStruct, tkArray,
     tkFor, tkTo, tkDownto, tkDo, tkRepeat, tkUntil,
     // Operatoren
     tkPlus, tkMinus, tkStar, tkSlash, tkPercent,
@@ -79,6 +79,7 @@ function TokenKindToStr(kind: TTokenKind): string;
 begin
   case kind of
     tkIntLit:    Result := 'IntLit';
+    tkFloatLit:  Result := 'FloatLit';
     tkStrLit:    Result := 'StrLit';
     tkCharLit:   Result := 'CharLit';
     tkIdent:     Result := 'Ident';
@@ -104,6 +105,7 @@ begin
     tkAs:        Result := 'as';
     tkType:      Result := 'type';
     tkStruct:    Result := 'struct';
+    tkArray:     Result := 'array';
     tkFor:       Result := 'for';
     tkTo:        Result := 'to';
     tkDownto:    Result := 'downto';
@@ -245,13 +247,36 @@ function TLexer.ReadNumber: TToken;
 var
   startPos, startCol: Integer;
   s: string;
+  isFloat: Boolean;
+  currentLen: Integer;
 begin
   startPos := FPos;
   startCol := FCol;
+  isFloat := False;
+
   while (not IsAtEnd) and (CurrentChar in ['0'..'9']) do
     Advance;
-  s := Copy(FSource, startPos, FPos - startPos);
-  Result := MakeToken(tkIntLit, s, FLine, startCol, Length(s));
+
+  // Prüfen auf Dezimalpunkt für Float-Literale
+  if (not IsAtEnd) and (CurrentChar = '.') then
+  begin
+    // Prüfen, ob nach dem Punkt eine Ziffer kommt, sonst ist es ein Dot-Token
+    if (FPos + 1 <= Length(FSource)) and (FSource[FPos + 1] in ['0'..'9']) then
+    begin
+      isFloat := True;
+      Advance; // Punkt überspringen
+      while (not IsAtEnd) and (CurrentChar in ['0'..'9']) do
+        Advance;
+    end;
+  end;
+
+  currentLen := FPos - startPos;
+  s := Copy(FSource, startPos, currentLen);
+
+  if isFloat then
+    Result := MakeToken(tkFloatLit, s, FLine, startCol, currentLen)
+  else
+    Result := MakeToken(tkIntLit, s, FLine, startCol, currentLen);
 end;
 
 function TLexer.ReadString: TToken;
@@ -399,6 +424,7 @@ begin
     'as':      Result := tkAs;
     'type':    Result := tkType;
     'struct':  Result := tkStruct;
+    'array':   Result := tkArray;
     'for':     Result := tkFor;
     'to':      Result := tkTo;
     'downto':  Result := tkDownto;
