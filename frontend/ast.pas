@@ -22,7 +22,9 @@ type
     atF32, atF64,
     atBool,
     atVoid,
-    atPChar
+    atPChar,
+    // array types (placeholder)
+    atArray
   );
 
   { --- Speicherklassen --- }
@@ -32,12 +34,12 @@ type
   { --- Knotenarten (für schnellen Typcheck ohne 'is') --- }
 
   TNodeKind = (
-    // Ausdrücke
-    nkIntLit, nkFloatLit, nkStrLit, nkCharLit, nkBoolLit, nkIdent,
-    nkBinOp, nkUnaryOp, nkCall, nkArrayLit,
-    // Statements
-    nkVarDecl, nkAssign, nkIf, nkWhile, nkReturn, nkBreak, nkSwitch,
-    nkBlock, nkExprStmt,
+     // Ausdrücke
+     nkIntLit, nkFloatLit, nkStrLit, nkCharLit, nkBoolLit, nkIdent,
+     nkBinOp, nkUnaryOp, nkCall, nkArrayLit, nkArrayIndex,
+     // Statements
+     nkVarDecl, nkAssign, nkArrayAssign, nkIf, nkWhile, nkReturn, nkBreak, nkSwitch,
+     nkBlock, nkExprStmt,
     // Top-Level
     nkFuncDecl, nkConDecl, nkProgram
   );
@@ -174,15 +176,29 @@ type
     property Args: TAstExprList read FArgs;
   end;
 
-  { Array-Literal: [1, 2, 3] }
-  TAstArrayLit = class(TAstExpr)
-  private
-    FItems: TAstExprList;
-  public
-    constructor Create(const aItems: TAstExprList; aSpan: TSourceSpan);
-    destructor Destroy; override;
-    property Items: TAstExprList read FItems;
-  end;
+   { Array-Literal: [1, 2, 3] }
+   TAstArrayLit = class(TAstExpr)
+   private
+     FItems: TAstExprList;
+   public
+     constructor Create(const aItems: TAstExprList; aSpan: TSourceSpan);
+     destructor Destroy; override;
+     property Items: TAstExprList read FItems;
+   end;
+
+   { Array-Index: arr[i] }
+   TAstArrayIndex = class(TAstExpr)
+   protected
+     FArray: TAstExpr;
+     FIndex: TAstExpr;
+   public
+     constructor Create(aArray: TAstExpr; aIndex: TAstExpr; aSpan: TSourceSpan);
+     destructor Destroy; override;
+     property ArrayExpr: TAstExpr read FArray;
+     property Index: TAstExpr read FIndex;
+     // Transfer ownership for parser (used in array assignment)
+     procedure TransferOwnership(out AArray: TAstExpr; out AIndex: TAstExpr);
+   end;
 
   // ================================================================
   // Statements
@@ -210,18 +226,33 @@ type
     property InitExpr: TAstExpr read FInitExpr;
   end;
 
-  { Zuweisung: x := expr; }
-  TAstAssign = class(TAstStmt)
-  private
-    FName: string;
-    FValue: TAstExpr;
-  public
-    constructor Create(const aName: string; aValue: TAstExpr;
-      aSpan: TSourceSpan);
-    destructor Destroy; override;
-    property Name: string read FName;
-    property Value: TAstExpr read FValue;
-  end;
+   { Zuweisung: x := expr; }
+   TAstAssign = class(TAstStmt)
+   private
+     FName: string;
+     FValue: TAstExpr;
+   public
+     constructor Create(const aName: string; aValue: TAstExpr;
+       aSpan: TSourceSpan);
+     destructor Destroy; override;
+     property Name: string read FName;
+     property Value: TAstExpr read FValue;
+   end;
+
+   { Array-Zuweisung: arr[i] := expr; }
+   TAstArrayAssign = class(TAstStmt)
+   private
+     FArray: TAstExpr;
+     FIndex: TAstExpr;
+     FValue: TAstExpr;
+   public
+     constructor Create(aArray: TAstExpr; aIndex: TAstExpr; aValue: TAstExpr;
+       aSpan: TSourceSpan);
+     destructor Destroy; override;
+     property ArrayExpr: TAstExpr read FArray;
+     property Index: TAstExpr read FIndex;
+     property Value: TAstExpr read FValue;
+   end;
 
   { If-Statement: if (cond) thenStmt [else elseStmt] }
   TAstIf = class(TAstStmt)
@@ -394,6 +425,7 @@ begin
     atBool:       Result := 'bool';
     atVoid:       Result := 'void';
     atPChar:      Result := 'pchar';
+    atArray:      Result := 'array';
   else
     Result := '<unknown>';
   end;
@@ -418,6 +450,7 @@ begin
     'void':  Result := atVoid;
     'pchar': Result := atPChar;
     'string': Result := atPChar; // map string to pchar for now
+    'array': Result := atArray;
   else
     Result := atUnresolved;
   end;
@@ -446,8 +479,10 @@ begin
     nkUnaryOp:   Result := 'UnaryOp';
     nkCall:      Result := 'Call';
     nkArrayLit:  Result := 'ArrayLit';
+    nkArrayIndex: Result := 'ArrayIndex';
     nkVarDecl:   Result := 'VarDecl';
     nkAssign:    Result := 'Assign';
+    nkArrayAssign: Result := 'ArrayAssign';
     nkIf:        Result := 'If';
     nkWhile:     Result := 'While';
     nkReturn:    Result := 'Return';
@@ -876,6 +911,45 @@ begin
     FDecls[i].Free;
   FDecls := nil;
   inherited Destroy;
+end;
+
+constructor TAstArrayAssign.Create(aArray: TAstExpr; aIndex: TAstExpr; aValue: TAstExpr;
+  aSpan: TSourceSpan);
+begin
+  inherited Create(nkArrayAssign, aSpan);
+  FArray := aArray;
+  FIndex := aIndex;
+  FValue := aValue;
+end;
+
+destructor TAstArrayAssign.Destroy;
+begin
+  FArray.Free;
+  FIndex.Free;
+  FValue.Free;
+  inherited Destroy;
+end;
+
+constructor TAstArrayIndex.Create(aArray: TAstExpr; aIndex: TAstExpr; aSpan: TSourceSpan);
+begin
+  inherited Create(nkArrayIndex, aSpan);
+  FArray := aArray;
+  FIndex := aIndex;
+end;
+
+destructor TAstArrayIndex.Destroy;
+begin
+  FArray.Free;
+  FIndex.Free;
+  inherited Destroy;
+end;
+
+procedure TAstArrayIndex.TransferOwnership(out AArray: TAstExpr; out AIndex: TAstExpr);
+begin
+  AArray := FArray;
+  AIndex := FIndex;
+  FArray := nil; // prevent double-free
+  FIndex := nil; // prevent double-free
 end;
 
 end.

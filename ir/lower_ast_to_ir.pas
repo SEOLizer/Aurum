@@ -8,11 +8,18 @@ uses
   ast, ir, diag, lexer;
 
 type
+  TConstValueKind = (cvInt, cvFloat, cvString);
+  
   TConstValue = class
   public
-    IsStr: Boolean;
+    Kind: TConstValueKind;
     IntVal: Int64;
+    FloatVal: Double;
     StrVal: string;
+    
+    constructor Create(val: Int64);
+    constructor Create(val: Double);
+    constructor Create(const val: string);
   end;
 
   TIRLowering = class
@@ -182,38 +189,31 @@ begin
     else if node is TAstConDecl then
     begin
       // register compile-time constant for inline substitution
-      cv := TConstValue.Create;
       if TAstConDecl(node).InitExpr is TAstIntLit then
       begin
-        cv.IsStr := False;
-        cv.IntVal := TAstIntLit(TAstConDecl(node).InitExpr).Value;
+        cv := TConstValue.Create(TAstIntLit(TAstConDecl(node).InitExpr).Value);
       end
       else if TAstConDecl(node).InitExpr is TAstStrLit then
       begin
-        cv.IsStr := True;
-        cv.StrVal := TAstStrLit(TAstConDecl(node).InitExpr).Value;
+        cv := TConstValue.Create(TAstStrLit(TAstConDecl(node).InitExpr).Value);
       end
       else if TAstConDecl(node).InitExpr is TAstCharLit then
       begin
-        cv.IsStr := False;
         if Length(TAstCharLit(TAstConDecl(node).InitExpr).Value) > 0 then
-          cv.IntVal := Ord(TAstCharLit(TAstConDecl(node).InitExpr).Value[1])
+          cv := TConstValue.Create(Int64(Ord(TAstCharLit(TAstConDecl(node).InitExpr).Value[1])))
         else
-          cv.IntVal := 0;
+          cv := TConstValue.Create(Int64(0));
       end
       else if TAstConDecl(node).InitExpr is TAstFloatLit then
       begin
-        cv.IsStr := False;
-        cv.IntVal := 0; // placeholder for float constants
-        FDiag.Error('Float constants not yet fully implemented', TAstConDecl(node).Span);
+        cv := TConstValue.Create(StrToFloat(TAstFloatLit(TAstConDecl(node).InitExpr).Value));
       end
       else if TAstConDecl(node).InitExpr is TAstBoolLit then
       begin
-        cv.IsStr := False;
         if TAstBoolLit(TAstConDecl(node).InitExpr).Value then
-          cv.IntVal := 1
+          cv := TConstValue.Create(Int64(1))
         else
-          cv.IntVal := 0;
+          cv := TConstValue.Create(Int64(0));
       end
       else
       begin
@@ -252,6 +252,14 @@ var
   ltype: TAurumType;
   w: Integer;
   loc: Integer;
+  // array literal variables
+  arrayLit: TAstArrayLit;
+  arraySize: Integer;
+  i: Integer;
+  elemTemp: Integer;
+  // array indexing variables
+  arrayIndex: TAstArrayIndex;
+  resultTemp: Integer;
 begin
   instr := Default(TIRInstr);
   if expr is TAstIntLit then
@@ -275,14 +283,12 @@ begin
   end;
   if expr is TAstFloatLit then
   begin
-    // Float-Literal - für jetzt als Dummy-Implementation (0)
-    // TODO: Echte Float-Konstanten implementieren
+    // Float-Literal als irConstFloat
     t1 := NewTemp;
-    instr.Op := irConstInt;
+    instr.Op := irConstFloat;
     instr.Dest := t1;
-    instr.ImmInt := 0; // placeholder
+    instr.ImmFloat := StrToFloat(TAstFloatLit(expr).Value);
     Emit(instr);
-    FDiag.Error('Float literals not yet fully implemented in IR', expr.Span);
     Exit(t1);
   end;
   if expr is TAstCharLit then
@@ -312,15 +318,52 @@ begin
   end;
   if expr is TAstArrayLit then
   begin
-    // Array-Literal - für jetzt als Dummy-Implementation
-    // TODO: Echte Array-Lowering implementieren
-    t1 := NewTemp;
-    instr.Op := irConstInt;
+    // Array-Literal: Stack-Allokation + Element-Initialisierung
+    arrayLit := TAstArrayLit(expr);
+    arraySize := Length(arrayLit.Items);
+    
+    // 1) Allokiere Platz auf Stack (8 bytes pro Element)
+    t1 := NewTemp; // wird die Array-Adresse enthalten
+    instr.Op := irStackAlloc;
     instr.Dest := t1;
-    instr.ImmInt := 0; // placeholder - Adresse des ersten Elements
+    instr.ImmInt := arraySize * 8; // 8 bytes pro Element
     Emit(instr);
-    FDiag.Error('Array literals not yet fully implemented in IR', expr.Span);
-    Exit(t1);
+    
+    // 2) Initialisiere jedes Element: array[i] = items[i]
+    for i := 0 to arraySize - 1 do
+    begin
+      elemTemp := LowerExpr(arrayLit.Items[i]);
+      instr.Op := irStoreElem;
+      instr.Dest := 0; // unused
+      instr.Src1 := t1; // array base address
+      instr.Src2 := elemTemp; // element value
+      instr.ImmInt := i; // index
+      Emit(instr);
+    end;
+    
+    Exit(t1); // return array base address
+  end;
+  if expr is TAstArrayIndex then
+  begin
+    // Array-Index: arr[i] -> load element
+    arrayIndex := TAstArrayIndex(expr);
+    
+    // Lower array expression (should return array base address)
+    t1 := LowerExpr(arrayIndex.ArrayExpr);
+    
+    // Lower index expression (should return integer)
+    t2 := LowerExpr(arrayIndex.Index);
+    
+    // Load element: dest = array_base[index]
+    resultTemp := NewTemp;
+    instr.Op := irLoadElem;
+    instr.Dest := resultTemp;
+    instr.Src1 := t1;  // array base address
+    instr.Src2 := t2;  // index
+    instr.ImmInt := 0; // element size offset (8 bytes per element)
+    Emit(instr);
+    
+    Exit(resultTemp);
   end;
   if expr is TAstIdent then
   begin
@@ -330,18 +373,26 @@ begin
     begin
       cv2 := TConstValue(FConstMap.Objects[ci]);
       t1 := NewTemp;
-      if cv2.IsStr then
-      begin
-        si := FModule.InternString(cv2.StrVal);
-        instr.Op := irConstStr;
-        instr.Dest := t1;
-        instr.ImmStr := IntToStr(si);
-      end
-      else
-      begin
-        instr.Op := irConstInt;
-        instr.Dest := t1;
-        instr.ImmInt := cv2.IntVal;
+      case cv2.Kind of
+        cvString:
+        begin
+          si := FModule.InternString(cv2.StrVal);
+          instr.Op := irConstStr;
+          instr.Dest := t1;
+          instr.ImmStr := IntToStr(si);
+        end;
+        cvInt:
+        begin
+          instr.Op := irConstInt;
+          instr.Dest := t1;
+          instr.ImmInt := cv2.IntVal;
+        end;
+        cvFloat:
+        begin
+          instr.Op := irConstFloat;
+          instr.Dest := t1;
+          instr.ImmFloat := cv2.FloatVal;
+        end;
       end;
       Emit(instr);
       Exit(t1);
@@ -536,6 +587,9 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     half: UInt64;
     signedVal: Int64;
     cvLocal: TConstValue;
+    // array assignment variables
+    arrayAssignStmt: TAstArrayAssign;
+    arrayTemp, indexTemp, valueTemp: Integer;
   begin
   instr := Default(TIRInstr);
   Result := True;
@@ -568,18 +622,14 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
           else
             signedVal := Int64(truncated);
           // record local constant for future loads instead of emitting store
-          cvLocal := TConstValue.Create;
-          cvLocal.IsStr := False;
-          cvLocal.IntVal := signedVal;
+          cvLocal := TConstValue.Create(signedVal);
           if loc >= Length(FLocalConst) then SetLength(FLocalConst, loc+1);
           FLocalConst[loc] := cvLocal;
         end
         else
         begin
           // unsigned: record local constant zero-extended value
-          cvLocal := TConstValue.Create;
-          cvLocal.IsStr := False;
-          cvLocal.IntVal := Int64(truncated);
+          cvLocal := TConstValue.Create(Int64(truncated));
           if loc >= Length(FLocalConst) then SetLength(FLocalConst, loc+1);
           FLocalConst[loc] := cvLocal;
         end;
@@ -642,6 +692,31 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     instr.Dest := loc;
     instr.Src1 := tmp;
     Emit(instr);
+    Exit(True);
+  end;
+
+  if stmt is TAstArrayAssign then
+  begin
+    // Array assignment: arr[index] := value
+    arrayAssignStmt := TAstArrayAssign(stmt);
+    
+    // Lower array expression (should return array base address)
+    arrayTemp := LowerExpr(arrayAssignStmt.ArrayExpr);
+    
+    // Lower index expression
+    indexTemp := LowerExpr(arrayAssignStmt.Index);
+    
+    // Lower value expression
+    valueTemp := LowerExpr(arrayAssignStmt.Value);
+    
+    // Store element: array[index] = value (dynamic)
+    instr.Op := irStoreElemDyn;
+    instr.Dest := 0; // unused
+    instr.Src1 := arrayTemp;  // array base address
+    instr.Src2 := indexTemp;  // index temp
+    instr.Src3 := valueTemp;  // value to store
+    Emit(instr);
+    
     Exit(True);
   end;
 
@@ -806,7 +881,29 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
 
    FDiag.Error('lowering: unsupported statement', stmt.Span);
    Result := False;
- end;
+  end;
 
+{ TConstValue constructors }
+
+constructor TConstValue.Create(val: Int64);
+begin
+  inherited Create;
+  Kind := cvInt;
+  IntVal := val;
+end;
+
+constructor TConstValue.Create(val: Double);
+begin
+  inherited Create;
+  Kind := cvFloat;
+  FloatVal := val;
+end;
+
+constructor TConstValue.Create(const val: string);
+begin
+  inherited Create;
+  Kind := cvString;
+  StrVal := val;
+end;
 
 end.

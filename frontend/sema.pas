@@ -195,6 +195,7 @@ var
   s: TSymbol;
   i: Integer;
   lt, rt, ot, atype: TAurumType;
+  elementType: TAurumType;
 begin
   if expr = nil then
   begin
@@ -208,24 +209,44 @@ begin
     nkCharLit: Result := atChar;
     nkBoolLit: Result := atBool;
     nkArrayLit:
-      begin
-        // Array-Literal-Typprüfung: alle Elemente müssen gleichen Typ haben
-        // Für jetzt nehmen wir den Typ des ersten Elements
-        if Length(TAstArrayLit(expr).Items) > 0 then
-        begin
-          Result := CheckExpr(TAstArrayLit(expr).Items[0]);
-          // TODO: Prüfe, dass alle anderen Elemente kompatibel sind
-          for i := 1 to High(TAstArrayLit(expr).Items) do
-          begin
-            atype := CheckExpr(TAstArrayLit(expr).Items[i]);
-            if not TypeEqual(Result, atype) then
-              FDiag.Error(Format('array element type mismatch: expected %s but got %s', [AurumTypeToStr(Result), AurumTypeToStr(atype)]), TAstArrayLit(expr).Items[i].Span);
-          end;
-        end
-        else
-          Result := atUnresolved; // leeres Array
-      end;
-    nkIdent:
+       begin
+         // Array-Literal-Typprüfung: alle Elemente müssen gleichen Typ haben
+         if Length(TAstArrayLit(expr).Items) > 0 then
+         begin
+           elementType := CheckExpr(TAstArrayLit(expr).Items[0]);
+           // Prüfe, dass alle anderen Elemente kompatibel sind
+           for i := 1 to High(TAstArrayLit(expr).Items) do
+           begin
+             atype := CheckExpr(TAstArrayLit(expr).Items[i]);
+             if not TypeEqual(elementType, atype) then
+               FDiag.Error(Format('array element type mismatch: expected %s but got %s', [AurumTypeToStr(elementType), AurumTypeToStr(atype)]), TAstArrayLit(expr).Items[i].Span);
+           end;
+           // Array-Literal hat always den Typ 'array'
+           Result := atArray;
+         end
+         else
+           Result := atArray; // leeres Array ist auch atArray
+       end;
+     nkArrayIndex:
+       begin
+         // Array-Index: arr[i] gibt Element-Typ zurück
+         // Für jetzt nehmen wir an, dass alle Arrays int64-Elemente haben
+         // TODO: Echte Element-Typ-Tracking implementieren
+         
+         // Prüfe dass Array-Expression tatsächlich ein Array ist
+         atype := CheckExpr(TAstArrayIndex(expr).ArrayExpr);
+         if not TypeEqual(atype, atArray) then
+           FDiag.Error(Format('indexing non-array type: got %s', [AurumTypeToStr(atype)]), TAstArrayIndex(expr).ArrayExpr.Span);
+         
+         // Prüfe dass Index ein Integer ist
+         atype := CheckExpr(TAstArrayIndex(expr).Index);
+         if not IsIntegerType(atype) then
+           FDiag.Error(Format('array index must be integer, got %s', [AurumTypeToStr(atype)]), TAstArrayIndex(expr).Index.Span);
+         
+         // Array-Indexing gibt Element-Typ zurück (für jetzt: int64)
+         Result := atInt64; // TODO: Echten Element-Typ verwenden
+       end;
+     nkIdent:
       begin
         ident := TAstIdent(expr);
         s := ResolveSymbol(ident.Name);
@@ -346,6 +367,7 @@ procedure TSema.CheckStmt(stmt: TAstStmt);
 var
   vd: TAstVarDecl;
   asg: TAstAssign;
+  arrayAssign: TAstArrayAssign;
   ifn: TAstIf;
   wh: TAstWhile;
   ret: TAstReturn;
@@ -353,7 +375,7 @@ var
   i: Integer;
   s: TSymbol;
   sym: TSymbol;
-  vtype, ctype, rtype: TAurumType;
+  vtype, ctype, rtype, atype: TAurumType;
   sw: TAstSwitch;
   caseVal: TAstExpr;
   cvtype: TAurumType;
@@ -400,6 +422,39 @@ begin
         if not TypeEqual(vtype, s.DeclType) then
           FDiag.Error(Format('assignment type mismatch: %s := %s', [AurumTypeToStr(s.DeclType), AurumTypeToStr(vtype)]), stmt.Span);
       end;
+     nkArrayAssign:
+       begin
+         arrayAssign := TAstArrayAssign(stmt);
+         
+         // Für Array-Assignment: ArrayExpr sollte ein Identifier (Array-Variable) sein
+         // Nicht ein Array-Index-Ausdruck!
+         if arrayAssign.ArrayExpr is TAstIdent then
+         begin
+           // Prüfe dass die Variable tatsächlich ein Array ist
+           s := ResolveSymbol(TAstIdent(arrayAssign.ArrayExpr).Name);
+           if s = nil then
+           begin
+             FDiag.Error('assignment to undeclared variable: ' + TAstIdent(arrayAssign.ArrayExpr).Name, arrayAssign.ArrayExpr.Span);
+             Exit;
+           end;
+           if not TypeEqual(s.DeclType, atArray) then
+             FDiag.Error(Format('assignment to non-array variable: got %s', [AurumTypeToStr(s.DeclType)]), arrayAssign.ArrayExpr.Span);
+         end
+         else
+         begin
+           FDiag.Error('array assignment requires simple array variable', arrayAssign.ArrayExpr.Span);
+         end;
+         
+         // Prüfe dass Index ein Integer ist
+         atype := CheckExpr(arrayAssign.Index);
+         if not IsIntegerType(atype) then
+           FDiag.Error(Format('array index must be integer, got %s', [AurumTypeToStr(atype)]), arrayAssign.Index.Span);
+         
+         // Prüfe Value-Typ (für jetzt: muss int64 sein, da Arrays int64-Elemente haben)
+         vtype := CheckExpr(arrayAssign.Value);
+         if not TypeEqual(vtype, atInt64) then
+           FDiag.Error(Format('array assignment type mismatch: expected int64 but got %s', [AurumTypeToStr(vtype)]), arrayAssign.Value.Span);
+       end;
     nkExprStmt:
       begin
         CheckExpr(TAstExprStmt(stmt).Expr);

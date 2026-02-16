@@ -374,18 +374,56 @@ var
   expr: TAstExpr;
   name: string;
   valExpr: TAstExpr;
+  arrayIdxExpr: TAstArrayIndex;
+  arrayExpr, indexExpr: TAstExpr;
 begin
   expr := ParseExpr;
-  // Assignment pattern: ident := expr ;
-  if (expr is TAstIdent) and Check(tkAssign) then
+  // Assignment patterns
+  if Check(tkAssign) then
   begin
-    name := TAstIdent(expr).Name;
-    Advance; // consume ':='
-    valExpr := ParseExpr;
-    Expect(tkSemicolon);
-    // free ident node
-    expr.Free;
-    Exit(TAstAssign.Create(name, valExpr, valExpr.Span));
+    if expr is TAstIdent then
+    begin
+      // Simple assignment: ident := expr
+      name := TAstIdent(expr).Name;
+      Advance; // consume ':='
+      valExpr := ParseExpr;
+      Expect(tkSemicolon);
+      // free ident node
+      expr.Free;
+      Exit(TAstAssign.Create(name, valExpr, valExpr.Span));
+    end
+    else if expr is TAstArrayIndex then
+    begin
+      // Array assignment: arr[i] := expr
+      Advance; // consume ':='
+      valExpr := ParseExpr;
+      Expect(tkSemicolon);
+      // Array assignment: arr[i] := expr
+      // Extract components from ArrayIndex using safe method
+      arrayIdxExpr := TAstArrayIndex(expr);
+      arrayIdxExpr.TransferOwnership(arrayExpr, indexExpr);
+      
+      Result := TAstArrayAssign.Create(
+        arrayExpr,  // This is the array variable (arr)
+        indexExpr,  // This is the index (i) 
+        valExpr,    // This is the value (expr)
+        valExpr.Span
+      );
+      
+      // ArrayAssign now owns arrayExpr and indexExpr
+      expr.Free; // Free the ArrayIndex shell (safe now)
+      Exit;
+    end
+    else
+    begin
+      FDiag.Error('invalid assignment target', expr.Span);
+      expr.Free;
+      Advance; // skip ':='
+      valExpr := ParseExpr;
+      valExpr.Free;
+      Expect(tkSemicolon);
+      Exit(TAstExprStmt.Create(TAstIntLit.Create(0, expr.Span), expr.Span));
+    end;
   end
   else
   begin
@@ -600,6 +638,13 @@ begin
     end;
     Expect(tkRParen);
     Result := TAstCall.Create(name, args, span);
+  end
+  else if Accept(tkLBracket) then
+  begin
+    // Array indexing: ident[expr]
+    a := ParseExpr; // index expression
+    Expect(tkRBracket);
+    Result := TAstArrayIndex.Create(TAstIdent.Create(name, span), a, span);
   end
   else
     Result := TAstIdent.Create(name, span);
