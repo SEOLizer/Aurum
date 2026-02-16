@@ -114,14 +114,7 @@ type
     property Value: string read FValue;
   end;
 
-  { Char-Literal: 'x' }
-  TAstCharLit = class(TAstExpr)
-  private
-    FValue: string;
-  public
-    constructor Create(const aValue: string; aSpan: TSourceSpan);
-    property Value: string read FValue;
-  end;
+
 
   { Bool-Literal: true / false }
   TAstBoolLit = class(TAstExpr)
@@ -686,12 +679,7 @@ end;
 // TAstCharLit
 // ================================================================
 
-constructor TAstCharLit.Create(const aValue: string; aSpan: TSourceSpan);
-begin
-  inherited Create(nkCharLit, aSpan);
-  FValue := aValue;
-  FResolvedType := atChar;
-end;
+
 
 // ================================================================
 // TAstBoolLit

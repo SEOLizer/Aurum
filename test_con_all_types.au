@@ -1,0 +1,18 @@
+// Test con declarations with all literal types
+con MAGIC_NUM: int64 := 42;
+con PI_F32: f32 := 3.14;
+con PI_F64: f64 := 3.14159;
+con LETTER: char := 'A';
+con NEWLINE: char := '\n';
+con FLAG: bool := true;
+
+fn main() {
+    var n: int64 := MAGIC_NUM;
+    var f1: f32 := PI_F32;
+    var f2: f64 := PI_F64;
+    var c: char := LETTER;
+    var nl: char := NEWLINE;
+    var b: bool := FLAG;
+    
+    print_int(n);
+}

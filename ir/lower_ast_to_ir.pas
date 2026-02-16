@@ -199,10 +199,7 @@ begin
       end
       else if TAstConDecl(node).InitExpr is TAstCharLit then
       begin
-        if Length(TAstCharLit(TAstConDecl(node).InitExpr).Value) > 0 then
-          cv := TConstValue.Create(Int64(Ord(TAstCharLit(TAstConDecl(node).InitExpr).Value[1])))
-        else
-          cv := TConstValue.Create(Int64(0));
+        cv := TConstValue.Create(Int64(Ord(TAstCharLit(TAstConDecl(node).InitExpr).Value)));
       end
       else if TAstConDecl(node).InitExpr is TAstFloatLit then
       begin
@@ -297,10 +294,7 @@ begin
     t1 := NewTemp;
     instr.Op := irConstInt;
     instr.Dest := t1;
-    if Length(TAstCharLit(expr).Value) > 0 then
-      instr.ImmInt := Ord(TAstCharLit(expr).Value[1])
-    else
-      instr.ImmInt := 0; // fallback für leeres Char
+    instr.ImmInt := Ord(TAstCharLit(expr).Value);
     Emit(instr);
     Exit(t1);
   end;

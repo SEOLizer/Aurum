@@ -7,6 +7,6 @@ echo Linking aurumc
 OFS=$IFS
 IFS="
 "
-/usr/bin/ld.bfd -b elf64-x86-64 -m elf_x86_64     -s  -L. -o aurumc -T link89451.res -e _start
+/bin/ld.bfd -b elf64-x86-64 -m elf_x86_64     -s  -L. -o aurumc -T link3285316.res -e _start
 if [ $? != 0 ]; then DoExitLink aurumc; fi
 IFS=$OFS

@@ -1,0 +1,4 @@
+fn main() {
+    var arr: array := [1, 2, 3];
+    print_int(42);
+}

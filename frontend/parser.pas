@@ -46,7 +46,6 @@ type
     function ParsePrimary: TAstExpr;
     function ParseCallOrIdent: TAstExpr;
     function ParsePostfix(base: TAstExpr): TAstExpr;
-    function ParseArrayLiteral: TAstExpr;
 
     function ParseType: TAurumType;
     function ParseParamList: TAstParamList;
@@ -411,7 +410,7 @@ var
   valExpr: TAstExpr;
   i: Integer;
 begin
-  if Check(tkVar) or Check(tkLet) or Check(tkCo) or Check(tkCon) then
+  if Check(tkVar) or Check(tkLet) or Check(tkCo) then
     Exit(ParseVarLetCoDecl);
 
   if Check(tkIf) then
@@ -524,7 +523,6 @@ begin
   if Accept(tkVar) then storage := skVar
   else if Accept(tkLet) then storage := skLet
   else if Accept(tkCo) then storage := skCo
-  else if Accept(tkCon) then storage := skCon
   else storage := skVar; // unreachable
 
   if Check(tkIdent) then
@@ -599,56 +597,19 @@ var
   expr: TAstExpr;
   name: string;
   valExpr: TAstExpr;
-  arrayIdxExpr: TAstArrayIndex;
-  arrayExpr, indexExpr: TAstExpr;
 begin
   expr := ParseExpr;
-  // Assignment patterns
-  if Check(tkAssign) then
+  // Assignment pattern: ident := expr ;
+  // (for now, only simple ident assignment; field/index LValues parsed but not assignable yet)
+  if (expr is TAstIdent) and Check(tkAssign) then
   begin
-    if expr is TAstIdent then
-    begin
-      // Simple assignment: ident := expr
-      name := TAstIdent(expr).Name;
-      Advance; // consume ':='
-      valExpr := ParseExpr;
-      Expect(tkSemicolon);
-      // free ident node
-      expr.Free;
-      Exit(TAstAssign.Create(name, valExpr, valExpr.Span));
-    end
-    else if expr is TAstArrayIndex then
-    begin
-      // Array assignment: arr[i] := expr
-      Advance; // consume ':='
-      valExpr := ParseExpr;
-      Expect(tkSemicolon);
-      // Array assignment: arr[i] := expr
-      // Extract components from ArrayIndex using safe method
-      arrayIdxExpr := TAstArrayIndex(expr);
-      arrayIdxExpr.TransferOwnership(arrayExpr, indexExpr);
-      
-      Result := TAstArrayAssign.Create(
-        arrayExpr,  // This is the array variable (arr)
-        indexExpr,  // This is the index (i) 
-        valExpr,    // This is the value (expr)
-        valExpr.Span
-      );
-      
-      // ArrayAssign now owns arrayExpr and indexExpr
-      expr.Free; // Free the ArrayIndex shell (safe now)
-      Exit;
-    end
-    else
-    begin
-      FDiag.Error('invalid assignment target', expr.Span);
-      expr.Free;
-      Advance; // skip ':='
-      valExpr := ParseExpr;
-      valExpr.Free;
-      Expect(tkSemicolon);
-      Exit(TAstExprStmt.Create(TAstIntLit.Create(0, expr.Span), expr.Span));
-    end;
+    name := TAstIdent(expr).Name;
+    Advance; // consume ':='
+    valExpr := ParseExpr;
+    Expect(tkSemicolon);
+    // free ident node
+    expr.Free;
+    Exit(TAstAssign.Create(name, valExpr, valExpr.Span));
   end
   else if ((expr is TAstFieldAccess) or (expr is TAstIndexAccess)) and Check(tkAssign) then
   begin
@@ -794,28 +755,12 @@ begin
     Exit(TAstIntLit.Create(v, span));
   end;
 
-  if Check(tkFloatLit) then
-  begin
-    s := FCurTok.Value;
-    span := FCurTok.Span;
-    Advance;
-    Exit(TAstFloatLit.Create(s, span));
-  end;
-
   if Check(tkStrLit) then
   begin
     s := FCurTok.Value;
     span := FCurTok.Span;
     Advance;
     Exit(TAstStrLit.Create(s, span));
-  end;
-  
-  if Check(tkCharLit) then
-  begin
-    s := FCurTok.Value;
-    span := FCurTok.Span;
-    Advance;
-    Exit(TAstCharLit.Create(s, span));
   end;
 
   if Check(tkCharLit) then
@@ -839,9 +784,6 @@ begin
 
   if Check(tkIdent) then
     Exit(ParseCallOrIdent);
-
-  if Check(tkLBracket) then
-    Exit(ParseArrayLiteral);
 
   if Accept(tkLParen) then
   begin
@@ -886,13 +828,6 @@ begin
     Expect(tkRParen);
     Result := ParsePostfix(TAstCall.Create(name, args, span));
   end
-  else if Accept(tkLBracket) then
-  begin
-    // Array indexing: ident[expr]
-    a := ParseExpr; // index expression
-    Expect(tkRBracket);
-    Result := TAstArrayIndex.Create(TAstIdent.Create(name, span), a, span);
-  end
   else
     Result := ParsePostfix(TAstIdent.Create(name, span));
 end;
@@ -928,33 +863,6 @@ begin
     else
       Break;
   end;
-end;
-
-function TParser.ParseArrayLiteral: TAstExpr;
-var
-  items: TAstExprList;
-  span: TSourceSpan;
-  item: TAstExpr;
-begin
-  span := FCurTok.Span;
-  Advance; // consume '['
-  
-  items := nil;
-  if not Check(tkRBracket) then
-  begin
-    // ItemList: expr, expr, ...
-    while True do
-    begin
-      item := ParseExpr;
-      SetLength(items, Length(items) + 1);
-      items[High(items)] := item;
-      if Accept(tkComma) then Continue;
-      Break;
-    end;
-  end;
-  
-  Expect(tkRBracket);
-  Result := TAstArrayLit.Create(items, span);
 end;
 
 function TParser.ParseType: TAurumType;
