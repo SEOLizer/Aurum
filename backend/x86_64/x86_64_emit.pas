@@ -156,6 +156,37 @@ begin
 end;
 procedure WriteSyscall(buf: TByteBuffer); begin EmitU8(buf,$0F); EmitU8(buf,$05); end;
 procedure WriteLeaRsiRipDisp(buf: TByteBuffer; disp32: Cardinal); begin EmitU8(buf,$48); EmitU8(buf,$8D); EmitU8(buf,$35); EmitU32(buf, disp32); end;
+procedure WriteAddRegImm32(buf: TByteBuffer; reg: Byte; imm: Integer);
+begin
+  // ADD r64, imm32: 48 01 /r for rax, or REX.W + 81 /0 id for r64
+  // For RAX specifically: 48 05 imm32
+  if reg = RAX then
+  begin
+    EmitU8(buf, $48); // REX.W
+    EmitU8(buf, $05); // ADD rax, imm32
+  end
+  else
+  begin
+    // ADD r/m64, imm32: REX.W 81 /0 r/m64 imm32
+    EmitU8(buf, $48); // REX.W
+    EmitU8(buf, $81); // ADD r/m64, imm32
+    EmitU8(buf, $C0 or (reg and $7)); // ModR/M: mod=11, /0, r/m=reg
+  end;
+  EmitU32(buf, Cardinal(imm));
+end;
+procedure WriteLeaRegMemOffset(buf: TByteBuffer; reg: Byte; base: Byte; offset: Integer);
+begin
+  // LEA r64, [r/m64 + disp32]: 48 8D /r disp32
+  // For [RBP + offset], modrm = 10 (disp32) + reg + r/m
+  // RBP = 101 = 5, RAX = 000 = 0
+  // mod=10 (disp32) = bits 6-7 = 2
+  // So for RAX (0) and RBP (5): 10 000 101 = 0x85
+  EmitU8(buf, $48); // REX.W
+  EmitU8(buf, $8D); // LEA
+  // ModR/M: mod=10, reg=reg, r/m=base
+  EmitU8(buf, $80 or ((reg and $7) shl 3) or (base and $7));
+  EmitU32(buf, Cardinal(offset));
+end;
 
 procedure WriteJeRel32(buf: TByteBuffer; rel32: Cardinal);
 begin EmitU8(buf,$0F); EmitU8(buf,$84); EmitU32(buf, rel32); end;
@@ -1187,13 +1218,39 @@ begin
               // and MOVSD/MOVSS instructions to load into XMM registers
             end;
          irLoadLocal:
-           begin
-             // Load local variable into temp: dest = locals[src1]
-             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(instr.Src1));
-             slotIdx := localCnt + instr.Dest;
-             WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
-           end;
-          irSExt:
+            begin
+              // Load local variable into temp: dest = locals[src1]
+              WriteMovRegMem(FCode, RAX, RBP, SlotOffset(instr.Src1));
+              slotIdx := localCnt + instr.Dest;
+              WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
+            end;
+         irLoadField:
+            begin
+              // Load field: dest = *(src1 + fieldIndex * 8)
+              // src1 = base local slot, ImmInt = field index
+              // Compute address: RAX = RBP + slotOffset(base) - 8 * fieldIndex
+              WriteMovRegReg(FCode, RAX, RBP);
+              WriteAddRegImm32(FCode, RAX, SlotOffset(instr.Src1) - 8 * Integer(instr.ImmInt));
+              // Load from [RAX]: RAX = [RAX]
+              WriteMovRegMem(FCode, RAX, RAX, 0);
+              // Store to dest slot
+              slotIdx := localCnt + instr.Dest;
+              WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
+            end;
+         irStoreField:
+            begin
+              // Store field: *(src1 + fieldIndex * 8) = src2
+              // src1 = base local slot, src2 = value, ImmInt = field index
+              // Load value into RAX
+              slotIdx := localCnt + instr.Src2;
+              WriteMovRegMem(FCode, RAX, RBP, SlotOffset(slotIdx));
+              // Compute address: RCX = RBP + slotOffset(base) - 8 * fieldIndex
+              WriteMovRegReg(FCode, RCX, RBP);
+              WriteAddRegImm32(FCode, RCX, SlotOffset(instr.Src1) - 8 * Integer(instr.ImmInt));
+              // Store [RCX] = RAX
+              WriteMovMemReg(FCode, RCX, 0, RAX);
+            end;
+           irSExt:
             begin
               // sign-extend src1 (width in ImmInt) into dest using shl/sar sequence
               slotIdx := localCnt + instr.Src1;

@@ -50,6 +50,7 @@ type
     function ParseType: TAurumType;
     function ParseParamList: TAstParamList;
     function ParseArrayLiteral: TAstExpr;
+    function ParseStructLiteral(const typeName: string): TAstExpr;
   public
     constructor Create(lexer: TLexer; diag: TDiagnostics);
     destructor Destroy; override;
@@ -247,6 +248,8 @@ function TParser.ParseTypeDecl(isPub: Boolean): TAstTypeDecl;
 var
   name: string;
   declType: TAurumType;
+  fields: TAstTypeFieldList;
+  field: TAstTypeField;
 begin
   Expect(tkType);
   if Check(tkIdent) then
@@ -259,16 +262,41 @@ begin
     name := '<anon>';
     FDiag.Error('expected type name', FCurTok.Span);
   end;
-  // '='
-  if Check(tkEq) then
-    Advance
-  else
+  // ':='
+  Expect(tkAssign);
+  // If next token is 'struct', parse field list
+  fields := nil;
+  if Accept(tkStruct) then
   begin
-    FDiag.Error('expected ''='' in type declaration', FCurTok.Span);
-  end;
-  declType := ParseType;
+    Expect(tkLBrace);
+    while not Check(tkRBrace) and not Check(tkEOF) do
+    begin
+      if Check(tkIdent) then
+      begin
+        field.Name := FCurTok.Value; Advance;
+        Expect(tkColon);
+        field.FieldType := ParseType;
+        SetLength(fields, Length(fields) + 1);
+        fields[High(fields)] := field;
+        Expect(tkSemicolon);
+        Continue;
+      end
+      else
+      begin
+        FDiag.Error('expected field declaration in struct', FCurTok.Span);
+        Break;
+      end;
+    end;
+    Expect(tkRBrace);
+    declType := atStruct;
+  end
+  else
+    declType := ParseType;
+
   Expect(tkSemicolon);
   Result := TAstTypeDecl.Create(name, declType, isPub, FCurTok.Span);
+  if declType = atStruct then
+    Result.SetStructFields(fields);
 end;
 
 function TParser.ParseUnitDecl: TAstUnitDecl;
@@ -519,6 +547,7 @@ var
   storage: TStorageKlass;
   name: string;
   declType: TAurumType;
+  declTypeName: string;
   initExpr: TAstExpr;
 begin
   if Accept(tkVar) then storage := skVar
@@ -536,13 +565,18 @@ begin
   end;
 
   Expect(tkColon);
+  // capture type name if it's an identifier
+  if Check(tkIdent) then
+    declTypeName := FCurTok.Value
+  else
+    declTypeName := '';
   declType := ParseType;
 
   Expect(tkAssign);
   initExpr := ParseExpr;
   Expect(tkSemicolon);
 
-  Result := TAstVarDecl.Create(storage, name, declType, initExpr, initExpr.Span);
+  Result := TAstVarDecl.Create(storage, name, declType, declTypeName, initExpr, initExpr.Span);
 end;
 
 function TParser.ParseForStmt: TAstFor;
@@ -600,6 +634,8 @@ var
   valExpr: TAstExpr;
   arrExpr: TAstExpr;
   indexExpr: TAstExpr;
+  objExpr: TAstExpr;
+  fieldName: string;
 begin
   expr := ParseExpr;
   // Assignment pattern: ident := expr ;
@@ -627,13 +663,14 @@ begin
   end
   else if (expr is TAstFieldAccess) and Check(tkAssign) then
   begin
-    FDiag.Error('field assignment not yet supported', expr.Span);
+    // Field assignment: obj.field := value
+    // Transfer ownership from field access before freeing it
+    TAstFieldAccess(expr).TransferOwnership(objExpr, fieldName);
     Advance; // consume ':='
     valExpr := ParseExpr;
     Expect(tkSemicolon);
+    Result := TAstFieldAssign.Create(objExpr, fieldName, valExpr, valExpr.Span);
     expr.Free;
-    valExpr.Free;
-    Exit(TAstExprStmt.Create(TAstIntLit.Create(0, FCurTok.Span), FCurTok.Span));
   end
   else
   begin
@@ -852,6 +889,11 @@ begin
     Expect(tkRParen);
     Result := ParsePostfix(TAstCall.Create(name, args, span));
   end
+  else if Check(tkLBrace) then
+  begin
+    // Struct-Literal: TypeName { field: value, ... }
+    Result := ParsePostfix(ParseStructLiteral(name));
+  end
   else
     Result := ParsePostfix(TAstIdent.Create(name, span));
 end;
@@ -891,10 +933,29 @@ end;
 
 function TParser.ParseType: TAurumType;
 var s: string;
+    dummyType: TAurumType;
+    braceCount: Integer;
 begin
   if Accept(tkArray) then // Check for array keyword first
   begin
     Result := atArray;
+    Exit;
+  end;
+
+  if Accept(tkStruct) then // Check for struct keyword
+  begin
+    // Parse struct body { field: type; ... }
+    // For now, just consume the syntax and return atStruct
+    Expect(tkLBrace);
+    // Skip struct body: consume tokens until matching }
+    braceCount := 1;
+    while (braceCount > 0) and not Check(tkEOF) do
+    begin
+      Advance; // move to next token
+      if Check(tkLBrace) then Inc(braceCount)
+      else if Check(tkRBrace) then Dec(braceCount);
+    end;
+    Result := atStruct;
     Exit;
   end;
 
@@ -929,6 +990,35 @@ begin
   end;
   Expect(tkRBracket);
   Result := TAstArrayLit.Create(items, span);
+end;
+
+function TParser.ParseStructLiteral(const typeName: string): TAstExpr;
+var
+  span: TSourceSpan;
+  fieldName: string;
+  fieldValue: TAstExpr;
+begin
+  span := FCurTok.Span;
+  Result := TAstStructLit.Create(typeName, span);
+  Expect(tkLBrace);
+  while not Check(tkRBrace) and not Check(tkEOF) do
+  begin
+    if Check(tkIdent) then
+    begin
+      fieldName := FCurTok.Value;
+      Advance;
+      Expect(tkColon);
+      fieldValue := ParseExpr;
+      TAstStructLit(Result).AddField(fieldName, fieldValue);
+      if not Accept(tkComma) then Break;
+    end
+    else
+    begin
+      FDiag.Error('expected field name in struct literal', FCurTok.Span);
+      Break;
+    end;
+  end;
+  Expect(tkRBrace);
 end;
 
 function TParser.ParseParamList: TAstParamList;

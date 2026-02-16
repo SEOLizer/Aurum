@@ -34,7 +34,7 @@ begin
     p := TParser.Create(lex, FDiag);
     try
       prog := p.ParseProgram;
-      s := TSema.Create(FDiag, nil);
+      s := TSema.Create(FDiag);
       try
         s.Analyze(prog);
       finally

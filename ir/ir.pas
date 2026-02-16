@@ -35,7 +35,10 @@ type
      irStackAlloc,  // allocate space on stack for array
      irStoreElem,   // store element at array[index] (static index in ImmInt)
      irLoadElem,    // load element from array[index] (dynamic index in Src2)
-     irStoreElemDyn // store element at array[index] (dynamic index, uses 3 sources)
+     irStoreElemDyn,// store element at array[index] (dynamic index, uses 3 sources)
+     // struct field operations
+     irLoadField,   // load field: Dest = *(Src1 + fieldOffset)
+     irStoreField   // store field: *(Src1 + fieldOffset) = Src2
   );
 
   TIRInstr = record

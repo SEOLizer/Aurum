@@ -20,7 +20,7 @@ begin
     p := TParser.Create(lx, d);
     prog := p.ParseProgram;
     p.Free; lx.Free;
-    s := TSema.Create(d, nil);
+    s := TSema.Create(d);
     s.Analyze(prog);
     s.Free;
     module := TIRModule.Create;

@@ -468,3 +468,74 @@ die Basisklasse als erster versteckter Parent im Typgraphen hinterlegt,
 Member-Lookup entlang der Vererbungskette durchgeführt.
 
 Methoden können überschrieben werden, wenn Signatur kompatibel ist; ob du ein override-Keyword willst, ist eine spätere Erweiterung.
+
+## Neue Typen (erweitert Type ::= ...)
+
+TensorDim ::= '[' INT ',' INT {',' INT} ']'         // z.B. [3,4] für f32[3,4]
+TensorType ::= 'tensor' '<' BaseType ',' TensorDim '>' 
+             | 'tensor' '<' BaseType ',' TensorDim '>' GpuHint
+             | 'vec' '<' BaseType ',' INT '>'       // Vektor/Embedding, z.B. vec<f32, 768>
+GpuHint ::= '@gpu' | '@cuda' | '@shared_vram'      // Compiler-Hint für GPU-Offload
+
+ProbType ::= 'option' '<' Type '>'                 // option<T>
+           | 'result' '<' Type ',' Type '>'        // result<T,E>
+           | 'option' '<' 'result' '<' Type ',' Type '>' '>'  // Nested
+
+BaseType ::= 'int8' | 'int16' | ... | 'f32' | 'f64'  // Bestehende + f32/f64 für Tensors
+Type ::= PrimitiveType 
+       | PointerType 
+       | TensorType 
+       | ProbType 
+       | ArrayType '[' INT ']'  // Bestehend, erweitert um Tensor
+
+## GPU-Unterstützung (erweitert FnDecl und Stmt)
+
+FnDecl ::= 'fn' IDENT '(' [ParamList] ')' [':' Type] ('->' Type)? GpuAttr?
+GpuAttr ::= '@kernel' | '@gpu_launch' '(' INT ',' INT ')'  // Blocks/Threads für Kernel
+
+Stmt ::= ... 
+       | 'launch_gpu' Expr ';'                       // Aufruf: launch_gpu(my_kernel( tensor ));
+
+ParamList ::= Param {',' Param}
+Param ::= IDENT ':' Type
+
+Expr ::= ... 
+       | IDENT '(' [ExprList] ')'                   // Kernel-Call
+       | 'tensor_create' '<' BaseType '>' '(' ExprList ')'  // tensor_create<f32>(data, [3,4])
+       | Expr '[' Expr ']'                           // Tensor-Slicing, z.B. tensor[0,1]
+       | 'match' Expr '{' CaseList '}'               // Pattern Matching für Option/Result
+CaseList ::= 'case' Pattern '=>' Block {CaseList}
+Pattern ::= 'some' '(' Type ')' | 'none' | 'ok' '(' Type ')' | 'err' '(' Type ')'
+
+## Beispiel-Integration (Syntax-Check)
+type Embedding = vec<f32, 768>; // Built-in für Mistral-Embeddings
+type Weights @gpu = tensor<f32, >; // GPU-optimiert
+
+fn matmul @kernel (a: tensor<f32, >, b: tensor<f32, >) -> tensor<f32, > @cuda {
+
+// Kernel-Code: Compiler generiert CUDA
+var result: tensor<f32, > = tensor_create<f32>();
+
+// ...
+return result;
+}
+
+fn main(): int64 {
+var emb: Embedding = vec<f32, 768>( /* Mistral-Embedding */ );
+let prod: result<tensor<f32, >, string> = matmul( tensor1, tensor2 );
+
+match prod {
+case ok(res) => launch_gpu(res);
+case err(msg) => print_str(msg);
+}
+return 0;
+}
+
+text
+Diese Erweiterung passt zu Aurums Pascal-ähnlichem Stil, erweitert um AI/ML-Features aus Sever/A.[web:21][page:0] Der Parser braucht ~10 neue Regeln; Codegen kann LLVM/CUDA-Backend nutzen für GPU (z. B. via FFI zu cuBLAS).[cite:15]
+
+## Implementierungs-Hinweise
+- **Tensor-Codegen**: Compiler erzeugt CUDA-Kernels; Fallback zu CPU via OpenBLAS.
+- **Probabilistic**: Zero-Cost Abstractions – option/result als Tagged Unions (1 Byte Discriminant).
+- **GPU-Setup**: Built-in `@gpu` triggert Linker-Flags (-lcudart); für Linux/RTX3060.[cite:12]
+- **Nächster Schritt**: Vollständige EBNF-Datei oder Parser-Test in Rust/Lark generieren?

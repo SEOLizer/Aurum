@@ -26,7 +26,9 @@ type
     atVoid,
     atPChar,
     // array types (placeholder)
-    atArray
+    atArray,
+    // struct type (user-defined)
+    atStruct
   );
 
   { --- Speicherklassen --- }
@@ -39,7 +41,7 @@ type
     // Ausdrücke
     nkIntLit, nkFloatLit, nkStrLit, nkCharLit, nkBoolLit, nkIdent,
     nkBinOp, nkUnaryOp, nkCall, nkArrayLit, nkArrayIndex,
-    nkFieldAccess, nkIndexAccess,
+    nkFieldAccess, nkIndexAccess, nkStructLit, nkFieldAssign,
     // Statements
     nkVarDecl, nkAssign, nkArrayAssign, nkIf, nkWhile, nkFor, nkRepeatUntil,
     nkReturn, nkBreak, nkSwitch,
@@ -129,9 +131,11 @@ type
   TAstIdent = class(TAstExpr)
   private
     FName: string;
+    FDeclTypeName: string;
   public
     constructor Create(const aName: string; aSpan: TSourceSpan);
     property Name: string read FName;
+    property DeclTypeName: string read FDeclTypeName write FDeclTypeName;
   end;
 
   { Binärer Operator: a + b, x == y }
@@ -218,6 +222,8 @@ type
     destructor Destroy; override;
     property Obj: TAstExpr read FObj;
     property Field: string read FField;
+    // Transfer ownership for parser (used in field assignment)
+    procedure TransferOwnership(out AObj: TAstExpr; out AField: string);
   end;
 
   { Indexzugriff: expr[index] - generic version }
@@ -230,6 +236,24 @@ type
     destructor Destroy; override;
     property Obj: TAstExpr read FObj;
     property Index: TAstExpr read FIndex;
+  end;
+
+  { Struct-Literal: Point { x: 10, y: 20 } }
+  TAstStructLit = class(TAstExpr)
+  private
+    FTypeName: string;
+    FFields: array of record
+      Name: string;
+      Value: TAstExpr;
+    end;
+  public
+    constructor Create(const aTypeName: string; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    procedure AddField(const aName: string; aValue: TAstExpr);
+    property TypeName: string read FTypeName;
+    function FieldCount: Integer;
+    function GetFieldName(i: Integer): string;
+    function GetFieldValue(i: Integer): TAstExpr;
   end;
 
   // ================================================================
@@ -247,14 +271,16 @@ type
     FStorage: TStorageKlass;
     FName: string;
     FDeclType: TAurumType;
+    FDeclTypeName: string;
     FInitExpr: TAstExpr;
   public
     constructor Create(aStorage: TStorageKlass; const aName: string;
-      aDeclType: TAurumType; aInitExpr: TAstExpr; aSpan: TSourceSpan);
+      aDeclType: TAurumType; const aDeclTypeName: string; aInitExpr: TAstExpr; aSpan: TSourceSpan);
     destructor Destroy; override;
     property Storage: TStorageKlass read FStorage;
     property Name: string read FName;
     property DeclType: TAurumType read FDeclType;
+    property DeclTypeName: string read FDeclTypeName;
     property InitExpr: TAstExpr read FInitExpr;
   end;
 
@@ -281,12 +307,26 @@ type
      constructor Create(aArray: TAstExpr; aIndex: TAstExpr; aValue: TAstExpr;
        aSpan: TSourceSpan);
      destructor Destroy; override;
-     property ArrayExpr: TAstExpr read FArray;
-     property Index: TAstExpr read FIndex;
-     property Value: TAstExpr read FValue;
-   end;
+      property ArrayExpr: TAstExpr read FArray;
+      property Index: TAstExpr read FIndex;
+      property Value: TAstExpr read FValue;
+    end;
 
-  { If-Statement: if (cond) thenStmt [else elseStmt] }
+    { Feld-Zuweisung: obj.field := expr; }
+    TAstFieldAssign = class(TAstStmt)
+    private
+      FObj: TAstExpr;
+      FField: string;
+      FValue: TAstExpr;
+    public
+      constructor Create(aObj: TAstExpr; const aField: string; aValue: TAstExpr; aSpan: TSourceSpan);
+      destructor Destroy; override;
+      property Obj: TAstExpr read FObj;
+      property Field: string read FField;
+      property Value: TAstExpr read FValue;
+    end;
+
+   { If-Statement: if (cond) thenStmt [else elseStmt] }
   TAstIf = class(TAstStmt)
   private
     FCond: TAstExpr;
@@ -452,17 +492,29 @@ type
   end;
 
   { Type-Deklaration (Top-Level): type Name = Type; }
+  TAstTypeField = record
+    Name: string;
+    FieldType: TAurumType;
+  end;
+  TAstTypeFieldList = array of TAstTypeField;
+
   TAstTypeDecl = class(TAstNode)
   private
     FName: string;
     FDeclType: TAurumType;
     FIsPublic: Boolean;
+    FIsStruct: Boolean;
+    FFields: TAstTypeFieldList;
   public
     constructor Create(const aName: string; aDeclType: TAurumType;
       aPublic: Boolean; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    procedure SetStructFields(const fields: TAstTypeFieldList);
     property Name: string read FName;
     property DeclType: TAurumType read FDeclType;
     property IsPublic: Boolean read FIsPublic;
+    property IsStruct: Boolean read FIsStruct;
+    property Fields: TAstTypeFieldList read FFields;
   end;
 
   { Unit-Deklaration: unit path.to.name; }
@@ -700,6 +752,7 @@ constructor TAstIdent.Create(const aName: string; aSpan: TSourceSpan);
 begin
   inherited Create(nkIdent, aSpan);
   FName := aName;
+  FDeclTypeName := '';
 end;
 
 // ================================================================
@@ -795,16 +848,16 @@ end;
 // TAstVarDecl
 // ================================================================
 
-constructor TAstVarDecl.Create(aStorage: TStorageKlass;
-  const aName: string; aDeclType: TAurumType; aInitExpr: TAstExpr;
-  aSpan: TSourceSpan);
+constructor TAstVarDecl.Create(aStorage: TStorageKlass; const aName: string; aDeclType: TAurumType; const aDeclTypeName: string; aInitExpr: TAstExpr; aSpan: TSourceSpan);
 begin
   inherited Create(nkVarDecl, aSpan);
   FStorage := aStorage;
   FName := aName;
   FDeclType := aDeclType;
+  FDeclTypeName := aDeclTypeName;
   FInitExpr := aInitExpr;
 end;
+
 
 destructor TAstVarDecl.Destroy;
 begin
@@ -995,6 +1048,15 @@ begin
   inherited Destroy;
 end;
 
+procedure TAstFieldAccess.TransferOwnership(out AObj: TAstExpr; out AField: string);
+begin
+  AObj := FObj;
+  AField := FField;
+  // Prevent destructor from freeing FObj
+  FObj := nil;
+  FField := '';
+end;
+
 // ================================================================
 // TAstIndexAccess
 // ================================================================
@@ -1012,6 +1074,58 @@ begin
   FObj.Free;
   FIndex.Free;
   inherited Destroy;
+end;
+
+// ================================================================
+// TAstStructLit
+// ================================================================
+
+constructor TAstStructLit.Create(const aTypeName: string; aSpan: TSourceSpan);
+begin
+  inherited Create(nkStructLit, aSpan);
+  FTypeName := aTypeName;
+  SetLength(FFields, 0);
+end;
+
+destructor TAstStructLit.Destroy;
+var
+  i: Integer;
+begin
+  for i := 0 to High(FFields) do
+    FFields[i].Value.Free;
+  SetLength(FFields, 0);
+  inherited Destroy;
+end;
+
+procedure TAstStructLit.AddField(const aName: string; aValue: TAstExpr);
+var
+  i: Integer;
+begin
+  i := Length(FFields);
+  SetLength(FFields, i + 1);
+  FFields[i].Name := aName;
+  FFields[i].Value := aValue;
+end;
+
+function TAstStructLit.FieldCount: Integer;
+begin
+  Result := Length(FFields);
+end;
+
+function TAstStructLit.GetFieldName(i: Integer): string;
+begin
+  if (i >= 0) and (i < Length(FFields)) then
+    Result := FFields[i].Name
+  else
+    Result := '';
+end;
+
+function TAstStructLit.GetFieldValue(i: Integer): TAstExpr;
+begin
+  if (i >= 0) and (i < Length(FFields)) then
+    Result := FFields[i].Value
+  else
+    Result := nil;
 end;
 
 // ================================================================
@@ -1060,14 +1174,28 @@ end;
 // TAstTypeDecl
 // ================================================================
 
-constructor TAstTypeDecl.Create(const aName: string; aDeclType: TAurumType;
-  aPublic: Boolean; aSpan: TSourceSpan);
+constructor TAstTypeDecl.Create(const aName: string; aDeclType: TAurumType; aPublic: Boolean; aSpan: TSourceSpan);
 begin
   inherited Create(nkTypeDecl, aSpan);
   FName := aName;
   FDeclType := aDeclType;
   FIsPublic := aPublic;
+  FIsStruct := False;
+  SetLength(FFields, 0);
 end;
+
+destructor TAstTypeDecl.Destroy;
+begin
+  SetLength(FFields, 0);
+  inherited Destroy;
+end;
+
+procedure TAstTypeDecl.SetStructFields(const fields: TAstTypeFieldList);
+begin
+  FFields := Copy(fields, 0, Length(fields));
+  FIsStruct := True;
+end;
+
 
 // ================================================================
 // TAstUnitDecl
@@ -1168,6 +1296,21 @@ destructor TAstArrayAssign.Destroy;
 begin
   FArray.Free;
   FIndex.Free;
+  FValue.Free;
+  inherited Destroy;
+end;
+
+constructor TAstFieldAssign.Create(aObj: TAstExpr; const aField: string; aValue: TAstExpr; aSpan: TSourceSpan);
+begin
+  inherited Create(nkFieldAssign, aSpan);
+  FObj := aObj;
+  FField := aField;
+  FValue := aValue;
+end;
+
+destructor TAstFieldAssign.Destroy;
+begin
+  FObj.Free;
   FValue.Free;
   inherited Destroy;
 end;

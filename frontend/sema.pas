@@ -14,6 +14,7 @@ type
     Name: string;
     Kind: TSymbolKind;
     DeclType: TAurumType;
+    DeclTypeName: string; // for named types (e.g., Point)
     // for functions
     ParamTypes: array of TAurumType;
     ParamCount: Integer;
@@ -25,11 +26,13 @@ type
   private
     FDiag: TDiagnostics;
     FScopes: array of TStringList; // each contains name -> TSymbol as object
+    FTypeMap: TStringList; // name -> TAstTypeDecl object
     FCurrentReturn: TAurumType;
     procedure PushScope;
     procedure PopScope;
     procedure AddSymbolToCurrent(sym: TSymbol; span: TSourceSpan);
     function ResolveSymbol(const name: string): TSymbol;
+    function ResolveTypeDecl(const name: string): TAstTypeDecl;
     procedure DeclareBuiltinFunctions;
     function TypeEqual(a, b: TAurumType): Boolean;
     function CheckExpr(expr: TAstExpr): TAurumType;
@@ -49,6 +52,7 @@ begin
   Name := AName;
   Kind := symVar;
   DeclType := atUnresolved;
+  DeclTypeName := '';
   ParamCount := 0;
   SetLength(ParamTypes, 0);
 end;
@@ -104,23 +108,34 @@ begin
   cur.AddObject(sym.Name, TObject(sym));
 end;
 
-function TSema.ResolveSymbol(const name: string): TSymbol;
-var
-  i, idx: Integer;
-  sl: TStringList;
-begin
-  Result := nil;
-  for i := High(FScopes) downto 0 do
-  begin
-    sl := FScopes[i];
-    idx := sl.IndexOf(name);
-    if idx >= 0 then
-    begin
-      Result := TSymbol(sl.Objects[idx]);
-      Exit;
-    end;
-  end;
-end;
+ function TSema.ResolveSymbol(const name: string): TSymbol;
+ var
+   i, idx: Integer;
+   sl: TStringList;
+ begin
+   Result := nil;
+   for i := High(FScopes) downto 0 do
+   begin
+     sl := FScopes[i];
+     idx := sl.IndexOf(name);
+     if idx >= 0 then
+     begin
+       Result := TSymbol(sl.Objects[idx]);
+       Exit;
+     end;
+   end;
+ end;
+
+ function TSema.ResolveTypeDecl(const name: string): TAstTypeDecl;
+ var
+   idx: Integer;
+ begin
+   Result := nil;
+   if FTypeMap = nil then Exit;
+   idx := FTypeMap.IndexOf(name);
+   if idx >= 0 then
+     Result := TAstTypeDecl(FTypeMap.Objects[idx]);
+ end;
 
 procedure TSema.DeclareBuiltinFunctions;
 var
@@ -220,9 +235,14 @@ var
   un: TAstUnaryOp;
   call: TAstCall;
   s: TSymbol;
-  i: Integer;
+  i, j: Integer;
   lt, rt, ot, atype: TAurumType;
   elementType: TAurumType;
+  st: TAstStructLit;
+  td: TAstTypeDecl;
+  fname: string;
+  ftype: TAurumType;
+  found: Boolean;
 begin
   if expr = nil then
   begin
@@ -257,21 +277,13 @@ begin
       nkArrayIndex:
         begin
           // Array-Index: arr[i] gibt Element-Typ zurück
-          // Für jetzt nehmen wir an, dass alle Arrays int64-Elemente haben
-          // TODO: Echte Element-Typ-Tracking implementieren
-          
-          // Prüfe dass Array-Expression tatsächlich ein Array ist
           atype := CheckExpr(TAstArrayIndex(expr).ArrayExpr);
           if not TypeEqual(atype, atArray) then
             FDiag.Error(Format('indexing non-array type: got %s', [AurumTypeToStr(atype)]), TAstArrayIndex(expr).ArrayExpr.Span);
-          
-          // Prüfe dass Index ein Integer ist
           atype := CheckExpr(TAstArrayIndex(expr).Index);
           if not IsIntegerType(atype) then
             FDiag.Error(Format('array index must be integer, got %s', [AurumTypeToStr(atype)]), TAstArrayIndex(expr).Index.Span);
-          
-          // Array-Indexing gibt Element-Typ zurück (für jetzt: int64)
-          Result := atInt64; // TODO: Echten Element-Typ verwenden
+          Result := atInt64;
         end;
       nkIndexAccess:
         begin
@@ -289,7 +301,98 @@ begin
           // Index-Zugriff gibt Element-Typ zurück (für jetzt: int64)
           Result := atInt64;
         end;
-     nkIdent:
+      nkStructLit:
+        begin
+          st := TAstStructLit(expr);
+          td := ResolveTypeDecl(st.TypeName);
+          if td = nil then
+          begin
+            FDiag.Error('use of undeclared type: ' + st.TypeName, st.Span);
+            Result := atUnresolved;
+            Exit;
+          end;
+          // For each declared field, ensure provided and type matches
+          for i := 0 to High(td.Fields) do
+          begin
+            fname := td.Fields[i].Name;
+            ftype := td.Fields[i].FieldType;
+            found := False;
+            for j := 0 to st.FieldCount - 1 do
+            begin
+              if st.GetFieldName(j) = fname then
+              begin
+                atype := CheckExpr(st.GetFieldValue(j));
+                if not TypeEqual(atype, ftype) then
+                  FDiag.Error(Format('struct field %s: expected %s but got %s', [fname, AurumTypeToStr(ftype), AurumTypeToStr(atype)]), st.GetFieldValue(j).Span);
+                found := True;
+                Break;
+              end;
+            end;
+            if not found then
+              FDiag.Error('missing field in struct literal: ' + fname, st.Span);
+          end;
+          Result := atStruct;
+        end;
+      nkFieldAccess:
+        begin
+          // Field access: obj.field -> lookup field type in named struct
+          ot := CheckExpr(TAstFieldAccess(expr).Obj);
+          // Only handle when object is identifier for now
+          if TAstFieldAccess(expr).Obj is TAstIdent then
+          begin
+            s := ResolveSymbol(TAstIdent(TAstFieldAccess(expr).Obj).Name);
+            if s = nil then
+            begin
+              FDiag.Error('field access on undeclared identifier', expr.Span);
+              Result := atUnresolved;
+              Exit;
+            end;
+            if s.DeclType = atStruct then
+            begin
+              if s.DeclTypeName = '' then
+              begin
+                FDiag.Error('unknown struct type for identifier', expr.Span);
+                Result := atUnresolved;
+                Exit;
+              end;
+              td := ResolveTypeDecl(s.DeclTypeName);
+              if td = nil then
+              begin
+                FDiag.Error('use of undeclared type: ' + s.DeclTypeName, expr.Span);
+                Result := atUnresolved;
+                Exit;
+              end;
+              // find field
+              fname := TAstFieldAccess(expr).Field;
+              for i := 0 to High(td.Fields) do
+              begin
+                if td.Fields[i].Name = fname then
+                begin
+                  Result := td.Fields[i].FieldType;
+                  Exit;
+                end;
+              end;
+              FDiag.Error('unknown field: ' + fname, expr.Span);
+              Result := atUnresolved;
+              Exit;
+            end
+            else
+            begin
+              FDiag.Error(Format('field access on non-struct type: got %s', [AurumTypeToStr(s.DeclType)]), expr.Span);
+              Result := atUnresolved;
+              Exit;
+            end;
+          end
+          else
+          begin
+            FDiag.Error('field access on non-identifier object not supported yet', expr.Span);
+            Result := atUnresolved;
+            Exit;
+          end;
+        end;
+      nkIdent:
+
+
       begin
         ident := TAstIdent(expr);
         s := ResolveSymbol(ident.Name);
@@ -397,8 +500,10 @@ begin
           Result := s.DeclType;
         end;
       end;
-  else
+    else
     begin
+      // Debug: report unsupported kind
+      WriteLn('SEMA DEBUG: unsupported expr kind: ', NodeKindToStr(expr.Kind), ' at ', expr.Span.fileName, ':', expr.Span.line, ',', expr.Span.col);
       FDiag.Error('sema: unsupported expr kind', expr.Span);
       Result := atUnresolved;
     end;
@@ -446,6 +551,8 @@ begin
           sym.DeclType := vtype
         else
           sym.DeclType := vd.DeclType;
+        // preserve declared type name if present (for named struct types)
+        sym.DeclTypeName := vd.DeclTypeName;
         AddSymbolToCurrent(sym, vd.Span);
       end;
     nkAssign:
@@ -493,11 +600,19 @@ begin
          if not IsIntegerType(atype) then
            FDiag.Error(Format('array index must be integer, got %s', [AurumTypeToStr(atype)]), arrayAssign.Index.Span);
          
-         // Prüfe Value-Typ (für jetzt: muss int64 sein, da Arrays int64-Elemente haben)
-         vtype := CheckExpr(arrayAssign.Value);
-         if not TypeEqual(vtype, atInt64) then
-           FDiag.Error(Format('array assignment type mismatch: expected int64 but got %s', [AurumTypeToStr(vtype)]), arrayAssign.Value.Span);
-       end;
+          // Prüfe Value-Typ (für jetzt: muss int64 sein, da Arrays int64-Elemente haben)
+          vtype := CheckExpr(arrayAssign.Value);
+          if not TypeEqual(vtype, atInt64) then
+            FDiag.Error(Format('array assignment type mismatch: expected int64 but got %s', [AurumTypeToStr(vtype)]), arrayAssign.Value.Span);
+        end;
+    nkFieldAssign:
+      begin
+        // Field assignment: obj.field := value
+        // Just check that the value expression type is valid
+        vtype := CheckExpr(TAstFieldAssign(stmt).Value);
+        // The actual field type checking happens in the IR lowering
+        // For now, just allow any type (will be checked there)
+      end;
     nkExprStmt:
       begin
         CheckExpr(TAstExprStmt(stmt).Expr);
@@ -602,6 +717,8 @@ begin
   SetLength(FScopes, 0);
   // create global scope
   PushScope;
+  FTypeMap := TStringList.Create;
+  FTypeMap.Sorted := False;
   DeclareBuiltinFunctions;
   FCurrentReturn := atVoid;
 end;
@@ -654,6 +771,16 @@ begin
       sym.Kind := symCon;
       sym.DeclType := con.DeclType;
       AddSymbolToCurrent(sym, con.Span);
+    end
+    else if node is TAstTypeDecl then
+    begin
+      // register named type
+      if FTypeMap.IndexOf(TAstTypeDecl(node).Name) >= 0 then
+      begin
+        FDiag.Error('redeclaration of type: ' + TAstTypeDecl(node).Name, node.Span);
+        Continue;
+      end;
+      FTypeMap.AddObject(TAstTypeDecl(node).Name, TObject(node));
     end;
   end;
 

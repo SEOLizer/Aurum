@@ -34,12 +34,17 @@ type
     FConstMap: TStringList; // name -> TConstValue (compile-time constants)
     FLocalConst: array of TConstValue; // per-function local constant values (or nil)
     FBreakStack: TStringList; // stack of break labels
+    FTypeMap: TStringList; // name -> TAstTypeDecl (type declarations)
+    FLocalTypeNames: array of string; // index -> declared local type name (for struct types)
 
     function NewTemp: Integer;
     function NewLabel(const prefix: string): string;
     function AllocLocal(const name: string; aType: TAurumType): Integer;
     function GetLocalType(idx: Integer): TAurumType;
+    function GetLocalTypeName(idx: Integer): string;
     function ResolveLocal(const name: string): Integer;
+    function ResolveTypeDecl(const name: string): TAstTypeDecl;
+    function GetStructSize(const typeName: string): Integer;
     procedure Emit(instr: TIRInstr);
 
     function LowerStmt(stmt: TAstStmt): Boolean;
@@ -80,8 +85,11 @@ constructor TIRLowering.Create(modul: TIRModule; diag: TDiagnostics);
     FConstMap.Sorted := False;
     FBreakStack := TStringList.Create;
     FBreakStack.Sorted := False;
+    FTypeMap := TStringList.Create;
+    FTypeMap.Sorted := False;
     SetLength(FLocalTypes, 0);
     SetLength(FLocalConst, 0);
+    SetLength(FLocalTypeNames, 0);
   end;
 
 
@@ -97,6 +105,7 @@ begin
     if Assigned(FLocalConst[i]) then FLocalConst[i].Free;
   SetLength(FLocalConst, 0);
   FBreakStack.Free;
+  FTypeMap.Free;
   inherited Destroy;
 end;
 
@@ -116,6 +125,8 @@ end;
 function TIRLowering.AllocLocal(const name: string; aType: TAurumType): Integer;
 var
   idx: Integer;
+  fieldCount: Integer;
+  td: TAstTypeDecl;
 begin
   idx := FLocalMap.IndexOf(name);
   if idx >= 0 then
@@ -124,11 +135,27 @@ begin
     Exit;
   end;
   Result := FCurrentFunc.LocalCount;
-  FCurrentFunc.LocalCount := FCurrentFunc.LocalCount + 1;
+
+  // For struct types, allocate one slot per field (8 bytes each)
+  if aType = atStruct then
+  begin
+    // Get type name from the variable name lookup
+    // We'll store this in FLocalTypeNames after the call
+    // For now, just allocate 1 slot - we'll handle multi-slot later
+    FCurrentFunc.LocalCount := FCurrentFunc.LocalCount + 1;
+  end
+  else
+  begin
+    FCurrentFunc.LocalCount := FCurrentFunc.LocalCount + 1;
+  end;
+
   FLocalMap.AddObject(name, IntToObj(Result));
   // ensure FLocalTypes has same length
   SetLength(FLocalTypes, FCurrentFunc.LocalCount);
   FLocalTypes[Result] := aType;
+  // Also ensure FLocalTypeNames has same length
+  SetLength(FLocalTypeNames, FCurrentFunc.LocalCount);
+  FLocalTypeNames[Result] := '';
 end;
 
 function TIRLowering.GetLocalType(idx: Integer): TAurumType;
@@ -137,6 +164,14 @@ begin
     Result := FLocalTypes[idx]
   else
     Result := atUnresolved;
+end;
+
+function TIRLowering.GetLocalTypeName(idx: Integer): string;
+begin
+  if (idx >= 0) and (idx < Length(FLocalTypeNames)) then
+    Result := FLocalTypeNames[idx]
+  else
+    Result := '';
 end;
 
 procedure TIRLowering.Emit(instr: TIRInstr);
@@ -156,7 +191,18 @@ var
   j: Integer;
   cv: TConstValue;
 begin
-  // iterate top-level decls, create functions
+  // First pass: collect type declarations
+  for i := 0 to High(prog.Decls) do
+  begin
+    node := prog.Decls[i];
+    if node is TAstTypeDecl then
+    begin
+      if FTypeMap.IndexOf(TAstTypeDecl(node).Name) < 0 then
+        FTypeMap.AddObject(TAstTypeDecl(node).Name, TObject(node));
+    end;
+  end;
+
+  // Second pass: process functions and constants
   for i := 0 to High(prog.Decls) do
   begin
     node := prog.Decls[i];
@@ -237,6 +283,27 @@ begin
     Result := -1;
 end;
 
+function TIRLowering.ResolveTypeDecl(const name: string): TAstTypeDecl;
+var
+  idx: Integer;
+begin
+  Result := nil;
+  if FTypeMap = nil then Exit;
+  idx := FTypeMap.IndexOf(name);
+  if idx >= 0 then
+    Result := TAstTypeDecl(FTypeMap.Objects[idx]);
+end;
+
+function TIRLowering.GetStructSize(const typeName: string): Integer;
+var
+  td: TAstTypeDecl;
+begin
+  Result := 0;
+  td := ResolveTypeDecl(typeName);
+  if td <> nil then
+    Result := Length(td.Fields) * 8; // 8 bytes per field
+end;
+
 function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
 var
   instr: TIRInstr;
@@ -249,6 +316,19 @@ var
   ltype: TAurumType;
   w: Integer;
   loc: Integer;
+  // struct field access variables
+  fname: string;
+  declTypeName: string;
+  td: TAstTypeDecl;
+  fieldOffset: Integer;
+  fieldIndex: Integer;
+  foundField: Boolean;
+  // struct literal variables
+  st: TAstStructLit;
+  structSize: Integer;
+  fieldValue: TAstExpr;
+  valTemp: Integer;
+  j: Integer;
   // array literal variables
   arrayLit: TAstArrayLit;
   arraySize: Integer;
@@ -336,6 +416,56 @@ begin
     end;
     
     Exit(t1); // return array base address
+  end;
+  if expr is TAstStructLit then
+  begin
+    // Struct-Literal: Stack-Allokation + Feld-Initialisierung
+    st := TAstStructLit(expr);
+    // Hole Typ-Deklaration
+    td := ResolveTypeDecl(st.TypeName);
+    if td = nil then
+    begin
+      FDiag.Error('use of undeclared type: ' + st.TypeName, expr.Span);
+      Result := -1;
+      Exit;
+    end;
+    // Berechne Gesamtgröße: 8 Bytes pro Feld
+    structSize := Length(td.Fields) * 8;
+    // 1) Allokiere Platz auf Stack
+    t1 := NewTemp;
+    instr.Op := irStackAlloc;
+    instr.Dest := t1;
+    instr.ImmInt := structSize;
+    Emit(instr);
+    // 2) Initialisiere jedes Feld
+    for i := 0 to High(td.Fields) do
+    begin
+      // Finde Wert für dieses Feld im Literal
+      fieldValue := nil;
+      for j := 0 to st.FieldCount - 1 do
+      begin
+        if st.GetFieldName(j) = td.Fields[i].Name then
+        begin
+          fieldValue := st.GetFieldValue(j);
+          Break;
+        end;
+      end;
+      if fieldValue = nil then
+      begin
+        FDiag.Error('missing field in struct literal: ' + td.Fields[i].Name, expr.Span);
+        Continue;
+      end;
+      // Lower den Wert
+      valTemp := LowerExpr(fieldValue);
+      // Store Feld: [base + offset] = value
+      instr.Op := irStoreField;
+      instr.Dest := 0;
+      instr.Src1 := t1; // base address
+      instr.Src2 := valTemp; // field value
+      instr.ImmInt := i * 8; // offset (8 bytes per field)
+      Emit(instr);
+    end;
+    Exit(t1); // return struct base address
   end;
   if expr is TAstArrayIndex then
   begin
@@ -454,6 +584,70 @@ begin
       end;
     end;
     Exit(t1);
+  end;
+  if expr is TAstFieldAccess then
+  begin
+    // Field access: obj.field
+    // For simple identifier as object, use the slot directly (not load the value)
+    if TAstFieldAccess(expr).Obj is TAstIdent then
+    begin
+      // Get local slot directly (not through LowerExpr which loads the value)
+      loc := ResolveLocal(TAstIdent(TAstFieldAccess(expr).Obj).Name);
+      if loc < 0 then
+      begin
+        FDiag.Error('use of undeclared local ' + TAstIdent(TAstFieldAccess(expr).Obj).Name, expr.Span);
+        Result := -1;
+        Exit;
+      end;
+      // Get struct type name from the local slot
+      declTypeName := GetLocalTypeName(loc);
+      if declTypeName = '' then
+      begin
+        FDiag.Error('not a struct variable: ' + TAstIdent(TAstFieldAccess(expr).Obj).Name, expr.Span);
+        Result := -1;
+        Exit;
+      end;
+      // Get field name
+      fname := TAstFieldAccess(expr).Field;
+      // Look up the type declaration to find field offset
+      td := ResolveTypeDecl(declTypeName);
+      if td = nil then
+      begin
+        FDiag.Error('unknown struct type: ' + declTypeName, expr.Span);
+        Result := -1;
+        Exit;
+      end;
+      // Find field and compute index
+      fieldIndex := 0;
+      foundField := False;
+      for i := 0 to High(td.Fields) do
+      begin
+        if td.Fields[i].Name = fname then
+        begin
+          foundField := True;
+          fieldIndex := i;
+          Break;
+        end;
+      end;
+      if not foundField then
+      begin
+        FDiag.Error('unknown field: ' + fname, expr.Span);
+        Result := -1;
+        Exit;
+      end;
+      // Load field: dest = load from [localSlot + fieldIndex * 8]
+      resultTemp := NewTemp;
+      instr.Op := irLoadField;
+      instr.Dest := resultTemp;
+      instr.Src1 := loc;  // base address (local slot)
+      instr.ImmInt := fieldIndex;  // field index (backend multiplies by 8)
+      Emit(instr);
+      Exit(resultTemp);
+    end;
+    // For complex expressions, use the lowered value (not fully supported)
+    FDiag.Error('field access on complex expression not supported', expr.Span);
+    Result := -1;
+    Exit;
   end;
   if expr is TAstBinOp then
   begin
@@ -621,6 +815,18 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     half: UInt64;
     signedVal: Int64;
     cvLocal: TConstValue;
+    // struct variable handling
+    st: TAstStructLit;
+    fieldValue: TAstExpr;
+    valTemp: Integer;
+    j: Integer;
+    // field assign variables
+    fa: TAstFieldAssign;
+    declTypeName: string;
+    td: TAstTypeDecl;
+    fieldOffset: Integer;
+    fieldIndex: Integer;
+    foundField: Boolean;
     // array assignment variables
     arrayAssignStmt: TAstArrayAssign;
     arrayTemp, indexTemp, valueTemp: Integer;
@@ -630,8 +836,62 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
   if stmt is TAstVarDecl then
   begin
     loc := AllocLocal(TAstVarDecl(stmt).Name, TAstVarDecl(stmt).DeclType);
+    // If this is a struct type, store the type name for field access
+    if TAstVarDecl(stmt).DeclTypeName <> '' then
+    begin
+      SetLength(FLocalTypeNames, FCurrentFunc.LocalCount);
+      FLocalTypeNames[loc] := TAstVarDecl(stmt).DeclTypeName;
+    end;
+
+    // Special handling for struct types with struct literal init
+    // Check DeclTypeName to identify named struct types
+    if (TAstVarDecl(stmt).DeclTypeName <> '') and
+       (TAstVarDecl(stmt).InitExpr is TAstStructLit) then
+    begin
+      // Get struct type declaration
+      declTypeName := TAstVarDecl(stmt).DeclTypeName;
+      td := ResolveTypeDecl(declTypeName);
+      if td = nil then
+      begin
+        FDiag.Error('unknown struct type: ' + declTypeName, stmt.Span);
+        Exit(False);
+      end;
+      // Get the struct literal
+      st := TAstStructLit(TAstVarDecl(stmt).InitExpr);
+      // For each field, store directly to the local's memory area
+      for i := 0 to High(td.Fields) do
+      begin
+        // Find value for this field in the literal
+        fieldValue := nil;
+        for j := 0 to st.FieldCount - 1 do
+        begin
+          if st.GetFieldName(j) = td.Fields[i].Name then
+          begin
+            fieldValue := st.GetFieldValue(j);
+            Break;
+          end;
+        end;
+        if fieldValue = nil then
+        begin
+          FDiag.Error('missing field in struct literal: ' + td.Fields[i].Name, stmt.Span);
+          Continue;
+        end;
+        // Lower the field value
+        valTemp := LowerExpr(fieldValue);
+        // Store field at field index (backend multiplies by 8)
+        instr.Op := irStoreField;
+        instr.Dest := 0;
+        instr.Src1 := loc;  // local slot as base
+        instr.Src2 := valTemp;
+        instr.ImmInt := i;  // field index (backend will multiply by 8)
+        Emit(instr);
+      end;
+      Exit(True);
+    end;
+
     // If initializer is constant integer and the local has narrower signed width, constant fold
-    if (TAstVarDecl(stmt).InitExpr is TAstIntLit) then
+    // BUT NOT for struct types!
+    if (TAstVarDecl(stmt).DeclType <> atStruct) and (TAstVarDecl(stmt).InitExpr is TAstIntLit) then
     begin
       lit := TAstIntLit(TAstVarDecl(stmt).InitExpr).Value;
       ltype := GetLocalType(loc);
@@ -725,6 +985,66 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     instr.Op := irStoreLocal;
     instr.Dest := loc;
     instr.Src1 := tmp;
+    Emit(instr);
+    Exit(True);
+  end;
+
+  if stmt is TAstFieldAssign then
+  begin
+    // Field assignment: obj.field := value
+    fa := TAstFieldAssign(stmt);
+    // Only support simple identifier as object
+    if not (fa.Obj is TAstIdent) then
+    begin
+      FDiag.Error('field assignment on complex expression not supported', stmt.Span);
+      Exit(False);
+    end;
+    // Get local slot
+    loc := ResolveLocal(TAstIdent(fa.Obj).Name);
+    if loc < 0 then
+    begin
+      FDiag.Error('use of undeclared local ' + TAstIdent(fa.Obj).Name, stmt.Span);
+      Exit(False);
+    end;
+    // Get type name
+    declTypeName := GetLocalTypeName(loc);
+    if declTypeName = '' then
+    begin
+      FDiag.Error('not a struct variable: ' + TAstIdent(fa.Obj).Name, stmt.Span);
+      Exit(False);
+    end;
+    // Get type declaration
+    td := ResolveTypeDecl(declTypeName);
+    if td = nil then
+    begin
+      FDiag.Error('unknown struct type: ' + declTypeName, stmt.Span);
+      Exit(False);
+    end;
+    // Find field and compute index
+    fieldIndex := 0;
+    foundField := False;
+    for i := 0 to High(td.Fields) do
+    begin
+      if td.Fields[i].Name = fa.Field then
+      begin
+        foundField := True;
+        fieldIndex := i;
+        Break;
+      end;
+    end;
+    if not foundField then
+    begin
+      FDiag.Error('unknown field: ' + fa.Field, stmt.Span);
+      Exit(False);
+    end;
+    // Lower value expression
+    valueTemp := LowerExpr(fa.Value);
+    // Store field: *(localSlot + fieldIndex * 8) = value
+    instr.Op := irStoreField;
+    instr.Dest := 0;
+    instr.Src1 := loc;
+    instr.Src2 := valueTemp;
+    instr.ImmInt := fieldIndex;  // field index (backend multiplies by 8)
     Emit(instr);
     Exit(True);
   end;
