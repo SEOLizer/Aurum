@@ -98,12 +98,56 @@ Loop
 |-----------|---------------------------------------|
 | `int64`   | Signed 64-bit Integer                 |
 | `int`     | Alias für `int64` (konventionell)     |
+| `f32`     | 32-bit Floating-Point (IEEE 754)      |
+| `f64`     | 64-bit Floating-Point (IEEE 754)      |
 | `bool`    | `true` / `false`                      |
 | `void`    | Nur als Funktions-Rückgabetyp         |
 | `pchar`   | Pointer auf nullterminierte Bytes     |
 | `string`  | Alias für `pchar` (nullterminierte Bytes)
+| `array`   | Array-Typ (Stack-allokiert)           |
 
 Hinweis: `int` und `string` sind derzeit Alias-Typen (bzw. Abkürzungen) — `int` wird intern als `int64` behandelt, `string` wird als `pchar` gemappt. Keine impliziten Casts — alle Typen müssen explizit übereinstimmen.
+
+### Float-Literale
+
+Float-Literale werden mit Dezimalpunkt geschrieben und sind vom Typ `f64`:
+
+```aurum
+fn main(): int64 {
+  var pi: f64 := 3.14159;
+  var e: f64 := 2.71828;
+
+  // Float-Konstanten auf Top-Level
+  con PI: f64 := 3.1415926535;
+
+  return 0;
+}
+```
+
+### Arrays
+
+Arrays werden auf dem Stack allokiert und können literale Initialisierung, Lesezugriff und Zuweisung:
+
+```aurum
+fn main(): int64 {
+  // Array-Literal
+  var arr: array := [10, 20, 30];
+
+  // Element lesen
+  var first: int64 := arr[0];    // 10
+
+  // Element zuweisen
+  arr[0] := 100;
+
+  // Dynamischer Index
+  var i: int64 := 1;
+  var second: int64 := arr[i];   // 20
+
+  return 0;
+}
+```
+
+Alle Elemente eines Arrays müssen denselben Typ haben (derzeit `int64`).
 
 ### Operatoren
 
@@ -320,7 +364,7 @@ fn main(): int64 {
 ### Reservierte Keywords
 
 ```
-fn  var  let  co  con  if  else  while  switch  case  break  default  return  true  false  extern
+fn  var  let  co  con  if  else  while  switch  case  break  default  return  true  false  extern  array
 ```
 
 `extern` ist für zukünftige Erweiterungen reserviert.
@@ -484,7 +528,11 @@ CmpExpr     := AddExpr [ CmpOp AddExpr ] ;
 AddExpr     := MulExpr { ( '+' | '-' ) MulExpr } ;
 MulExpr     := UnaryExpr { ( '*' | '/' | '%' ) UnaryExpr } ;
 UnaryExpr   := ( '!' | '-' ) UnaryExpr | Primary ;
-Primary     := IntLit | BoolLit | StringLit | Ident | Call | '(' Expr ')' ;
+Primary     := IntLit | FloatLit | BoolLit | StringLit | ArrayLit
+             | Ident | Call | IndexAccess | '(' Expr ')' ;
+ArrayLit    := '[' [ Expr { ',' Expr } ] ']' ;
+IndexAccess := Primary '[' Expr ']' ;
+FloatLit    := [0-9]+ '.' [0-9]+ ;
 ```
 
 ---
@@ -496,6 +544,7 @@ Primary     := IntLit | BoolLit | StringLit | Ident | Call | '(' Expr ')' ;
 | **v0.0.1** | `print_str("...")`, `exit(n)`, ELF64 läuft |
 | **v0.0.2** | Integer-Ausdrücke, `print_int(expr)` |
 | **v0.1.2** | `var`, `let`, `co`, `con`, `if`, `while`, `return`, Funktionen, SysV ABI |
+| **v0.1.3** | ✅ Float-Literale (`f32`, `f64`), ✅ Arrays (Literale, Indexing, Zuweisung) |
 | **v0.2** | Erweiterte Funktionen, bessere Diagnostik |
 | **v1** | Module/Imports, Objectfiles, Linker-Ansteuerung |
 

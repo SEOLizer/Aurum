@@ -177,6 +177,13 @@ Später kannst du das in zwei Segmente splitten (RX / RW).
 - `let`, `if`, `while`
 - Stackframe (RBP/RSP), einfache Registerstrategie
 
+### v0.1.3 (aktuell)
+
+- ✅ Float-Literale (`f32`, `f64`)
+- ✅ Array-Literale: `[1, 2, 3]`
+- ✅ Array-Indexing: `arr[i]`
+- ✅ Array-Zuweisung: `arr[i] := value`
+
 ### v0.2
 
 - Funktionen + SysV ABI (Linux x86_64)
@@ -186,7 +193,33 @@ Später kannst du das in zwei Segmente splitten (RX / RW).
 
 - Module/Imports
 - bessere Diagnostics
-- Optional: Objectfiles + Linker-Ansteuerung (dann wird’s “richtig erwachsen”)
+- Optional: Objectfiles + Linker-Ansteuerung (dann wird's "richtig erwachsen")
+
+---
+
+## Beispiel: Arrays und Float-Literale (v0.1.3)
+
+```aurum
+// Float-Konstanten
+con PI: f64 := 3.14159;
+
+fn main(): int64 {
+  // Array-Literal
+  var arr: array := [10, 20, 30];
+
+  // Element lesen
+  var first: int64 := arr[0];   // 10
+
+  // Element zuweisen
+  arr[0] := 100;                // arr ist jetzt [100, 20, 30]
+
+  // Dynamischer Index
+  var i: int64 := 1;
+  var second: int64 := arr[i];  // 20
+
+  return 0;
+}
+```
 
 ## Anforderungen
 
@@ -244,10 +277,14 @@ Minimal sinnvoll:
 - `bool`
 - `void`
 
+Implementiert in v0.1.3:
+
+- `f32`, `f64` (Floating-Point)
+- `array` (Stack-allokierte Arrays)
+
 Optional später:
 
-- `string`
-- arrays
+- `string` (als dynamischer Typ)
 - structs
 
 Frage, die du beantworten musst:

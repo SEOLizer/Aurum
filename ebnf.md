@@ -23,6 +23,7 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 ### Literale
 
 * **Int64**: Dezimal: `0` oder `[1-9][0-9]*` (optional führendes `-` als unary operator)
+* **Float64**: `[0-9]+ '.' [0-9]+` (z.B. `3.14159`, `2.718`)
 * **Stringliteral**: `" ... "` mit Escapes:
 
     * `\n`, `\r`, `\t`, `\\`, `\"`, `\0`
@@ -30,7 +31,7 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 
 ### Keywords (reserviert)
 
-`fn var let co con if else while return true false extern unit import pub as`
+`fn var let co con if else while return true false extern unit import pub as array`
 
 ### Operatoren / Trennzeichen
 
@@ -49,9 +50,11 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 * `int64`  (signed 64-bit, bestehender Haupttyp)
 * `int8`, `int16`, `int32`, `int64`  (signed Integer-Familie, Kurzform: **int**)
 * `uint8`, `uint16`, `uint32`, `uint64`  (unsigned Integer-Familie, Kurzform: **uint**)
+* `f32`, `f64`  (Floating-Point Typen: 32-bit und 64-bit)
 * `bool`   (`true` / `false`)
 * `void`   (nur als Funktionsrückgabetyp)
 * `pchar`  (Pointer, 64-bit; bei Stringliteralen: Adresse auf nullterminierte Bytes)
+* `array`  (Array-Typ für Stack-allokierte Arrays)
 
 ### Namensregeln
 
@@ -232,7 +235,8 @@ PrimitiveType  := 'int8' | 'int16' | 'int32' | 'int64'
 
 PointerType    := '*' Type ;
 
-ArrayType      := '[' IntLit ']' Type ;          // z.B. [4]f64
+ArrayType      := 'array' ;                      // Stack-allokiertes Array
+                | '[' IntLit ']' Type ;          // z.B. [4]f64 (geplant)
 
 StructType     := 'struct' '{' { FieldDecl } '}' ;
 FieldDecl      := Ident ':' Type ';' ;
@@ -242,14 +246,20 @@ FieldDecl      := Ident ':' Type ';' ;
 
 ```
 Primary        := IntLit
+               | FloatLit
                | BoolLit
                | StringLit
                | CharLit
                | Ident
                | Call
+               | IndexAccess
                | StructLit
                | ArrayLit
                | '(' Expr ')' ;
+
+FloatLit       := [0-9]+ '.' [0-9]+ ;
+
+IndexAccess    := Primary '[' Expr ']' ;         // arr[i], arr[expr]
 
 StructLit      := Type '{' [ FieldInit { ',' FieldInit } ] '}' ;
 FieldInit      := Ident ':' Expr ;
