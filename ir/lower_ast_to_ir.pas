@@ -548,6 +548,26 @@ begin
       Emit(instr);
       Exit(-1);
     end
+    else if TAstCall(expr).Name = 'print_float' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'print_float';
+      instr.Src1 := t1;
+      Emit(instr);
+      Exit(-1);
+    end
+    else if TAstCall(expr).Name = 'strlen' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'strlen';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;  // Return value destination
+      Emit(instr);
+      Exit(resultTemp);
+    end
     else
     begin
       // generic call

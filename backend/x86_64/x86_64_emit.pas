@@ -317,8 +317,9 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   envAdded: Boolean;
   envOffset: UInt64;
   envLeaPositions: array of Integer;
-  len: Integer;
-   nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
+   len: Integer;
+    nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
+    strlenLoopPos, strlenDonePos: Integer;
    targetPos, jmpPos: Integer;
    jmpAfterPadPos: Integer;
   // for call/abi
@@ -615,7 +616,56 @@ begin
                FCode.PatchU32LE(jmpDonePos + 1, Cardinal(k - jmpDonePos - 5));
              end
 
-            else if instr.ImmStr = 'buf_put_byte' then
+             else if instr.ImmStr = 'strlen' then
+             begin
+               // strlen(s: pchar) -> int64
+               // Load pointer into RSI
+               WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + instr.Src1));
+               // RCX = RSI (save start)
+               WriteMovRegReg(FCode, RCX, RSI);
+               // strlen_loop: cmp byte [rcx], 0
+               strlenLoopPos := FCode.Size;
+               EmitU8(FCode, $80); EmitU8(FCode, $39); EmitU8(FCode, $00); // cmp byte [rcx], 0
+               // je strlen_done
+               EmitU8(FCode, $74); EmitU8(FCode, $05); // je +5
+               // inc rcx
+               WriteIncReg(FCode, RCX);
+               // jmp strlen_loop
+               EmitU8(FCode, $EB); EmitU8(FCode, $F6); // jmp -10
+               // strlen_done: RAX = rcx - rsi
+               strlenDonePos := FCode.Size;
+               WriteMovRegReg(FCode, RAX, RCX);
+               WriteSubRegReg(FCode, RAX, RSI);
+               // Store result
+               if instr.Dest >= 0 then
+                 WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+             end
+             else if instr.ImmStr = 'print_float' then
+             begin
+               // print_float(x: f64) -> void
+               // For now, print as "?" (full implementation needs float formatting)
+               if not bufferAdded then
+               begin
+                 bufferOffset := totalDataOffset;
+                 for k := 1 to 64 do FData.WriteU8(0);
+                 Inc(totalDataOffset, 64);
+                 bufferAdded := True;
+               end;
+               // Write "?" to buffer
+               WriteMovRegImm64(FCode, RAX, Ord('?'));
+               // lea rsi, buffer
+               leaPos := FCode.Size;
+               EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+               SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
+               bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
+               WriteMovMemRegByteNoDisp(FCode, RSI, 0);
+               // syscall write(1, rsi, 1)
+               WriteMovRegImm64(FCode, RAX, 1);
+               WriteMovRegImm64(FCode, RDI, 1);
+               WriteMovRegImm64(FCode, RDX, 1);
+               WriteSyscall(FCode);
+             end
+             else if instr.ImmStr = 'buf_put_byte' then
             begin
               // buf_put_byte(buf: pchar, idx: int64, b: int64) -> int64
               // Extra arg (b) passed via instr.LabelName (single temp index)

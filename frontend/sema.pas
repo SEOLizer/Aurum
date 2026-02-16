@@ -152,6 +152,33 @@ begin
   SetLength(s.ParamTypes, 1);
   s.ParamTypes[0] := atInt64;
   AddSymbolToCurrent(s, NullSpan);
+
+  // len(array) -> int64
+  s := TSymbol.Create('len');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atArray;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // strlen(pchar) -> int64
+  s := TSymbol.Create('strlen');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atPChar;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // print_float(f64) -> void
+  s := TSymbol.Create('print_float');
+  s.Kind := symFunc;
+  s.DeclType := atVoid;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atF64;
+  AddSymbolToCurrent(s, NullSpan);
 end;
 
 function IsIntegerType(t: TAurumType): Boolean;
