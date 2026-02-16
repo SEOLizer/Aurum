@@ -283,12 +283,14 @@ fn main(): int64 {
 
 ### Builtins
 
-Drei eingebaute Funktionen stehen ohne Import zur Verfügung:
+Fünf eingebaute Funktionen stehen ohne Import zur Verfügung:
 
 | Funktion          | Signatur               | Beschreibung                        |
 |-------------------|------------------------|-------------------------------------|
 | `print_str(s)`    | `pchar -> void`        | Gibt String bis `\0` aus            |
 | `print_int(x)`    | `int64 -> void`        | Gibt Integer als Dezimalzahl aus    |
+| `print_float(x)`  | `f64 -> void`          | Gibt Float aus (Placeholder: `?`)   |
+| `strlen(s)`       | `pchar -> int64`       | Berechnet String-Länge              |
 | `exit(code)`      | `int64 -> void`        | Beendet das Programm mit Exit-Code  |
 
 Standard-Units
@@ -494,7 +496,7 @@ examples/                   Beispielprogramme in Aurum
 - **Frontend/Backend-Trennung**: Kein x86-Code im Frontend, keine AST-Knoten im Backend.
 - **IR als Stabilitätsanker**: Die Pipeline ist immer AST -> IR -> Maschinencode.
 - **ELF64 ohne libc**: `_start` ruft `main()`, danach `sys_exit`. Kein Linking gegen externe Libraries.
-- **Builtins eingebettet**: `print_str`, `print_int` und `exit` werden als Runtime-Snippets direkt ins Binary geschrieben.
+- **Builtins eingebettet**: `print_str`, `print_int`, `print_float`, `strlen` und `exit` werden als Runtime-Snippets direkt ins Binary geschrieben.
 - **Jedes Token trägt SourceSpan**: Fehlermeldungen enthalten immer Datei, Zeile und Spalte.
 
 ---

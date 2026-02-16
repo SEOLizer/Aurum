@@ -580,6 +580,22 @@ fn main(): int64 {
 
 ---
 
+## Neue Builtins (v0.1.3+)
+
+```aurum
+fn main(): int64 {
+  var s: pchar := "Hello";
+  var l: int64 := strlen(s);     // -> 5
+  
+  var pi: f64 := 3.14159;
+  print_float(pi);               // Ausgabe: ? (Placeholder)
+  
+  return 0;
+}
+```
+
+---
+
 # Wichtige Compiler-Implikationsliste (damit du später nicht refactorst)
 
 ## Lexer
