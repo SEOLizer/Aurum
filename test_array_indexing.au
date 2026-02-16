@@ -1,0 +1,10 @@
+fn main() {
+    var arr: array := [10, 20, 30, 42];
+    var first: int64 := arr[0];
+    var second: int64 := arr[1]; 
+    var last: int64 := arr[3];
+    
+    print_int(first);  // Should print 10
+    print_int(second); // Should print 20
+    print_int(last);   // Should print 42
+}

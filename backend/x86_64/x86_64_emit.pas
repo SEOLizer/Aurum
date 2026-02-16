@@ -333,6 +333,10 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   frameBytes: Integer;
   framePad: Integer;
   callPad: Integer;
+  // array operations
+  allocSize: Integer;
+  elemIndex: Integer;
+  elemOffset: Integer;
   pushBytes: Integer;
   restoreBytes: Integer;
   // integer width helpers
@@ -1115,13 +1119,23 @@ begin
               WriteSyscall(FCode);
             end;
           end;
-         irConstInt:
-           begin
-             // Load immediate integer into temp slot
-             slotIdx := localCnt + instr.Dest;
-             WriteMovRegImm64(FCode, RAX, UInt64(instr.ImmInt));
-             WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
-           end;
+          irConstInt:
+            begin
+              // Load immediate integer into temp slot
+              slotIdx := localCnt + instr.Dest;
+              WriteMovRegImm64(FCode, RAX, UInt64(instr.ImmInt));
+              WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
+            end;
+          irConstFloat:
+            begin
+              // Load float constant - for now, store as zero (placeholder)
+              // TODO: Implement proper float constants in data section
+              slotIdx := localCnt + instr.Dest;
+              WriteMovRegImm64(FCode, RAX, 0); // placeholder: float as zero
+              WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
+              // Note: Real implementation needs data section with float constants
+              // and MOVSD/MOVSS instructions to load into XMM registers
+            end;
          irLoadLocal:
            begin
              // Load local variable into temp: dest = locals[src1]
@@ -1486,6 +1500,95 @@ begin
             // Store result from RAX if there's a destination
             if instr.Dest >= 0 then
               WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+          end;
+        irStackAlloc:
+          begin
+            // Allocate stack space for array: alloc_size = ImmInt bytes
+            allocSize := instr.ImmInt;
+            // Align to 8-byte boundary
+            allocSize := (allocSize + 7) and not 7;
+            
+            // Move current RSP down by allocSize bytes: sub rsp, allocSize  
+            if allocSize <= 127 then
+            begin
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $EC); EmitU8(FCode, Byte(allocSize));
+            end
+            else
+            begin
+              EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $EC);
+              EmitU32(FCode, Cardinal(allocSize));
+            end;
+            
+            // Store current RSP as array base address in temp slot
+            slotIdx := localCnt + instr.Dest;
+            WriteMovRegReg(FCode, RAX, RSP); // mov rax, rsp
+            WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
+          end;
+        irStoreElem:
+          begin
+            // Store element: array[index] = value
+            // Src1 = array base address temp, Src2 = value temp, ImmInt = index
+            elemIndex := instr.ImmInt;
+            elemOffset := elemIndex * 8; // 8 bytes per element
+            
+            // Load array base address into RAX
+            WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+            // Load element value into RCX
+            WriteMovRegMem(FCode, RCX, RBP, SlotOffset(localCnt + instr.Src2));
+            // Store value at array[index]: mov [rax + elemOffset], rcx
+            if elemOffset <= 127 then
+            begin
+              EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $48); EmitU8(FCode, Byte(elemOffset));
+            end
+            else
+            begin
+              EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $88);
+              EmitU32(FCode, Cardinal(elemOffset));
+            end;
+          end;
+        irLoadElem:
+          begin
+            // Load element: dest = array[index]
+            // Src1 = array base address temp, Src2 = index temp, Dest = result
+            
+            // Load array base address into RAX
+            WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+            // Load index into RCX
+            WriteMovRegMem(FCode, RCX, RBP, SlotOffset(localCnt + instr.Src2));
+            
+            // Calculate element address: RAX = RAX + RCX * 8
+            // shl rcx, 3   (multiply index by 8)
+            EmitU8(FCode, $48); EmitU8(FCode, $C1); EmitU8(FCode, $E1); EmitU8(FCode, $03);
+            // add rax, rcx (add scaled offset)
+            EmitU8(FCode, $48); EmitU8(FCode, $01); EmitU8(FCode, $C8);
+            
+            // Load value from calculated address: RCX = [RAX]
+            EmitU8(FCode, $48); EmitU8(FCode, $8B); EmitU8(FCode, $08);
+            
+            // Store result in destination temp slot
+            slotIdx := localCnt + instr.Dest;
+            WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RCX);
+          end;
+        irStoreElemDyn:
+          begin
+            // Store element dynamically: array[index] = value
+            // Src1 = array base, Src2 = index, Src3 = value
+            
+            // Load array base address into RAX
+            WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+            // Load index into RCX
+            WriteMovRegMem(FCode, RCX, RBP, SlotOffset(localCnt + instr.Src2));
+            // Load value into RDX
+            WriteMovRegMem(FCode, RDX, RBP, SlotOffset(localCnt + instr.Src3));
+            
+            // Calculate element address: RAX = RAX + RCX * 8
+            // shl rcx, 3   (multiply index by 8)
+            EmitU8(FCode, $48); EmitU8(FCode, $C1); EmitU8(FCode, $E1); EmitU8(FCode, $03);
+            // add rax, rcx (add scaled offset)
+            EmitU8(FCode, $48); EmitU8(FCode, $01); EmitU8(FCode, $C8);
+            
+            // Store value at calculated address: [RAX] = RDX
+            EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $10);
           end;
       end;
     end;

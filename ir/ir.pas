@@ -11,18 +11,31 @@ type
     irInvalid,
     irConstInt,
     irConstStr,
+    irConstFloat,  // new: float constant
     irAdd, irSub, irMul, irDiv, irMod, irNeg,
+    // float arithmetic
+    irFAdd, irFSub, irFMul, irFDiv, irFNeg,
     irCmpEq, irCmpNeq, irCmpLt, irCmpLe, irCmpGt, irCmpGe,
+    // float comparisons
+    irFCmpEq, irFCmpNeq, irFCmpLt, irFCmpLe, irFCmpGt, irFCmpGe,
     irNot, irAnd, irOr,
     irLoadLocal, irStoreLocal,
     // width/sign helpers
     irSExt,    // sign-extend Src1 to ImmInt bits -> Dest
     irZExt,    // zero-extend Src1 to ImmInt bits -> Dest
     irTrunc,   // truncate Src1 to ImmInt bits -> Dest
+    // float conversion
+    irFToI,    // float to int conversion
+    irIToF,    // int to float conversion
     irCallBuiltin, irCall,
     irJmp, irBrTrue, irBrFalse,
     irLabel,
-    irReturn
+    irReturn,
+     // array operations
+     irStackAlloc,  // allocate space on stack for array
+     irStoreElem,   // store element at array[index] (static index in ImmInt)
+     irLoadElem,    // load element from array[index] (dynamic index in Src2)
+     irStoreElemDyn // store element at array[index] (dynamic index, uses 3 sources)
   );
 
   TIRInstr = record
@@ -30,7 +43,9 @@ type
     Dest: Integer; // destination temp / local index
     Src1: Integer;
     Src2: Integer;
+    Src3: Integer; // for 3-operand instructions like irStoreElemDyn
     ImmInt: Int64; // usage depends on Op: e.g., const int or width bits for ext/trunc
+    ImmFloat: Double; // for irConstFloat - stores actual float value
     ImmStr: string;
     LabelName: string;
   end;

@@ -4,7 +4,7 @@ unit sema;
 interface
 
 uses
-  SysUtils, Classes, ast, diag, lexer, unit_manager;
+  SysUtils, Classes, ast, diag, lexer;
 
 type
   TSymbolKind = (symVar, symLet, symCon, symFunc);
@@ -26,22 +26,16 @@ type
     FDiag: TDiagnostics;
     FScopes: array of TStringList; // each contains name -> TSymbol as object
     FCurrentReturn: TAurumType;
-    FUnitManager: TUnitManager;
-    FImportedUnits: TStringList; // Alias -> UnitPath for resolving qualified names
     procedure PushScope;
     procedure PopScope;
     procedure AddSymbolToCurrent(sym: TSymbol; span: TSourceSpan);
     function ResolveSymbol(const name: string): TSymbol;
-    function ResolveQualifiedName(const qualifier, name: string; span: TSourceSpan): TSymbol;
     procedure DeclareBuiltinFunctions;
-    procedure ProcessImports(prog: TAstProgram);
-    procedure ImportUnit(imp: TAstImportDecl);
     function TypeEqual(a, b: TAurumType): Boolean;
     function CheckExpr(expr: TAstExpr): TAurumType;
     procedure CheckStmt(stmt: TAstStmt);
   public
-    constructor Create(d: TDiagnostics; um: TUnitManager);
-    destructor Destroy; override;
+    constructor Create(d: TDiagnostics);
     procedure Analyze(prog: TAstProgram);
   end;
 
@@ -158,48 +152,24 @@ begin
   SetLength(s.ParamTypes, 1);
   s.ParamTypes[0] := atInt64;
   AddSymbolToCurrent(s, NullSpan);
-
-  // Buffer/runtime primitives for time formatter
-  // buf_put_byte(buf: pchar, idx: int64, b: int64) -> int64
-  s := TSymbol.Create('buf_put_byte');
-  s.Kind := symFunc;
-  s.DeclType := atInt64;
-  s.ParamCount := 3;
-  SetLength(s.ParamTypes, 3);
-  s.ParamTypes[0] := atPChar;
-  s.ParamTypes[1] := atInt64;
-  s.ParamTypes[2] := atInt64;
-  AddSymbolToCurrent(s, NullSpan);
-
-  // itoa_to_buf(val: int64, buf: pchar, idx: int64, buflen: int64, minWidth: int64, padZero: int64) -> int64
-  s := TSymbol.Create('itoa_to_buf');
-  s.Kind := symFunc;
-  s.DeclType := atInt64;
-  s.ParamCount := 6;
-  SetLength(s.ParamTypes, 6);
-  s.ParamTypes[0] := atInt64; // val
-  s.ParamTypes[1] := atPChar; // buf
-  s.ParamTypes[2] := atInt64; // idx
-  s.ParamTypes[3] := atInt64; // buflen
-  s.ParamTypes[4] := atInt64; // minWidth
-  s.ParamTypes[5] := atInt64; // padZero
-  AddSymbolToCurrent(s, NullSpan);
 end;
 
 function IsIntegerType(t: TAurumType): Boolean;
 begin
   case t of
-    atInt8, atInt16, atInt32, atInt64,
-    atUInt8, atUInt16, atUInt32, atUInt64,
-    atISize, atUSize: Result := True;
+    atInt8, atInt16, atInt32, atInt64, atUInt8, atUInt16, atUInt32, atUInt64: Result := True;
   else
     Result := False;
   end;
 end;
 
-function IsNumericType(t: TAurumType): Boolean;
+function IsFloatType(t: TAurumType): Boolean;
 begin
-  Result := IsIntegerType(t) or (t in [atF32, atF64]);
+  case t of
+    atF32, atF64: Result := True;
+  else
+    Result := False;
+  end;
 end;
 
 function TSema.TypeEqual(a, b: TAurumType): Boolean;
@@ -208,6 +178,11 @@ begin
   if a = b then Exit(True);
   // treat any integer widths as compatible for now
   if IsIntegerType(a) and IsIntegerType(b) then Exit(True);
+  // allow char to integer conversion
+  if (a = atChar) and IsIntegerType(b) then Exit(True);
+  if IsIntegerType(a) and (b = atChar) then Exit(True);
+  // allow float type compatibility (f64 can be assigned to f32 variables)
+  if IsFloatType(a) and IsFloatType(b) then Exit(True);
   Result := False;
 end;
 
@@ -217,12 +192,11 @@ var
   bin: TAstBinOp;
   un: TAstUnaryOp;
   call: TAstCall;
-    s: TSymbol;
-    i: Integer;
-    lt, rt, ot, atype: TAurumType;
-    qualifier: string;
-    identName: string;
-  begin
+  s: TSymbol;
+  i: Integer;
+  lt, rt, ot, atype: TAurumType;
+  elementType: TAurumType;
+begin
   if expr = nil then
   begin
     Result := atUnresolved;
@@ -230,23 +204,49 @@ var
   end;
   case expr.Kind of
     nkIntLit: Result := atInt64;
+    nkFloatLit: Result := atF64;
     nkStrLit: Result := atPChar;
-    nkBoolLit: Result := atBool;
     nkCharLit: Result := atChar;
-    nkFieldAccess:
-      begin
-        CheckExpr(TAstFieldAccess(expr).Obj);
-        // field access type resolution is deferred until structs are fully implemented
-        Result := atUnresolved;
-      end;
-    nkIndexAccess:
-      begin
-        CheckExpr(TAstIndexAccess(expr).Obj);
-        CheckExpr(TAstIndexAccess(expr).Index);
-        // index access type resolution deferred until arrays are fully implemented
-        Result := atUnresolved;
-      end;
-    nkIdent:
+    nkBoolLit: Result := atBool;
+    nkArrayLit:
+       begin
+         // Array-Literal-Typprüfung: alle Elemente müssen gleichen Typ haben
+         if Length(TAstArrayLit(expr).Items) > 0 then
+         begin
+           elementType := CheckExpr(TAstArrayLit(expr).Items[0]);
+           // Prüfe, dass alle anderen Elemente kompatibel sind
+           for i := 1 to High(TAstArrayLit(expr).Items) do
+           begin
+             atype := CheckExpr(TAstArrayLit(expr).Items[i]);
+             if not TypeEqual(elementType, atype) then
+               FDiag.Error(Format('array element type mismatch: expected %s but got %s', [AurumTypeToStr(elementType), AurumTypeToStr(atype)]), TAstArrayLit(expr).Items[i].Span);
+           end;
+           // Array-Literal hat always den Typ 'array'
+           Result := atArray;
+         end
+         else
+           Result := atArray; // leeres Array ist auch atArray
+       end;
+     nkArrayIndex:
+       begin
+         // Array-Index: arr[i] gibt Element-Typ zurück
+         // Für jetzt nehmen wir an, dass alle Arrays int64-Elemente haben
+         // TODO: Echte Element-Typ-Tracking implementieren
+         
+         // Prüfe dass Array-Expression tatsächlich ein Array ist
+         atype := CheckExpr(TAstArrayIndex(expr).ArrayExpr);
+         if not TypeEqual(atype, atArray) then
+           FDiag.Error(Format('indexing non-array type: got %s', [AurumTypeToStr(atype)]), TAstArrayIndex(expr).ArrayExpr.Span);
+         
+         // Prüfe dass Index ein Integer ist
+         atype := CheckExpr(TAstArrayIndex(expr).Index);
+         if not IsIntegerType(atype) then
+           FDiag.Error(Format('array index must be integer, got %s', [AurumTypeToStr(atype)]), TAstArrayIndex(expr).Index.Span);
+         
+         // Array-Indexing gibt Element-Typ zurück (für jetzt: int64)
+         Result := atInt64; // TODO: Echten Element-Typ verwenden
+       end;
+     nkIdent:
       begin
         ident := TAstIdent(expr);
         s := ResolveSymbol(ident.Name);
@@ -330,16 +330,8 @@ var
     nkCall:
       begin
         call := TAstCall(expr);
-         s := ResolveSymbol(call.Name);
-         if (s = nil) and (Pos('.', call.Name) > 0) then
-         begin
-           // Handle qualified name (e.g., 'module.function')
-           qualifier := Copy(call.Name, 1, Pos('.', call.Name) - 1);
-           identName := Copy(call.Name, Pos('.', call.Name) + 1, MaxInt);
-           s := ResolveQualifiedName(qualifier, identName, call.Span);
-         end;
-
-         if s = nil then
+        s := ResolveSymbol(call.Name);
+        if s = nil then
         begin
           FDiag.Error('call to undeclared function: ' + call.Name, call.Span);
           Result := atUnresolved;
@@ -375,6 +367,7 @@ procedure TSema.CheckStmt(stmt: TAstStmt);
 var
   vd: TAstVarDecl;
   asg: TAstAssign;
+  arrayAssign: TAstArrayAssign;
   ifn: TAstIf;
   wh: TAstWhile;
   ret: TAstReturn;
@@ -382,7 +375,7 @@ var
   i: Integer;
   s: TSymbol;
   sym: TSymbol;
-  vtype, ctype, rtype: TAurumType;
+  vtype, ctype, rtype, atype: TAurumType;
   sw: TAstSwitch;
   caseVal: TAstExpr;
   cvtype: TAurumType;
@@ -429,6 +422,39 @@ begin
         if not TypeEqual(vtype, s.DeclType) then
           FDiag.Error(Format('assignment type mismatch: %s := %s', [AurumTypeToStr(s.DeclType), AurumTypeToStr(vtype)]), stmt.Span);
       end;
+     nkArrayAssign:
+       begin
+         arrayAssign := TAstArrayAssign(stmt);
+         
+         // Für Array-Assignment: ArrayExpr sollte ein Identifier (Array-Variable) sein
+         // Nicht ein Array-Index-Ausdruck!
+         if arrayAssign.ArrayExpr is TAstIdent then
+         begin
+           // Prüfe dass die Variable tatsächlich ein Array ist
+           s := ResolveSymbol(TAstIdent(arrayAssign.ArrayExpr).Name);
+           if s = nil then
+           begin
+             FDiag.Error('assignment to undeclared variable: ' + TAstIdent(arrayAssign.ArrayExpr).Name, arrayAssign.ArrayExpr.Span);
+             Exit;
+           end;
+           if not TypeEqual(s.DeclType, atArray) then
+             FDiag.Error(Format('assignment to non-array variable: got %s', [AurumTypeToStr(s.DeclType)]), arrayAssign.ArrayExpr.Span);
+         end
+         else
+         begin
+           FDiag.Error('array assignment requires simple array variable', arrayAssign.ArrayExpr.Span);
+         end;
+         
+         // Prüfe dass Index ein Integer ist
+         atype := CheckExpr(arrayAssign.Index);
+         if not IsIntegerType(atype) then
+           FDiag.Error(Format('array index must be integer, got %s', [AurumTypeToStr(atype)]), arrayAssign.Index.Span);
+         
+         // Prüfe Value-Typ (für jetzt: muss int64 sein, da Arrays int64-Elemente haben)
+         vtype := CheckExpr(arrayAssign.Value);
+         if not TypeEqual(vtype, atInt64) then
+           FDiag.Error(Format('array assignment type mismatch: expected int64 but got %s', [AurumTypeToStr(vtype)]), arrayAssign.Value.Span);
+       end;
     nkExprStmt:
       begin
         CheckExpr(TAstExprStmt(stmt).Expr);
@@ -460,36 +486,6 @@ begin
         PushScope;
         CheckStmt(wh.Body);
         PopScope;
-      end;
-    nkFor:
-      begin
-        // for varName := startExpr to/downto endExpr do body
-        with TAstFor(stmt) do
-        begin
-          vtype := CheckExpr(StartExpr);
-          if not IsIntegerType(vtype) then
-            FDiag.Error('for loop start must be integer', StartExpr.Span);
-          ctype := CheckExpr(EndExpr);
-          if not IsIntegerType(ctype) then
-            FDiag.Error('for loop end must be integer', EndExpr.Span);
-          // declare loop variable
-          PushScope;
-          sym := TSymbol.Create(VarName);
-          sym.Kind := symVar;
-          sym.DeclType := atInt64;
-          AddSymbolToCurrent(sym, Span);
-          CheckStmt(Body);
-          PopScope;
-        end;
-      end;
-    nkRepeatUntil:
-      begin
-        PushScope;
-        CheckStmt(TAstRepeatUntil(stmt).Body);
-        PopScope;
-        ctype := CheckExpr(TAstRepeatUntil(stmt).Cond);
-        if not TypeEqual(ctype, atBool) then
-          FDiag.Error('repeat-until condition must be bool', TAstRepeatUntil(stmt).Cond.Span);
       end;
     nkReturn:
       begin
@@ -556,172 +552,15 @@ begin
   end;
 end;
 
-constructor TSema.Create(d: TDiagnostics; um: TUnitManager);
+constructor TSema.Create(d: TDiagnostics);
 begin
   inherited Create;
   FDiag := d;
-  FUnitManager := um;
-  FImportedUnits := TStringList.Create;
-  FImportedUnits.Sorted := False;
   SetLength(FScopes, 0);
   // create global scope
   PushScope;
   DeclareBuiltinFunctions;
   FCurrentReturn := atVoid;
-end;
-
-destructor TSema.Destroy;
-var
-  i: Integer;
-begin
-  // Nur das StringList freigeben, nicht die referenzierten Units
-  // (die gehören dem UnitManager)
-  if Assigned(FImportedUnits) then
-    FImportedUnits.Free;
-
-  // Freigabe aller verbleibenden Scopes (insbesondere globaler Scope)
-  while Length(FScopes) > 0 do
-    PopScope;
-
-  inherited Destroy;
-end;
-
-procedure TSema.ProcessImports(prog: TAstProgram);
-{ Verarbeitet alle Import-Deklarationen im Programm }
-var
-  i: Integer;
-  decl: TAstNode;
-begin
-  if not Assigned(prog) then Exit;
-  
-  for i := 0 to High(prog.Decls) do
-  begin
-    decl := prog.Decls[i];
-    if decl is TAstImportDecl then
-      ImportUnit(TAstImportDecl(decl));
-  end;
-end;
-
-procedure TSema.ImportUnit(imp: TAstImportDecl);
-{ Importiert eine Unit und registriert ihre Symbole }
-var
-  upath: string;
-  loadedUnit: TLoadedUnit;
-  alias: string;
-  i, j: Integer;
-  decl: TAstNode;
-  fn: TAstFuncDecl;
-  sym: TSymbol;
-begin
-  upath := imp.UnitPath;
-  alias := imp.Alias;
-
-  // Unit muss bereits vom UnitManager geladen sein
-  if not Assigned(FUnitManager) then
-  begin
-    FDiag.Error('internal error: no unit manager', imp.Span);
-    Exit;
-  end;
-
-  loadedUnit := FUnitManager.FindUnit(upath);
-  if not Assigned(loadedUnit) then
-  begin
-    FDiag.Error('unit not loaded: ' + upath, imp.Span);
-    Exit;
-  end;
-
-  // Registriere Alias für qualifizierte Zugriffe
-  if alias = '' then
-    alias := ExtractFileName(StringReplace(upath, '.', '/', [rfReplaceAll]));
-  if not Assigned(FImportedUnits) then
-    FImportedUnits := TStringList.Create;
-  FImportedUnits.AddObject(alias, TObject(loadedUnit));
-  
-  // Importiere öffentliche Symbole (pub) in den globalen Scope
-  if Assigned(loadedUnit.AST) then
-  begin
-    for i := 0 to High(loadedUnit.AST.Decls) do
-    begin
-      decl := loadedUnit.AST.Decls[i];
-      
-      // Nur Funktionen für jetzt (später auch Variablen/Types)
-      if decl is TAstFuncDecl then
-      begin
-        fn := TAstFuncDecl(decl);
-        // Nur öffentliche Funktionen importieren
-        if not fn.IsPublic then
-          Continue;
-
-        // Prüfe auf Konflikte
-        if ResolveSymbol(fn.Name) <> nil then
-        begin
-          FDiag.Error('import conflicts with existing symbol: ' + fn.Name, imp.Span);
-          Continue;
-        end;
-
-        sym := TSymbol.Create(fn.Name);
-        sym.Kind := symFunc;
-        sym.DeclType := fn.ReturnType;
-        sym.ParamCount := Length(fn.Params);
-        SetLength(sym.ParamTypes, sym.ParamCount);
-        for j := 0 to sym.ParamCount - 1 do
-          sym.ParamTypes[j] := fn.Params[j].ParamType;
-        AddSymbolToCurrent(sym, fn.Span);
-      end;
-    end;
-  end;
-end;
-
-function TSema.ResolveQualifiedName(const qualifier, name: string; span: TSourceSpan): TSymbol;
-{ Löst einen qualifizierten Namen (z.B. "io.print") auf }
-var
-  idx: Integer;
-  loadedUnit: TLoadedUnit;
-  i, j: Integer;
-  decl: TAstNode;
-  fn: TAstFuncDecl;
-begin
-  Result := nil;
-  
-  // Finde Unit mit diesem Alias
-  idx := FImportedUnits.IndexOf(qualifier);
-  if idx < 0 then
-  begin
-    FDiag.Error('unknown module alias: ' + qualifier, span);
-    Exit;
-  end;
-  
-  loadedUnit := TLoadedUnit(FImportedUnits.Objects[idx]);
-  if not Assigned(loadedUnit.AST) then
-  begin
-    FDiag.Error('unit has no AST: ' + qualifier, span);
-    Exit;
-  end;
-  
-  // Suche Symbol in der Unit
-  for i := 0 to High(loadedUnit.AST.Decls) do
-  begin
-    decl := loadedUnit.AST.Decls[i];
-    if decl is TAstFuncDecl then
-    begin
-      fn := TAstFuncDecl(decl);
-      if fn.Name = name then
-      begin
-        Result := TSymbol.Create(name);
-        Result.Kind := symFunc;
-        Result.DeclType := fn.ReturnType;
-        Result.ParamCount := Length(fn.Params);
-        SetLength(Result.ParamTypes, Result.ParamCount);
-        for j := 0 to Result.ParamCount - 1 do
-          Result.ParamTypes[j] := fn.Params[j].ParamType;
-        AddSymbolToCurrent(Result, span);
-        Exit;
-      end;
-    end;
-  end;
-  
-  if Result = nil then
-    FDiag.Error('symbol not found in module ' + qualifier + ': ' + name, span);
 end;
 
 procedure TSema.Analyze(prog: TAstProgram);
@@ -734,9 +573,6 @@ var
   sym: TSymbol;
   itype: TAurumType;
 begin
-  // Phase 0: Verarbeite Imports
-  ProcessImports(prog);
-  
   // First pass: register top-level functions and constants
   for i := 0 to High(prog.Decls) do
   begin
@@ -758,11 +594,6 @@ begin
       for j := 0 to sym.ParamCount - 1 do
         sym.ParamTypes[j] := fn.Params[j].ParamType;
       AddSymbolToCurrent(sym, fn.Span);
-    end
-    else if node is TAstTypeDecl then
-    begin
-      // type declarations: register as named types (future work)
-      // for now, skip
     end
     else if node is TAstConDecl then
     begin
