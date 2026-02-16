@@ -441,7 +441,7 @@ Wenn ich es brutal zusammenkoche, musst du für Aurum zuerst festlegen:
 6. Kontrollfluss (if/while/return)
 7. Ziel: Linux x86_64 ELF64
 
-# Aurum v0.1.2 – Keywords (aktualisiert)
+# Aurum v0.1.3 – Keywords (aktualisiert)
 
 ## Reservierte Keywords
 

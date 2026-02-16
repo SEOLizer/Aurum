@@ -4,7 +4,7 @@
 Er erzeugt direkt ausführbare **Linux x86_64 ELF64-Binaries** — ohne libc, ohne Linker, rein über Syscalls.
 
 ```
-Aurum Compiler v0.1.2
+Aurum Compiler v0.1.3
 Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.
 ```
 
