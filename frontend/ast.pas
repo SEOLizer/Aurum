@@ -16,6 +16,10 @@ type
     atInt8, atInt16, atInt32, atInt64,
     // unsigned integer widths
     atUInt8, atUInt16, atUInt32, atUInt64,
+    // char type
+    atChar,
+    // floating-point types
+    atF32, atF64,
     atBool,
     atVoid,
     atPChar
@@ -29,8 +33,8 @@ type
 
   TNodeKind = (
     // Ausdrücke
-    nkIntLit, nkStrLit, nkBoolLit, nkIdent,
-    nkBinOp, nkUnaryOp, nkCall,
+    nkIntLit, nkFloatLit, nkStrLit, nkCharLit, nkBoolLit, nkIdent,
+    nkBinOp, nkUnaryOp, nkCall, nkArrayLit,
     // Statements
     nkVarDecl, nkAssign, nkIf, nkWhile, nkReturn, nkBreak, nkSwitch,
     nkBlock, nkExprStmt,
@@ -84,8 +88,26 @@ type
     property Value: Int64 read FValue;
   end;
 
+  { Float-Literal: 3.14 }
+  TAstFloatLit = class(TAstExpr)
+  private
+    FValue: string;
+  public
+    constructor Create(const aValue: string; aSpan: TSourceSpan);
+    property Value: string read FValue;
+  end;
+
   { String-Literal: "hello\n" }
   TAstStrLit = class(TAstExpr)
+  private
+    FValue: string;
+  public
+    constructor Create(const aValue: string; aSpan: TSourceSpan);
+    property Value: string read FValue;
+  end;
+
+  { Char-Literal: 'x' }
+  TAstCharLit = class(TAstExpr)
   private
     FValue: string;
   public
@@ -150,6 +172,16 @@ type
     destructor Destroy; override;
     property Name: string read FName;
     property Args: TAstExprList read FArgs;
+  end;
+
+  { Array-Literal: [1, 2, 3] }
+  TAstArrayLit = class(TAstExpr)
+  private
+    FItems: TAstExprList;
+  public
+    constructor Create(const aItems: TAstExprList; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property Items: TAstExprList read FItems;
   end;
 
   // ================================================================
@@ -356,6 +388,9 @@ begin
     atUInt16:     Result := 'uint16';
     atUInt32:     Result := 'uint32';
     atUInt64:     Result := 'uint64';
+    atChar:       Result := 'char';
+    atF32:        Result := 'f32';
+    atF64:        Result := 'f64';
     atBool:       Result := 'bool';
     atVoid:       Result := 'void';
     atPChar:      Result := 'pchar';
@@ -376,6 +411,9 @@ begin
     'uint16': Result := atUInt16;
     'uint32': Result := atUInt32;
     'uint64': Result := atUInt64;
+    'char':  Result := atChar;
+    'f32':   Result := atF32;
+    'f64':   Result := atF64;
     'bool':  Result := atBool;
     'void':  Result := atVoid;
     'pchar': Result := atPChar;
@@ -399,12 +437,15 @@ function NodeKindToStr(nk: TNodeKind): string;
 begin
   case nk of
     nkIntLit:    Result := 'IntLit';
+    nkFloatLit:  Result := 'FloatLit';
     nkStrLit:    Result := 'StrLit';
+    nkCharLit:   Result := 'CharLit';
     nkBoolLit:   Result := 'BoolLit';
     nkIdent:     Result := 'Ident';
     nkBinOp:     Result := 'BinOp';
     nkUnaryOp:   Result := 'UnaryOp';
     nkCall:      Result := 'Call';
+    nkArrayLit:  Result := 'ArrayLit';
     nkVarDecl:   Result := 'VarDecl';
     nkAssign:    Result := 'Assign';
     nkIf:        Result := 'If';
@@ -466,6 +507,28 @@ begin
   inherited Create(nkStrLit, aSpan);
   FValue := aValue;
   FResolvedType := atPChar;
+end;
+
+// ================================================================
+// TAstFloatLit
+// ================================================================
+
+constructor TAstFloatLit.Create(const aValue: string; aSpan: TSourceSpan);
+begin
+  inherited Create(nkFloatLit, aSpan);
+  FValue := aValue;
+  FResolvedType := atF64; // default zu double precision
+end;
+
+// ================================================================
+// TAstCharLit
+// ================================================================
+
+constructor TAstCharLit.Create(const aValue: string; aSpan: TSourceSpan);
+begin
+  inherited Create(nkCharLit, aSpan);
+  FValue := aValue;
+  FResolvedType := atChar;
 end;
 
 // ================================================================
@@ -556,6 +619,26 @@ end;
 constructor TAstStmt.Create(aKind: TNodeKind; aSpan: TSourceSpan);
 begin
   inherited Create(aKind, aSpan);
+end;
+
+// ================================================================
+// TAstArrayLit
+// ================================================================
+
+constructor TAstArrayLit.Create(const aItems: TAstExprList; aSpan: TSourceSpan);
+begin
+  inherited Create(nkArrayLit, aSpan);
+  FItems := aItems;
+end;
+
+destructor TAstArrayLit.Destroy;
+var
+  i: Integer;
+begin
+  for i := 0 to High(FItems) do
+    FItems[i].Free;
+  FItems := nil;
+  inherited Destroy;
 end;
 
 // ================================================================

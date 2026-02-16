@@ -10,7 +10,7 @@ uses
 type
   TTokenKind = (
     // Literale
-    tkIntLit, tkStrLit, tkIdent,
+    tkIntLit, tkFloatLit, tkStrLit, tkCharLit, tkIdent,
     // Keywords
     tkFn, tkVar, tkLet, tkCo, tkCon,
     tkIf, tkElse, tkWhile, tkReturn,
@@ -23,6 +23,7 @@ type
     tkAnd, tkOr, tkNot,
     // Trennzeichen
     tkLParen, tkRParen, tkLBrace, tkRBrace,
+    tkLBracket, tkRBracket,
     tkColon, tkComma, tkSemicolon,
     // Sonstiges
     tkEOF, tkError
@@ -57,6 +58,7 @@ type
       startLine, startCol, len: Integer): TToken;
     function ReadNumber: TToken;
     function ReadString: TToken;
+    function ReadChar: TToken;
     function ReadIdentOrKeyword: TToken;
     function LookupKeyword(const s: string): TTokenKind;
   public
@@ -75,7 +77,9 @@ function TokenKindToStr(kind: TTokenKind): string;
 begin
   case kind of
     tkIntLit:    Result := 'IntLit';
+    tkFloatLit:  Result := 'FloatLit';
     tkStrLit:    Result := 'StrLit';
+    tkCharLit:   Result := 'CharLit';
     tkIdent:     Result := 'Ident';
     tkFn:        Result := 'fn';
     tkVar:       Result := 'var';
@@ -112,6 +116,8 @@ begin
     tkRParen:    Result := ')';
     tkLBrace:    Result := '{';
     tkRBrace:    Result := '}';
+    tkLBracket:  Result := '[';
+    tkRBracket:  Result := ']';
     tkColon:     Result := ':';
     tkComma:     Result := ',';
     tkSemicolon: Result := ';';
@@ -224,13 +230,40 @@ function TLexer.ReadNumber: TToken;
 var
   startPos, startCol: Integer;
   s: string;
+  hasDecimalPoint: Boolean;
+  tokenKind: TTokenKind;
 begin
   startPos := FPos;
   startCol := FCol;
+  hasDecimalPoint := False;
+  
+  // Lese Ziffern vor dem Punkt
   while (not IsAtEnd) and (CurrentChar in ['0'..'9']) do
     Advance;
+  
+  // Prüfe auf Dezimalpunkt
+  if (not IsAtEnd) and (CurrentChar = '.') then
+  begin
+    // Schaue voraus - nächstes Zeichen muss eine Ziffer sein  
+    if (FPos < Length(FSource)) and (FSource[FPos + 1] in ['0'..'9']) then
+    begin
+      hasDecimalPoint := True;
+      Advance; // konsumiere den Punkt
+      
+      // Lese Nachkommastellen
+      while (not IsAtEnd) and (CurrentChar in ['0'..'9']) do
+        Advance;
+    end;
+  end;
+  
   s := Copy(FSource, startPos, FPos - startPos);
-  Result := MakeToken(tkIntLit, s, FLine, startCol, Length(s));
+  
+  if hasDecimalPoint then
+    tokenKind := tkFloatLit
+  else
+    tokenKind := tkIntLit;
+    
+  Result := MakeToken(tokenKind, s, FLine, startCol, Length(s));
 end;
 
 function TLexer.ReadString: TToken;
@@ -291,6 +324,78 @@ begin
   end;
   Advance; // schließendes "
   Result := MakeToken(tkStrLit, s, startLine, startCol,
+    FCol - startCol);
+end;
+
+function TLexer.ReadChar: TToken;
+var
+  startLine, startCol: Integer;
+  c: Char;
+  charValue: string;
+begin
+  startLine := FLine;
+  startCol := FCol;
+  Advance; // öffnendes '
+  
+  if IsAtEnd then
+  begin
+    FDiag.Error('unterminated char literal',
+      MakeSpan(startLine, startCol, 1, FFileName));
+    Result := MakeToken(tkError, '', startLine, startCol, 1);
+    Exit;
+  end;
+  
+  if CurrentChar = '\' then
+  begin
+    // Escape-Sequenz
+    Advance;
+    if IsAtEnd then
+    begin
+      FDiag.Error('unexpected end of file in char escape',
+        MakeSpan(FLine, FCol, 1, FFileName));
+      Result := MakeToken(tkError, '', startLine, startCol, 1);
+      Exit;
+    end;
+    c := CurrentChar;
+    case c of
+      'n':  charValue := #10;
+      'r':  charValue := #13;
+      't':  charValue := #9;
+      '\':  charValue := '\';
+      '''': charValue := '''';
+      '0':  charValue := #0;
+    else
+      FDiag.Error('unknown escape sequence: \' + c,
+        MakeSpan(FLine, FCol - 1, 2, FFileName));
+      charValue := c; // fallback
+    end;
+    Advance;
+  end
+  else if CurrentChar = '''' then
+  begin
+    FDiag.Error('empty char literal',
+      MakeSpan(startLine, startCol, 2, FFileName));
+    Result := MakeToken(tkError, '', startLine, startCol, 2);
+    Exit;
+  end
+  else
+  begin
+    // Normales Zeichen
+    charValue := CurrentChar;
+    Advance;
+  end;
+  
+  // Schließendes ' erwarten
+  if IsAtEnd or (CurrentChar <> '''') then
+  begin
+    FDiag.Error('unterminated char literal',
+      MakeSpan(startLine, startCol, 1, FFileName));
+    Result := MakeToken(tkError, '', startLine, startCol, 1);
+    Exit;
+  end;
+  
+  Advance; // schließendes '
+  Result := MakeToken(tkCharLit, charValue, startLine, startCol,
     FCol - startCol);
 end;
 
@@ -386,6 +491,12 @@ begin
     Result := ReadString;
     Exit;
   end;
+  
+  if c = '''' then
+  begin
+    Result := ReadChar;
+    Exit;
+  end;
 
   // Identifier / Keywords
   if c in ['A'..'Z', 'a'..'z', '_'] then
@@ -404,6 +515,8 @@ begin
     ')': begin Advance; Result := MakeToken(tkRParen, ')', startLine, startCol, 1); end;
     '{': begin Advance; Result := MakeToken(tkLBrace, '{', startLine, startCol, 1); end;
     '}': begin Advance; Result := MakeToken(tkRBrace, '}', startLine, startCol, 1); end;
+    '[': begin Advance; Result := MakeToken(tkLBracket, '[', startLine, startCol, 1); end;
+    ']': begin Advance; Result := MakeToken(tkRBracket, ']', startLine, startCol, 1); end;
     ',': begin Advance; Result := MakeToken(tkComma, ',', startLine, startCol, 1); end;
     ';': begin Advance; Result := MakeToken(tkSemicolon, ';', startLine, startCol, 1); end;
 

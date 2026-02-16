@@ -163,12 +163,26 @@ begin
   end;
 end;
 
+function IsFloatType(t: TAurumType): Boolean;
+begin
+  case t of
+    atF32, atF64: Result := True;
+  else
+    Result := False;
+  end;
+end;
+
 function TSema.TypeEqual(a, b: TAurumType): Boolean;
 begin
   // exact match
   if a = b then Exit(True);
   // treat any integer widths as compatible for now
   if IsIntegerType(a) and IsIntegerType(b) then Exit(True);
+  // allow char to integer conversion
+  if (a = atChar) and IsIntegerType(b) then Exit(True);
+  if IsIntegerType(a) and (b = atChar) then Exit(True);
+  // allow float type compatibility (f64 can be assigned to f32 variables)
+  if IsFloatType(a) and IsFloatType(b) then Exit(True);
   Result := False;
 end;
 
@@ -189,8 +203,28 @@ begin
   end;
   case expr.Kind of
     nkIntLit: Result := atInt64;
+    nkFloatLit: Result := atF64;
     nkStrLit: Result := atPChar;
+    nkCharLit: Result := atChar;
     nkBoolLit: Result := atBool;
+    nkArrayLit:
+      begin
+        // Array-Literal-Typprüfung: alle Elemente müssen gleichen Typ haben
+        // Für jetzt nehmen wir den Typ des ersten Elements
+        if Length(TAstArrayLit(expr).Items) > 0 then
+        begin
+          Result := CheckExpr(TAstArrayLit(expr).Items[0]);
+          // TODO: Prüfe, dass alle anderen Elemente kompatibel sind
+          for i := 1 to High(TAstArrayLit(expr).Items) do
+          begin
+            atype := CheckExpr(TAstArrayLit(expr).Items[i]);
+            if not TypeEqual(Result, atype) then
+              FDiag.Error(Format('array element type mismatch: expected %s but got %s', [AurumTypeToStr(Result), AurumTypeToStr(atype)]), TAstArrayLit(expr).Items[i].Span);
+          end;
+        end
+        else
+          Result := atUnresolved; // leeres Array
+      end;
     nkIdent:
       begin
         ident := TAstIdent(expr);

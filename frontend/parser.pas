@@ -40,6 +40,7 @@ type
     function ParseUnaryExpr: TAstExpr;
     function ParsePrimary: TAstExpr;
     function ParseCallOrIdent: TAstExpr;
+    function ParseArrayLiteral: TAstExpr;
 
     function ParseType: TAurumType;
     function ParseParamList: TAstParamList;
@@ -239,7 +240,7 @@ var
   valExpr: TAstExpr;
   i: Integer;
 begin
-  if Check(tkVar) or Check(tkLet) or Check(tkCo) then
+  if Check(tkVar) or Check(tkLet) or Check(tkCo) or Check(tkCon) then
     Exit(ParseVarLetCoDecl);
 
   if Check(tkIf) then
@@ -346,6 +347,7 @@ begin
   if Accept(tkVar) then storage := skVar
   else if Accept(tkLet) then storage := skLet
   else if Accept(tkCo) then storage := skCo
+  else if Accept(tkCon) then storage := skCon
   else storage := skVar; // unreachable
 
   if Check(tkIdent) then
@@ -518,12 +520,28 @@ begin
     Exit(TAstIntLit.Create(v, span));
   end;
 
+  if Check(tkFloatLit) then
+  begin
+    s := FCurTok.Value;
+    span := FCurTok.Span;
+    Advance;
+    Exit(TAstFloatLit.Create(s, span));
+  end;
+
   if Check(tkStrLit) then
   begin
     s := FCurTok.Value;
     span := FCurTok.Span;
     Advance;
     Exit(TAstStrLit.Create(s, span));
+  end;
+  
+  if Check(tkCharLit) then
+  begin
+    s := FCurTok.Value;
+    span := FCurTok.Span;
+    Advance;
+    Exit(TAstCharLit.Create(s, span));
   end;
 
   if Check(tkTrue) or Check(tkFalse) then
@@ -536,6 +554,9 @@ begin
 
   if Check(tkIdent) then
     Exit(ParseCallOrIdent);
+
+  if Check(tkLBracket) then
+    Exit(ParseArrayLiteral);
 
   if Accept(tkLParen) then
   begin
@@ -582,6 +603,33 @@ begin
   end
   else
     Result := TAstIdent.Create(name, span);
+end;
+
+function TParser.ParseArrayLiteral: TAstExpr;
+var
+  items: TAstExprList;
+  span: TSourceSpan;
+  item: TAstExpr;
+begin
+  span := FCurTok.Span;
+  Advance; // consume '['
+  
+  items := nil;
+  if not Check(tkRBracket) then
+  begin
+    // ItemList: expr, expr, ...
+    while True do
+    begin
+      item := ParseExpr;
+      SetLength(items, Length(items) + 1);
+      items[High(items)] := item;
+      if Accept(tkComma) then Continue;
+      Break;
+    end;
+  end;
+  
+  Expect(tkRBracket);
+  Result := TAstArrayLit.Create(items, span);
 end;
 
 function TParser.ParseType: TAurumType;

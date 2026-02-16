@@ -193,6 +193,20 @@ begin
         cv.IsStr := True;
         cv.StrVal := TAstStrLit(TAstConDecl(node).InitExpr).Value;
       end
+      else if TAstConDecl(node).InitExpr is TAstCharLit then
+      begin
+        cv.IsStr := False;
+        if Length(TAstCharLit(TAstConDecl(node).InitExpr).Value) > 0 then
+          cv.IntVal := Ord(TAstCharLit(TAstConDecl(node).InitExpr).Value[1])
+        else
+          cv.IntVal := 0;
+      end
+      else if TAstConDecl(node).InitExpr is TAstFloatLit then
+      begin
+        cv.IsStr := False;
+        cv.IntVal := 0; // placeholder for float constants
+        FDiag.Error('Float constants not yet fully implemented', TAstConDecl(node).Span);
+      end
       else if TAstConDecl(node).InitExpr is TAstBoolLit then
       begin
         cv.IsStr := False;
@@ -259,6 +273,31 @@ begin
     Emit(instr);
     Exit(t1);
   end;
+  if expr is TAstFloatLit then
+  begin
+    // Float-Literal - für jetzt als Dummy-Implementation (0)
+    // TODO: Echte Float-Konstanten implementieren
+    t1 := NewTemp;
+    instr.Op := irConstInt;
+    instr.Dest := t1;
+    instr.ImmInt := 0; // placeholder
+    Emit(instr);
+    FDiag.Error('Float literals not yet fully implemented in IR', expr.Span);
+    Exit(t1);
+  end;
+  if expr is TAstCharLit then
+  begin
+    // Char-Literal als Integer-Wert (ASCII-Code)
+    t1 := NewTemp;
+    instr.Op := irConstInt;
+    instr.Dest := t1;
+    if Length(TAstCharLit(expr).Value) > 0 then
+      instr.ImmInt := Ord(TAstCharLit(expr).Value[1])
+    else
+      instr.ImmInt := 0; // fallback für leeres Char
+    Emit(instr);
+    Exit(t1);
+  end;
   if expr is TAstBoolLit then
   begin
     t1 := NewTemp;
@@ -269,6 +308,18 @@ begin
     else
       instr.ImmInt := 0;
     Emit(instr);
+    Exit(t1);
+  end;
+  if expr is TAstArrayLit then
+  begin
+    // Array-Literal - für jetzt als Dummy-Implementation
+    // TODO: Echte Array-Lowering implementieren
+    t1 := NewTemp;
+    instr.Op := irConstInt;
+    instr.Dest := t1;
+    instr.ImmInt := 0; // placeholder - Adresse des ersten Elements
+    Emit(instr);
+    FDiag.Error('Array literals not yet fully implemented in IR', expr.Span);
     Exit(t1);
   end;
   if expr is TAstIdent then
