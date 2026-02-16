@@ -87,7 +87,7 @@ begin
         end;
 
         // Phase 3: Semantische Analyse
-        s := TSema.Create(d, um);
+        s := TSema.Create(d);
         try
           s.Analyze(prog);
           if d.HasErrors then
@@ -103,7 +103,6 @@ begin
         lower := TIRLowering.Create(module, d);
         try
           lower.Lower(prog);
-          lower.LowerImportedUnits(um);
           emit := TX86_64Emitter.Create;
           try
             emit.EmitFromIR(module);
