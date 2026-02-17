@@ -1,0 +1,12 @@
+// Float arithmetic test
+fn main(): int64 {
+    var x: f64 := 3.14;
+    var y: f64 := 2.0;
+    var z: f64 := x + y;
+    
+    print_str("Float test: ");
+    print_float(z);
+    print_str("\n");
+    
+    return 0;
+}

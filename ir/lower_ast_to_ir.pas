@@ -653,22 +653,46 @@ begin
   begin
     t1 := LowerExpr(TAstBinOp(expr).Left);
     t2 := LowerExpr(TAstBinOp(expr).Right);
-    case TAstBinOp(expr).Op of
-      tkPlus: instr.Op := irAdd;
-      tkMinus: instr.Op := irSub;
-      tkStar: instr.Op := irMul;
-      tkSlash: instr.Op := irDiv;
-      tkPercent: instr.Op := irMod;
-      tkEq: instr.Op := irCmpEq;
-      tkNeq: instr.Op := irCmpNeq;
-      tkLt: instr.Op := irCmpLt;
-      tkLe: instr.Op := irCmpLe;
-      tkGt: instr.Op := irCmpGt;
-      tkGe: instr.Op := irCmpGe;
-      tkAnd: instr.Op := irAnd;
-      tkOr: instr.Op := irOr;
+    // Check if operands are float types for float arithmetic
+    if (TAstBinOp(expr).Left.ResolvedType in [atF32, atF64]) or
+       (TAstBinOp(expr).Right.ResolvedType in [atF32, atF64]) then
+    begin
+      // Float operations
+      case TAstBinOp(expr).Op of
+        tkPlus: instr.Op := irFAdd;
+        tkMinus: instr.Op := irFSub;
+        tkStar: instr.Op := irFMul;
+        tkSlash: instr.Op := irFDiv;
+        tkEq: instr.Op := irFCmpEq;
+        tkNeq: instr.Op := irFCmpNeq;
+        tkLt: instr.Op := irFCmpLt;
+        tkLe: instr.Op := irFCmpLe;
+        tkGt: instr.Op := irFCmpGt;
+        tkGe: instr.Op := irFCmpGe;
+      else
+        instr.Op := irInvalid;
+      end;
+    end
     else
-      instr.Op := irInvalid;
+    begin
+      // Integer operations
+      case TAstBinOp(expr).Op of
+        tkPlus: instr.Op := irAdd;
+        tkMinus: instr.Op := irSub;
+        tkStar: instr.Op := irMul;
+        tkSlash: instr.Op := irDiv;
+        tkPercent: instr.Op := irMod;
+        tkEq: instr.Op := irCmpEq;
+        tkNeq: instr.Op := irCmpNeq;
+        tkLt: instr.Op := irCmpLt;
+        tkLe: instr.Op := irCmpLe;
+        tkGt: instr.Op := irCmpGt;
+        tkGe: instr.Op := irCmpGe;
+        tkAnd: instr.Op := irAnd;
+        tkOr: instr.Op := irOr;
+      else
+        instr.Op := irInvalid;
+      end;
     end;
     instr.Dest := NewTemp;
     instr.Src1 := t1;
@@ -681,7 +705,11 @@ begin
     t1 := LowerExpr(TAstUnaryOp(expr).Operand);
     if TAstUnaryOp(expr).Op = tkMinus then
     begin
-      instr.Op := irNeg;
+      // Check if operand is float for float negation
+      if TAstUnaryOp(expr).Operand.ResolvedType in [atF32, atF64] then
+        instr.Op := irFNeg
+      else
+        instr.Op := irNeg;
       instr.Dest := NewTemp;
       instr.Src1 := t1;
       Emit(instr);

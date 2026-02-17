@@ -411,29 +411,46 @@ begin
         rt := CheckExpr(bin.Right);
         case bin.Op of
            tkPlus, tkMinus, tkStar, tkSlash, tkPercent:
-             begin
-               if not IsIntegerType(lt) or not IsIntegerType(rt) then
-                 FDiag.Error('type error: arithmetic requires integer operands', bin.Span);
-               // promote to 64-bit for now
-               Result := atInt64;
-             end;
+              begin
+                // Allow both integer and float arithmetic
+                if IsIntegerType(lt) and IsIntegerType(rt) then
+                begin
+                  // Integer arithmetic - promote to 64-bit for now
+                  Result := atInt64;
+                end
+                else if IsFloatType(lt) and IsFloatType(rt) then
+                begin
+                  // Float arithmetic - result is f64
+                  Result := atF64;
+                end
+                else
+                begin
+                  FDiag.Error('type error: arithmetic requires integer or float operands', bin.Span);
+                  Result := atInt64;
+                end;
+              end;
            tkEq, tkNeq, tkLt, tkLe, tkGt, tkGe:
-             begin
-               if (IsIntegerType(lt) and IsIntegerType(rt)) then
-               begin
-                 Result := atBool;
-               end
-               else if (TypeEqual(lt, atPChar) and TypeEqual(rt, atPChar)) then
-               begin
-                 // pointer/string comparison
-                 Result := atBool;
-               end
-               else
-               begin
-                 FDiag.Error('type error: comparison requires integer or pchar operands', bin.Span);
-                 Result := atUnresolved;
-               end;
-             end;
+              begin
+                if (IsIntegerType(lt) and IsIntegerType(rt)) then
+                begin
+                  Result := atBool;
+                end
+                else if (IsFloatType(lt) and IsFloatType(rt)) then
+                begin
+                  // Float comparison
+                  Result := atBool;
+                end
+                else if (TypeEqual(lt, atPChar) and TypeEqual(rt, atPChar)) then
+                begin
+                  // pointer/string comparison
+                  Result := atBool;
+                end
+                else
+                begin
+                  FDiag.Error('type error: comparison requires integer, float, or pchar operands', bin.Span);
+                  Result := atUnresolved;
+                end;
+              end;
 
           tkAnd, tkOr:
             begin
@@ -454,9 +471,15 @@ begin
         ot := CheckExpr(un.Operand);
         if un.Op = tkMinus then
         begin
-          if not IsIntegerType(ot) then
-            FDiag.Error('type error: unary - requires integer', un.Span);
-          Result := atInt64;
+          if IsIntegerType(ot) then
+            Result := atInt64
+          else if IsFloatType(ot) then
+            Result := atF64
+          else
+          begin
+            FDiag.Error('type error: unary - requires integer or float', un.Span);
+            Result := atInt64;
+          end;
         end
         else if un.Op = tkNot then
         begin

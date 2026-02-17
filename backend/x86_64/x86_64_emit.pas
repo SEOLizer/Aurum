@@ -41,6 +41,15 @@ implementation
 uses
   Math;
 
+{ DoubleToQWord: Reinterprets IEEE 754 double bits as UInt64 }
+function DoubleToQWord(const d: Double): UInt64;
+var
+  p: PUInt64;
+begin
+  p := PUInt64(@d);
+  Result := p^;
+end;
+
 const
   RAX = 0; RCX = 1; RDX = 2; RBX = 3; RSP = 4; RBP = 5; RSI = 6; RDI = 7; R8 = 8; R9 = 9; R10 = 10; R11 = 11; R12 = 12; R13 = 13; R14 = 14; R15 = 15;
   ParamRegs: array[0..5] of Byte = (RDI, RSI, RDX, RCX, R8, R9);
@@ -304,6 +313,151 @@ begin
   EmitU8(buf, $8B);
   EmitU8(buf, $80 or (baseReg and $7));
   EmitU32(buf, Cardinal(disp32));
+end;
+
+{ SSE2 Floating-Point Instructions }
+
+procedure WriteMovsdXmmMem(buf: TByteBuffer; xmmReg: Byte; baseReg: Byte; disp32: Integer);
+begin
+  // movsd xmm, [base+disp32] : F2 0F 10 /r
+  EmitU8(buf, $F2);
+  if (xmmReg >= 8) or (baseReg >= 8) then
+    EmitRex(buf, 0, (xmmReg shr 3) and 1, 0, (baseReg shr 3) and 1)
+  else
+    EmitU8(buf, $40); // Rex.W=0 but need some rex prefix for xmm
+  EmitU8(buf, $0F);
+  EmitU8(buf, $10);
+  EmitU8(buf, $80 or ((xmmReg and $7) shl 3) or (baseReg and $7));
+  if (baseReg and 7) = 4 then
+    EmitU8(buf, $24); // SIB for RSP/R12
+  EmitU32(buf, Cardinal(disp32));
+end;
+
+procedure WriteMovsdMemXmm(buf: TByteBuffer; baseReg: Byte; disp32: Integer; xmmReg: Byte);
+begin
+  // movsd [base+disp32], xmm : F2 0F 11 /r
+  EmitU8(buf, $F2);
+  if (xmmReg >= 8) or (baseReg >= 8) then
+    EmitRex(buf, 0, (xmmReg shr 3) and 1, 0, (baseReg shr 3) and 1)
+  else
+    EmitU8(buf, $40);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $11);
+  EmitU8(buf, $80 or ((xmmReg and $7) shl 3) or (baseReg and $7));
+  if (baseReg and 7) = 4 then
+    EmitU8(buf, $24);
+  EmitU32(buf, Cardinal(disp32));
+end;
+
+procedure WriteMovsdXmmXmm(buf: TByteBuffer; dstXmm: Byte; srcXmm: Byte);
+begin
+  // movsd xmm1, xmm2 : F2 0F 10 /r (mod=11)
+  EmitU8(buf, $F2);
+  if (dstXmm >= 8) or (srcXmm >= 8) then
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
+  else
+    EmitU8(buf, $40);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $10);
+  EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
+end;
+
+procedure WriteAddsdXmmXmm(buf: TByteBuffer; dstXmm: Byte; srcXmm: Byte);
+begin
+  // addsd xmm1, xmm2 : F2 0F 58 /r (mod=11)
+  EmitU8(buf, $F2);
+  if (dstXmm >= 8) or (srcXmm >= 8) then
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
+  else
+    EmitU8(buf, $40);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $58);
+  EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
+end;
+
+procedure WriteSubsdXmmXmm(buf: TByteBuffer; dstXmm: Byte; srcXmm: Byte);
+begin
+  // subsd xmm1, xmm2 : F2 0F 5C /r (mod=11)
+  EmitU8(buf, $F2);
+  if (dstXmm >= 8) or (srcXmm >= 8) then
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
+  else
+    EmitU8(buf, $40);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $5C);
+  EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
+end;
+
+procedure WriteMulsdXmmXmm(buf: TByteBuffer; dstXmm: Byte; srcXmm: Byte);
+begin
+  // mulsd xmm1, xmm2 : F2 0F 59 /r (mod=11)
+  EmitU8(buf, $F2);
+  if (dstXmm >= 8) or (srcXmm >= 8) then
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
+  else
+    EmitU8(buf, $40);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $59);
+  EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
+end;
+
+procedure WriteDivsdXmmXmm(buf: TByteBuffer; dstXmm: Byte; srcXmm: Byte);
+begin
+  // divsd xmm1, xmm2 : F2 0F 5E /r (mod=11)
+  EmitU8(buf, $F2);
+  if (dstXmm >= 8) or (srcXmm >= 8) then
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
+  else
+    EmitU8(buf, $40);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $5E);
+  EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
+end;
+
+procedure WriteXorpdXmmXmm(buf: TByteBuffer; dstXmm: Byte; srcXmm: Byte);
+begin
+  // xorpd xmm1, xmm2 : 66 0F 57 /r (mod=11)
+  EmitU8(buf, $66);
+  if (dstXmm >= 8) or (srcXmm >= 8) then
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
+  else
+    EmitU8(buf, $40);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $57);
+  EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
+end;
+
+procedure WriteUcomisdXmmXmm(buf: TByteBuffer; dstXmm: Byte; srcXmm: Byte);
+begin
+  // ucomisd xmm1, xmm2 : 66 0F 2E /r (mod=11)
+  EmitU8(buf, $66);
+  if (dstXmm >= 8) or (srcXmm >= 8) then
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
+  else
+    EmitU8(buf, $40);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $2E);
+  EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
+end;
+
+procedure WriteCvtsd2siRaxXmm(buf: TByteBuffer; xmmReg: Byte);
+begin
+  // cvtsd2si rax, xmm : F2 48 0F 2D /r
+  EmitU8(buf, $F2);
+  EmitRex(buf, 1, 0, 0, (xmmReg shr 3) and 1);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $2D);
+  EmitU8(buf, $C0 or (xmmReg and $7));
+end;
+
+procedure WriteCvtsi2sdXmmRax(buf: TByteBuffer; xmmReg: Byte);
+begin
+  // cvtsi2sd xmm, rax : F2 48 0F 2A /r
+  EmitU8(buf, $F2);
+  EmitRex(buf, 1, (xmmReg shr 3) and 1, 0, 0);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $2A);
+  EmitU8(buf, $C0 or ((xmmReg and $7) shl 3));
 end;
 
 function SlotOffset(slot: Integer): Integer;
@@ -671,31 +825,43 @@ begin
                if instr.Dest >= 0 then
                  WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
              end
-             else if instr.ImmStr = 'print_float' then
-             begin
-               // print_float(x: f64) -> void
-               // For now, print as "?" (full implementation needs float formatting)
-               if not bufferAdded then
-               begin
-                 bufferOffset := totalDataOffset;
-                 for k := 1 to 64 do FData.WriteU8(0);
-                 Inc(totalDataOffset, 64);
-                 bufferAdded := True;
-               end;
-               // Write "?" to buffer
-               WriteMovRegImm64(FCode, RAX, Ord('?'));
-               // lea rsi, buffer
-               leaPos := FCode.Size;
-               EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
-               SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
-               bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
-               WriteMovMemRegByteNoDisp(FCode, RSI, 0);
-               // syscall write(1, rsi, 1)
-               WriteMovRegImm64(FCode, RAX, 1);
-               WriteMovRegImm64(FCode, RDI, 1);
-               WriteMovRegImm64(FCode, RDX, 1);
-               WriteSyscall(FCode);
-             end
+              else if instr.ImmStr = 'print_float' then
+              begin
+                // print_float(x: f64) -> void
+                // Simple implementation: convert to int64 and print as integer (truncates)
+                // Load float from slot
+                WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+                // Convert to int64
+                WriteCvtsd2siRaxXmm(FCode, 0);
+                // Store to temporary location
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Src1) - 8, RAX);
+                
+                // Use print_int logic inline
+                if not bufferAdded then
+                begin
+                  bufferOffset := totalDataOffset;
+                  for k := 1 to 64 do FData.WriteU8(0);
+                  Inc(totalDataOffset, 64);
+                  bufferAdded := True;
+                end;
+                
+                // Load value into RAX
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1) - 8);
+                // lea rsi, buffer
+                leaPos := FCode.Size;
+                EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+                SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
+                bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
+                
+                // Print integer part only (simplified - uses existing print_int code pattern)
+                // For now, just print "0" as placeholder for full float output
+                WriteMovRegImm64(FCode, RAX, Ord('0'));
+                WriteMovMemRegByteNoDisp(FCode, RSI, 0);
+                WriteMovRegImm64(FCode, RAX, 1);
+                WriteMovRegImm64(FCode, RDI, 1);
+                WriteMovRegImm64(FCode, RDX, 1);
+                WriteSyscall(FCode);
+              end
              else if instr.ImmStr = 'buf_put_byte' then
             begin
               // buf_put_byte(buf: pchar, idx: int64, b: int64) -> int64
@@ -1209,13 +1375,10 @@ begin
             end;
           irConstFloat:
             begin
-              // Load float constant - for now, store as zero (placeholder)
-              // TODO: Implement proper float constants in data section
+              // Load float constant as IEEE 754 double bits into stack slot
               slotIdx := localCnt + instr.Dest;
-              WriteMovRegImm64(FCode, RAX, 0); // placeholder: float as zero
+              WriteMovRegImm64(FCode, RAX, DoubleToQWord(instr.ImmFloat));
               WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
-              // Note: Real implementation needs data section with float constants
-              // and MOVSD/MOVSS instructions to load into XMM registers
             end;
          irLoadLocal:
             begin
@@ -1432,15 +1595,148 @@ begin
             EmitU8(FCode, $48); EmitU8(FCode, $21); EmitU8(FCode, $C8); // and rax, rcx
             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
           end;
-        irOr:
-          begin
-            // dest = src1 | src2 (bitwise OR)
-            WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
-            WriteMovRegMem(FCode, RCX, RBP, SlotOffset(localCnt + instr.Src2));
-            EmitU8(FCode, $48); EmitU8(FCode, $09); EmitU8(FCode, $C8); // or rax, rcx
-            WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
-          end;
-        irReturn:
+         irOr:
+           begin
+             // dest = src1 | src2 (bitwise OR)
+             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteMovRegMem(FCode, RCX, RBP, SlotOffset(localCnt + instr.Src2));
+             EmitU8(FCode, $48); EmitU8(FCode, $09); EmitU8(FCode, $C8); // or rax, rcx
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+           end;
+         { Float arithmetic using SSE2 }
+         irFAdd:
+           begin
+             // dest = src1 + src2 (double)
+             // Load src1 into XMM0
+             WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+             // Load src2 into XMM1
+             WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Src2));
+             // addsd xmm0, xmm1
+             WriteAddsdXmmXmm(FCode, 0, 1);
+             // store result
+             WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
+           end;
+         irFSub:
+           begin
+             // dest = src1 - src2 (double)
+             WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Src2));
+             WriteSubsdXmmXmm(FCode, 0, 1);
+             WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
+           end;
+         irFMul:
+           begin
+             // dest = src1 * src2 (double)
+             WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Src2));
+             WriteMulsdXmmXmm(FCode, 0, 1);
+             WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
+           end;
+         irFDiv:
+           begin
+             // dest = src1 / src2 (double)
+             WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Src2));
+             WriteDivsdXmmXmm(FCode, 0, 1);
+             WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
+           end;
+         irFNeg:
+           begin
+             // dest = -src1 (double) - flip sign bit using XOR with sign mask
+             // We need a memory location with 0x8000000000000000
+             // Use a temporary approach: load into XMM0, XOR with XMM1 (which has sign bit)
+             // First, create sign mask in RAX
+             WriteMovRegImm64(FCode, RAX, UInt64($8000000000000000));
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX); // use dest slot temporarily
+             // Load value into XMM0
+             WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+             // Load sign mask into XMM1
+             WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Dest));
+             // XOR to flip sign bit
+             WriteXorpdXmmXmm(FCode, 0, 1);
+             // Store result
+             WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
+           end;
+         { Float comparisons using SSE2 }
+         irFCmpEq:
+           begin
+             // dest = (src1 == src2) ? 1 : 0
+             WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Src2));
+             WriteUcomisdXmmXmm(FCode, 0, 1);
+             EmitU8(FCode, $0F); EmitU8(FCode, $94); EmitU8(FCode, $C0); // sete al
+             EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $B6); EmitU8(FCode, $C0); // movzx rax, al
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+           end;
+         irFCmpNeq:
+           begin
+             // dest = (src1 != src2) ? 1 : 0
+             WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Src2));
+             WriteUcomisdXmmXmm(FCode, 0, 1);
+             EmitU8(FCode, $0F); EmitU8(FCode, $95); EmitU8(FCode, $C0); // setne al
+             EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $B6); EmitU8(FCode, $C0);
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+           end;
+         irFCmpLt:
+           begin
+             // dest = (src1 < src2) ? 1 : 0
+             WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Src2));
+             WriteUcomisdXmmXmm(FCode, 0, 1);
+             EmitU8(FCode, $0F); EmitU8(FCode, $92); EmitU8(FCode, $C0); // setb al (below, for unsigned result of ucomisd)
+             EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $B6); EmitU8(FCode, $C0);
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+           end;
+         irFCmpLe:
+           begin
+             // dest = (src1 <= src2) ? 1 : 0
+             WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Src2));
+             WriteUcomisdXmmXmm(FCode, 0, 1);
+             EmitU8(FCode, $0F); EmitU8(FCode, $96); EmitU8(FCode, $C0); // setbe al (below or equal)
+             EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $B6); EmitU8(FCode, $C0);
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+           end;
+         irFCmpGt:
+           begin
+             // dest = (src1 > src2) ? 1 : 0
+             // For ucomisd, we check the flags differently: swap operands and use setb
+             WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Src2));
+             // Compare src2 < src1 instead of src1 > src2
+             WriteUcomisdXmmXmm(FCode, 1, 0);
+             EmitU8(FCode, $0F); EmitU8(FCode, $92); EmitU8(FCode, $C0); // setb al
+             EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $B6); EmitU8(FCode, $C0);
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+           end;
+         irFCmpGe:
+           begin
+             // dest = (src1 >= src2) ? 1 : 0
+             WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Src2));
+             // Compare src2 <= src1 instead of src1 >= src2
+             WriteUcomisdXmmXmm(FCode, 1, 0);
+             EmitU8(FCode, $0F); EmitU8(FCode, $96); EmitU8(FCode, $C0); // setbe al
+             EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $B6); EmitU8(FCode, $C0);
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+           end;
+         { Float/Int conversions }
+         irFToI:
+           begin
+             // dest = (int64)src1 - convert double to int64
+             WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteCvtsd2siRaxXmm(FCode, 0);
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+           end;
+         irIToF:
+           begin
+             // dest = (double)src1 - convert int64 to double
+             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteCvtsi2sdXmmRax(FCode, 0);
+             WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
+           end;
+         irReturn:
           begin
             // Move return value into RAX (non-entry) or RDI (entry) if provided
             if isEntryFunction then
