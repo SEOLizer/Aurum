@@ -2,6 +2,6 @@ package org.aurum
 
 import com.intellij.lang.Language
 
-object AurumLanguage : Language("Aurum") {
+object LyxLanguage : Language("Lyx") {
     val INSTANCE: Language = this
 }

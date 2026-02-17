@@ -47,7 +47,7 @@ type
     function ParseCallOrIdent: TAstExpr;
     function ParsePostfix(base: TAstExpr): TAstExpr;
 
-    function ParseType: TAurumType;
+    function ParseType: TLyxType;
     function ParseParamList: TAstParamList;
     function ParseArrayLiteral: TAstExpr;
     function ParseStructLiteral(const typeName: string): TAstExpr;
@@ -185,7 +185,7 @@ function TParser.ParseFuncDecl(isPub: Boolean): TAstFuncDecl;
 var
   name: string;
   params: TAstParamList;
-  retType: TAurumType;
+  retType: TLyxType;
   body: TAstBlock;
 begin
   // fn
@@ -222,7 +222,7 @@ end;
 function TParser.ParseConDecl(isPub: Boolean): TAstConDecl;
 var
   name: string;
-  declType: TAurumType;
+  declType: TLyxType;
   initExpr: TAstExpr;
 begin
   Expect(tkCon);
@@ -247,7 +247,7 @@ end;
 function TParser.ParseTypeDecl(isPub: Boolean): TAstTypeDecl;
 var
   name: string;
-  declType: TAurumType;
+  declType: TLyxType;
   fields: TAstTypeFieldList;
   field: TAstTypeField;
 begin
@@ -546,7 +546,7 @@ function TParser.ParseVarLetCoDecl: TAstVarDecl;
 var
   storage: TStorageKlass;
   name: string;
-  declType: TAurumType;
+  declType: TLyxType;
   declTypeName: string;
   initExpr: TAstExpr;
 begin
@@ -938,9 +938,9 @@ begin
   end;
 end;
 
-function TParser.ParseType: TAurumType;
+function TParser.ParseType: TLyxType;
 var s: string;
-    dummyType: TAurumType;
+    dummyType: TLyxType;
     braceCount: Integer;
 begin
   if Accept(tkArray) then // Check for array keyword first
@@ -970,7 +970,7 @@ begin
   begin
     s := FCurTok.Value;
     Advance;
-    Result := StrToAurumType(s);
+    Result := StrToLyxType(s);
   end
   else
   begin
@@ -1032,7 +1032,7 @@ function TParser.ParseParamList: TAstParamList;
 var
   params: TAstParamList;
   name: string;
-  typ: TAurumType;
+  typ: TLyxType;
   p: TAstParam;
 begin
   params := nil;

@@ -1,24 +1,24 @@
 <idea-plugin version="2">
   <id>org.aurum.aurumlang</id>
-  <name>Aurum Language Support</name>
+  <name>Lyx Language Support</name>
   <vendor>Andreas Röne</vendor>
   <version>0.1.0</version>
 
   <description>
-    Syntax highlighting for the Aurum language (Aurum .au files).
+    Syntax highlighting for the Lyx language (Lyx .lyx files).
   </description>
 
   <depends>com.intellij.modules.lang</depends>
 
   <extensions defaultExtensionNs="com.intellij">
     <!-- Register language -->
-    <lang.language implementation="org.aurum.AurumLanguage" />
+    <lang.language implementation="org.aurum.LyxLanguage" />
 
     <!-- File type -->
-    <fileTypeFactory implementation="org.aurum.AurumFileTypeFactory" />
+    <fileTypeFactory implementation="org.aurum.LyxFileTypeFactory" />
 
     <!-- Syntax highlighter binding -->
-    <syntaxHighlighterFactory language="Aurum" implementation="org.aurum.AurumSyntaxHighlighterFactory" />
+    <syntaxHighlighterFactory language="Lyx" implementation="org.aurum.LyxSyntaxHighlighterFactory" />
   </extensions>
 
   <application-components>

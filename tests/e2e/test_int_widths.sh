@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Build aurumc if not present
 if [ ! -x ./lyxc ]; then
-  echo "aurumc not found, building..."
+  echo "lyxc not found, building..."
   fpc -O2 -Mobjfpc -Sh lyxc.lpr -olyxc
 fi
 

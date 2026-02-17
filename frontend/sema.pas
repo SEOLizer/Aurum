@@ -13,10 +13,10 @@ type
   public
     Name: string;
     Kind: TSymbolKind;
-    DeclType: TAurumType;
+    DeclType: TLyxType;
     DeclTypeName: string; // for named types (e.g., Point)
     // for functions
-    ParamTypes: array of TAurumType;
+    ParamTypes: array of TLyxType;
     ParamCount: Integer;
     constructor Create(const AName: string);
     destructor Destroy; override;
@@ -27,15 +27,15 @@ type
     FDiag: TDiagnostics;
     FScopes: array of TStringList; // each contains name -> TSymbol as object
     FTypeMap: TStringList; // name -> TAstTypeDecl object
-    FCurrentReturn: TAurumType;
+    FCurrentReturn: TLyxType;
     procedure PushScope;
     procedure PopScope;
     procedure AddSymbolToCurrent(sym: TSymbol; span: TSourceSpan);
     function ResolveSymbol(const name: string): TSymbol;
     function ResolveTypeDecl(const name: string): TAstTypeDecl;
     procedure DeclareBuiltinFunctions;
-    function TypeEqual(a, b: TAurumType): Boolean;
-    function CheckExpr(expr: TAstExpr): TAurumType;
+    function TypeEqual(a, b: TLyxType): Boolean;
+    function CheckExpr(expr: TAstExpr): TLyxType;
     procedure CheckStmt(stmt: TAstStmt);
   public
     constructor Create(d: TDiagnostics);
@@ -196,7 +196,7 @@ begin
   AddSymbolToCurrent(s, NullSpan);
 end;
 
-function IsIntegerType(t: TAurumType): Boolean;
+function IsIntegerType(t: TLyxType): Boolean;
 begin
   case t of
     atInt8, atInt16, atInt32, atInt64, atUInt8, atUInt16, atUInt32, atUInt64: Result := True;
@@ -205,7 +205,7 @@ begin
   end;
 end;
 
-function IsFloatType(t: TAurumType): Boolean;
+function IsFloatType(t: TLyxType): Boolean;
 begin
   case t of
     atF32, atF64: Result := True;
@@ -214,7 +214,7 @@ begin
   end;
 end;
 
-function TSema.TypeEqual(a, b: TAurumType): Boolean;
+function TSema.TypeEqual(a, b: TLyxType): Boolean;
 begin
   // exact match
   if a = b then Exit(True);
@@ -225,7 +225,7 @@ begin
   Result := False;
 end;
 
-function TSema.CheckExpr(expr: TAstExpr): TAurumType;
+function TSema.CheckExpr(expr: TAstExpr): TLyxType;
 var
   ident: TAstIdent;
   bin: TAstBinOp;
@@ -233,12 +233,12 @@ var
   call: TAstCall;
   s: TSymbol;
   i, j: Integer;
-  lt, rt, ot, atype: TAurumType;
-  elementType: TAurumType;
+  lt, rt, ot, atype: TLyxType;
+  elementType: TLyxType;
   st: TAstStructLit;
   td: TAstTypeDecl;
   fname: string;
-  ftype: TAurumType;
+  ftype: TLyxType;
   found: Boolean;
 begin
   if expr = nil then
@@ -263,7 +263,7 @@ begin
            begin
              atype := CheckExpr(TAstArrayLit(expr).Items[i]);
              if not TypeEqual(elementType, atype) then
-               FDiag.Error(Format('array element type mismatch: expected %s but got %s', [AurumTypeToStr(elementType), AurumTypeToStr(atype)]), TAstArrayLit(expr).Items[i].Span);
+               FDiag.Error(Format('array element type mismatch: expected %s but got %s', [LyxTypeToStr(elementType), LyxTypeToStr(atype)]), TAstArrayLit(expr).Items[i].Span);
            end;
            // Array-Literal hat always den Typ 'array'
            Result := atArray;
@@ -276,10 +276,10 @@ begin
           // Array-Index: arr[i] gibt Element-Typ zurück
           atype := CheckExpr(TAstArrayIndex(expr).ArrayExpr);
           if not TypeEqual(atype, atArray) then
-            FDiag.Error(Format('indexing non-array type: got %s', [AurumTypeToStr(atype)]), TAstArrayIndex(expr).ArrayExpr.Span);
+            FDiag.Error(Format('indexing non-array type: got %s', [LyxTypeToStr(atype)]), TAstArrayIndex(expr).ArrayExpr.Span);
           atype := CheckExpr(TAstArrayIndex(expr).Index);
           if not IsIntegerType(atype) then
-            FDiag.Error(Format('array index must be integer, got %s', [AurumTypeToStr(atype)]), TAstArrayIndex(expr).Index.Span);
+            FDiag.Error(Format('array index must be integer, got %s', [LyxTypeToStr(atype)]), TAstArrayIndex(expr).Index.Span);
           Result := atInt64;
         end;
       nkIndexAccess:
@@ -288,12 +288,12 @@ begin
           // Prüfe dass das Objekt ein Array ist
           atype := CheckExpr(TAstIndexAccess(expr).Obj);
           if not TypeEqual(atype, atArray) then
-            FDiag.Error(Format('indexing non-array type: got %s', [AurumTypeToStr(atype)]), TAstIndexAccess(expr).Obj.Span);
+            FDiag.Error(Format('indexing non-array type: got %s', [LyxTypeToStr(atype)]), TAstIndexAccess(expr).Obj.Span);
           
           // Prüfe dass Index ein Integer ist
           atype := CheckExpr(TAstIndexAccess(expr).Index);
           if not IsIntegerType(atype) then
-            FDiag.Error(Format('array index must be integer, got %s', [AurumTypeToStr(atype)]), TAstIndexAccess(expr).Index.Span);
+            FDiag.Error(Format('array index must be integer, got %s', [LyxTypeToStr(atype)]), TAstIndexAccess(expr).Index.Span);
           
           // Index-Zugriff gibt Element-Typ zurück (für jetzt: int64)
           Result := atInt64;
@@ -320,7 +320,7 @@ begin
               begin
                 atype := CheckExpr(st.GetFieldValue(j));
                 if not TypeEqual(atype, ftype) then
-                  FDiag.Error(Format('struct field %s: expected %s but got %s', [fname, AurumTypeToStr(ftype), AurumTypeToStr(atype)]), st.GetFieldValue(j).Span);
+                  FDiag.Error(Format('struct field %s: expected %s but got %s', [fname, LyxTypeToStr(ftype), LyxTypeToStr(atype)]), st.GetFieldValue(j).Span);
                 found := True;
                 Break;
               end;
@@ -375,7 +375,7 @@ begin
             end
             else
             begin
-              FDiag.Error(Format('field access on non-struct type: got %s', [AurumTypeToStr(s.DeclType)]), expr.Span);
+              FDiag.Error(Format('field access on non-struct type: got %s', [LyxTypeToStr(s.DeclType)]), expr.Span);
               Result := atUnresolved;
               Exit;
             end;
@@ -515,7 +515,7 @@ begin
           begin
             atype := CheckExpr(call.Args[i]);
             if (i < s.ParamCount) and (not TypeEqual(atype, s.ParamTypes[i])) then
-              FDiag.Error(Format('argument %d of %s: expected %s but got %s', [i, call.Name, AurumTypeToStr(s.ParamTypes[i]), AurumTypeToStr(atype)]), call.Args[i].Span);
+              FDiag.Error(Format('argument %d of %s: expected %s but got %s', [i, call.Name, LyxTypeToStr(s.ParamTypes[i]), LyxTypeToStr(atype)]), call.Args[i].Span);
           end;
           Result := s.DeclType;
         end;
@@ -545,10 +545,10 @@ var
   i: Integer;
   s: TSymbol;
   sym: TSymbol;
-  vtype, ctype, rtype, atype: TAurumType;
+  vtype, ctype, rtype, atype: TLyxType;
   sw: TAstSwitch;
   caseVal: TAstExpr;
-  cvtype: TAurumType;
+  cvtype: TLyxType;
 begin
   if stmt = nil then Exit;
 
@@ -559,7 +559,7 @@ begin
         // check init expr type
         vtype := CheckExpr(vd.InitExpr);
         if (vd.DeclType <> atUnresolved) and (not TypeEqual(vtype, vd.DeclType)) then
-          FDiag.Error(Format('type mismatch in declaration of %s: expected %s but got %s', [vd.Name, AurumTypeToStr(vd.DeclType), AurumTypeToStr(vtype)]), vd.Span);
+          FDiag.Error(Format('type mismatch in declaration of %s: expected %s but got %s', [vd.Name, LyxTypeToStr(vd.DeclType), LyxTypeToStr(vtype)]), vd.Span);
         sym := TSymbol.Create(vd.Name);
         case vd.Storage of
           skVar: sym.Kind := symVar;
@@ -592,7 +592,7 @@ begin
         end;
         vtype := CheckExpr(asg.Value);
         if not TypeEqual(vtype, s.DeclType) then
-          FDiag.Error(Format('assignment type mismatch: %s := %s', [AurumTypeToStr(s.DeclType), AurumTypeToStr(vtype)]), stmt.Span);
+          FDiag.Error(Format('assignment type mismatch: %s := %s', [LyxTypeToStr(s.DeclType), LyxTypeToStr(vtype)]), stmt.Span);
       end;
      nkArrayAssign:
        begin
@@ -610,7 +610,7 @@ begin
              Exit;
            end;
            if not TypeEqual(s.DeclType, atArray) then
-             FDiag.Error(Format('assignment to non-array variable: got %s', [AurumTypeToStr(s.DeclType)]), arrayAssign.ArrayExpr.Span);
+             FDiag.Error(Format('assignment to non-array variable: got %s', [LyxTypeToStr(s.DeclType)]), arrayAssign.ArrayExpr.Span);
          end
          else
          begin
@@ -620,12 +620,12 @@ begin
          // Prüfe dass Index ein Integer ist
          atype := CheckExpr(arrayAssign.Index);
          if not IsIntegerType(atype) then
-           FDiag.Error(Format('array index must be integer, got %s', [AurumTypeToStr(atype)]), arrayAssign.Index.Span);
+           FDiag.Error(Format('array index must be integer, got %s', [LyxTypeToStr(atype)]), arrayAssign.Index.Span);
          
           // Prüfe Value-Typ (für jetzt: muss int64 sein, da Arrays int64-Elemente haben)
           vtype := CheckExpr(arrayAssign.Value);
           if not TypeEqual(vtype, atInt64) then
-            FDiag.Error(Format('array assignment type mismatch: expected int64 but got %s', [AurumTypeToStr(vtype)]), arrayAssign.Value.Span);
+            FDiag.Error(Format('array assignment type mismatch: expected int64 but got %s', [LyxTypeToStr(vtype)]), arrayAssign.Value.Span);
         end;
     nkFieldAssign:
       begin
@@ -705,7 +705,7 @@ begin
         begin
           rtype := CheckExpr(ret.Value);
           if not TypeEqual(rtype, FCurrentReturn) then
-            FDiag.Error(Format('return type mismatch: expected %s but got %s', [AurumTypeToStr(FCurrentReturn), AurumTypeToStr(rtype)]), ret.Span);
+            FDiag.Error(Format('return type mismatch: expected %s but got %s', [LyxTypeToStr(FCurrentReturn), LyxTypeToStr(rtype)]), ret.Span);
         end
         else
         begin
@@ -784,7 +784,7 @@ var
   con: TAstConDecl;
   s: TSymbol;
   sym: TSymbol;
-  itype: TAurumType;
+  itype: TLyxType;
 begin
   // First pass: register top-level functions and constants
   for i := 0 to High(prog.Decls) do
@@ -819,7 +819,7 @@ begin
       // typecheck init expr
       itype := CheckExpr(con.InitExpr);
       if not TypeEqual(itype, con.DeclType) then
-        FDiag.Error(Format('constant %s: expected type %s but got %s', [con.Name, AurumTypeToStr(con.DeclType), AurumTypeToStr(itype)]), con.Span);
+        FDiag.Error(Format('constant %s: expected type %s but got %s', [con.Name, LyxTypeToStr(con.DeclType), LyxTypeToStr(itype)]), con.Span);
       sym := TSymbol.Create(con.Name);
       sym.Kind := symCon;
       sym.DeclType := con.DeclType;

@@ -2,7 +2,7 @@ Integer‑Breiten und Semantik in Lyx
 
 Status (aktuell)
 - Die Sprache unterstützt namentlich mehrere Integer‑Breiten: int8, int16, int32, int64 sowie uint8, uint16, uint32, uint64.
-- Auf der Frontend‑Ebene (Lexer/Parser/AST/Sema) sind diese Typen implementiert und werden als eigene TAurumType‑Werte dargestellt.
+- Auf der Frontend‑Ebene (Lexer/Parser/AST/Sema) sind diese Typen implementiert und werden als eigene TLyxType‑Werte dargestellt.
 - Semantisch gilt derzeit: alle Integer‑Breiten gehören zur "integer family". Operanden aus der Integer‑Familie gelten kompatibel zueinander (TypeEqual betrachtet sie als gleich). Arithmetik‑Operationen werden für die Zeit der Analyse zu int64 promotet (Resultat‑Typ atInt64).
 
 Einschränkungen

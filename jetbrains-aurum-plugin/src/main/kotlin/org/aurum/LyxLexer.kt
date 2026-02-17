@@ -4,7 +4,7 @@ import com.intellij.lexer.LexerBase
 import com.intellij.psi.tree.IElementType
 import com.intellij.util.text.CharArrayUtil
 
-class AurumLexer : LexerBase() {
+class LyxLexer : LexerBase() {
     private lateinit var buffer: CharSequence
     private var startOffset = 0
     private var endOffset = 0
@@ -62,7 +62,7 @@ class AurumLexer : LexerBase() {
             i += 2
             while (i < n && buffer[i] != '\n') i++
             tokenEnd = i
-            tokenType = AurumTokenTypes.COMMENT
+            tokenType = LyxTokenTypes.COMMENT
             return
         }
 
@@ -80,7 +80,7 @@ class AurumLexer : LexerBase() {
                 }
             }
             tokenEnd = i
-            tokenType = AurumTokenTypes.STRING
+            tokenType = LyxTokenTypes.STRING
             return
         }
 
@@ -90,7 +90,7 @@ class AurumLexer : LexerBase() {
             i++
             while (i < n && buffer[i].isDigit()) i++
             tokenEnd = i
-            tokenType = AurumTokenTypes.NUMBER
+            tokenType = LyxTokenTypes.NUMBER
             return
         }
 
@@ -100,7 +100,7 @@ class AurumLexer : LexerBase() {
             while (i < n && (buffer[i].isLetterOrDigit() || buffer[i] == '_')) i++
             val word = buffer.subSequence(tokenStart, i).toString()
             tokenEnd = i
-            tokenType = if (keywords.contains(word)) AurumTokenTypes.KEYWORD else AurumTokenTypes.IDENT
+            tokenType = if (keywords.contains(word)) LyxTokenTypes.KEYWORD else LyxTokenTypes.IDENT
             return
         }
 
@@ -110,7 +110,7 @@ class AurumLexer : LexerBase() {
             when (two) {
                 "==", "!=", "<=", ">=", "&&", "||", "<<", ">>", ":=" -> {
                     tokenEnd = i + 2
-                    tokenType = AurumTokenTypes.OP
+                    tokenType = LyxTokenTypes.OP
                     return
                 }
             }
@@ -121,12 +121,12 @@ class AurumLexer : LexerBase() {
         val ops = "+-*/%&|^~!<>=(){}[],;:".toSet()
         if (ops.contains(ch)) {
             tokenEnd = i + 1
-            tokenType = if ("(){}[],;".contains(ch)) AurumTokenTypes.BRACE else AurumTokenTypes.OP
+            tokenType = if ("(){}[],;".contains(ch)) LyxTokenTypes.BRACE else LyxTokenTypes.OP
             return
         }
 
         // unknown
         tokenEnd = i + 1
-        tokenType = AurumTokenTypes.BAD_CHAR
+        tokenType = LyxTokenTypes.BAD_CHAR
     }
 }

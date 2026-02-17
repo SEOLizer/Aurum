@@ -30,7 +30,7 @@ type
     FTempCounter: Integer;
     FLabelCounter: Integer;
     FLocalMap: TStringList; // name -> local index (as object integer)
-    FLocalTypes: array of TAurumType; // index -> declared local type
+    FLocalTypes: array of TLyxType; // index -> declared local type
     FConstMap: TStringList; // name -> TConstValue (compile-time constants)
     FLocalConst: array of TConstValue; // per-function local constant values (or nil)
     FBreakStack: TStringList; // stack of break labels
@@ -39,8 +39,8 @@ type
 
     function NewTemp: Integer;
     function NewLabel(const prefix: string): string;
-    function AllocLocal(const name: string; aType: TAurumType): Integer;
-    function GetLocalType(idx: Integer): TAurumType;
+    function AllocLocal(const name: string; aType: TLyxType): Integer;
+    function GetLocalType(idx: Integer): TLyxType;
     function GetLocalTypeName(idx: Integer): string;
     function ResolveLocal(const name: string): Integer;
     function ResolveTypeDecl(const name: string): TAstTypeDecl;
@@ -122,7 +122,7 @@ begin
   Inc(FLabelCounter);
 end;
 
-function TIRLowering.AllocLocal(const name: string; aType: TAurumType): Integer;
+function TIRLowering.AllocLocal(const name: string; aType: TLyxType): Integer;
 var
   idx: Integer;
   fieldCount: Integer;
@@ -158,7 +158,7 @@ begin
   FLocalTypeNames[Result] := '';
 end;
 
-function TIRLowering.GetLocalType(idx: Integer): TAurumType;
+function TIRLowering.GetLocalType(idx: Integer): TLyxType;
 begin
   if (idx >= 0) and (idx < Length(FLocalTypes)) then
     Result := FLocalTypes[idx]
@@ -313,7 +313,7 @@ var
   ai: Integer;
   ci: Integer;
   cv2: TConstValue;
-  ltype: TAurumType;
+  ltype: TLyxType;
   w: Integer;
   loc: Integer;
   // struct field access variables
@@ -836,7 +836,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     caseLabels: TStringList;
     lbl: string;
     caseTmp: Integer;
-    ltype: TAurumType;
+    ltype: TLyxType;
     width: Integer;
     w: Integer;
     lit: Int64;

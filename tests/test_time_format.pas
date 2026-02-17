@@ -9,12 +9,12 @@ uses
 // Tests rufen die externen Funktionsdeklarationen über die Compiler-Frontend API auf.
 // Hier werden sie als externe Prozeduren in der Testumgebung simuliert.
 
-// Keine direkte Unit für Aurum-Std hier; die Tests rufen die Funktionen via Test-Runner
+// Keine direkte Unit für Lyx-Std hier; die Tests rufen die Funktionen via Test-Runner
 
 
 // Da die Test-Suite in FreePascal läuft (für den Compiler selbst), testen wir die
 // numerischen Algorithmen durch Vergleich der Referenzimplementierung in Pascal.
-// Die tatsächlichen Aurum-Unit-Funktionen werden durch Integrationstests geprüft
+// Die tatsächlichen Lyx-Unit-Funktionen werden durch Integrationstests geprüft
 // (Build + Ausführung von examples/use_time_format.au). Daher implementieren wir
 // hier Überschlagsprüfungen für die Kernalgorithmen.
 
@@ -31,7 +31,7 @@ type
 procedure TTimeFormatTest.TestIsLeapYear;
 begin
   AssertTrue('2000 is leap', True = True); // Placeholder: rely on integration example
-  // Vollständige Prüfung wird auf Aurum-Seite ausgeführt; hier nur Smoke-Test
+  // Vollständige Prüfung wird auf Lyx-Seite ausgeführt; hier nur Smoke-Test
 end;
 
 procedure TTimeFormatTest.TestDaysFromCivilEpoch;

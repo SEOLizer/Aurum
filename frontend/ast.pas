@@ -8,9 +8,9 @@ uses
   diag, lexer;
 
 type
-  { --- Aurum-Typsystem --- }
+  { --- Lyx-Typsystem --- }
 
-  TAurumType = (
+  TLyxType = (
     atUnresolved,
     // signed integer widths
     atInt8, atInt16, atInt32, atInt64,
@@ -83,10 +83,10 @@ type
 
   TAstExpr = class(TAstNode)
   private
-    FResolvedType: TAurumType;
+    FResolvedType: TLyxType;
   public
     constructor Create(aKind: TNodeKind; aSpan: TSourceSpan);
-    property ResolvedType: TAurumType read FResolvedType write FResolvedType;
+    property ResolvedType: TLyxType read FResolvedType write FResolvedType;
   end;
 
   { Ganzzahl-Literal: 42 }
@@ -270,16 +270,16 @@ type
   private
     FStorage: TStorageKlass;
     FName: string;
-    FDeclType: TAurumType;
+    FDeclType: TLyxType;
     FDeclTypeName: string;
     FInitExpr: TAstExpr;
   public
     constructor Create(aStorage: TStorageKlass; const aName: string;
-      aDeclType: TAurumType; const aDeclTypeName: string; aInitExpr: TAstExpr; aSpan: TSourceSpan);
+      aDeclType: TLyxType; const aDeclTypeName: string; aInitExpr: TAstExpr; aSpan: TSourceSpan);
     destructor Destroy; override;
     property Storage: TStorageKlass read FStorage;
     property Name: string read FName;
-    property DeclType: TAurumType read FDeclType;
+    property DeclType: TLyxType read FDeclType;
     property DeclTypeName: string read FDeclTypeName;
     property InitExpr: TAstExpr read FInitExpr;
   end;
@@ -452,7 +452,7 @@ type
   { Funktionsparameter }
   TAstParam = record
     Name: string;
-    ParamType: TAurumType;
+    ParamType: TLyxType;
     Span: TSourceSpan;
   end;
   TAstParamList = array of TAstParam;
@@ -462,16 +462,16 @@ type
   private
     FName: string;
     FParams: TAstParamList;
-    FReturnType: TAurumType;
+    FReturnType: TLyxType;
     FBody: TAstBlock;
     FIsPublic: Boolean;
   public
     constructor Create(const aName: string; const aParams: TAstParamList;
-      aReturnType: TAurumType; aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False);
+      aReturnType: TLyxType; aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False);
     destructor Destroy; override;
     property Name: string read FName;
     property Params: TAstParamList read FParams;
-    property ReturnType: TAurumType read FReturnType;
+    property ReturnType: TLyxType read FReturnType;
     property Body: TAstBlock read FBody;
     property IsPublic: Boolean read FIsPublic;
   end;
@@ -480,38 +480,38 @@ type
   TAstConDecl = class(TAstNode)
   private
     FName: string;
-    FDeclType: TAurumType;
+    FDeclType: TLyxType;
     FInitExpr: TAstExpr;
   public
-    constructor Create(const aName: string; aDeclType: TAurumType;
+    constructor Create(const aName: string; aDeclType: TLyxType;
       aInitExpr: TAstExpr; aSpan: TSourceSpan);
     destructor Destroy; override;
     property Name: string read FName;
-    property DeclType: TAurumType read FDeclType;
+    property DeclType: TLyxType read FDeclType;
     property InitExpr: TAstExpr read FInitExpr;
   end;
 
   { Type-Deklaration (Top-Level): type Name = Type; }
   TAstTypeField = record
     Name: string;
-    FieldType: TAurumType;
+    FieldType: TLyxType;
   end;
   TAstTypeFieldList = array of TAstTypeField;
 
   TAstTypeDecl = class(TAstNode)
   private
     FName: string;
-    FDeclType: TAurumType;
+    FDeclType: TLyxType;
     FIsPublic: Boolean;
     FIsStruct: Boolean;
     FFields: TAstTypeFieldList;
   public
-    constructor Create(const aName: string; aDeclType: TAurumType;
+    constructor Create(const aName: string; aDeclType: TLyxType;
       aPublic: Boolean; aSpan: TSourceSpan);
     destructor Destroy; override;
     procedure SetStructFields(const fields: TAstTypeFieldList);
     property Name: string read FName;
-    property DeclType: TAurumType read FDeclType;
+    property DeclType: TLyxType read FDeclType;
     property IsPublic: Boolean read FIsPublic;
     property IsStruct: Boolean read FIsStruct;
     property Fields: TAstTypeFieldList read FFields;
@@ -559,8 +559,8 @@ type
 
 { --- Hilfsfunktionen --- }
 
-function AurumTypeToStr(t: TAurumType): string;
-function StrToAurumType(const s: string): TAurumType;
+function LyxTypeToStr(t: TLyxType): string;
+function StrToLyxType(const s: string): TLyxType;
 function StorageKlassToStr(sk: TStorageKlass): string;
 function NodeKindToStr(nk: TNodeKind): string;
 
@@ -568,7 +568,7 @@ implementation
 
 { --- Hilfsfunktionen --- }
 
-function AurumTypeToStr(t: TAurumType): string;
+function LyxTypeToStr(t: TLyxType): string;
 begin
   case t of
     atUnresolved: Result := '<unresolved>';
@@ -594,7 +594,7 @@ begin
   end;
 end;
 
-function StrToAurumType(const s: string): TAurumType;
+function StrToLyxType(const s: string): TLyxType;
 begin
   case s of
     'int8':   Result := atInt8;
@@ -848,7 +848,7 @@ end;
 // TAstVarDecl
 // ================================================================
 
-constructor TAstVarDecl.Create(aStorage: TStorageKlass; const aName: string; aDeclType: TAurumType; const aDeclTypeName: string; aInitExpr: TAstExpr; aSpan: TSourceSpan);
+constructor TAstVarDecl.Create(aStorage: TStorageKlass; const aName: string; aDeclType: TLyxType; const aDeclTypeName: string; aInitExpr: TAstExpr; aSpan: TSourceSpan);
 begin
   inherited Create(nkVarDecl, aSpan);
   FStorage := aStorage;
@@ -1174,7 +1174,7 @@ end;
 // TAstTypeDecl
 // ================================================================
 
-constructor TAstTypeDecl.Create(const aName: string; aDeclType: TAurumType; aPublic: Boolean; aSpan: TSourceSpan);
+constructor TAstTypeDecl.Create(const aName: string; aDeclType: TLyxType; aPublic: Boolean; aSpan: TSourceSpan);
 begin
   inherited Create(nkTypeDecl, aSpan);
   FName := aName;
@@ -1225,7 +1225,7 @@ end;
 // ================================================================
 
 constructor TAstFuncDecl.Create(const aName: string;
-  const aParams: TAstParamList; aReturnType: TAurumType;
+  const aParams: TAstParamList; aReturnType: TLyxType;
   aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False);
 begin
   inherited Create(nkFuncDecl, aSpan);
@@ -1248,7 +1248,7 @@ end;
 // ================================================================
 
 constructor TAstConDecl.Create(const aName: string;
-  aDeclType: TAurumType; aInitExpr: TAstExpr; aSpan: TSourceSpan);
+  aDeclType: TLyxType; aInitExpr: TAstExpr; aSpan: TSourceSpan);
 begin
   inherited Create(nkConDecl, aSpan);
   FName := aName;

@@ -113,7 +113,7 @@ end.
 TTokenKind   = (tkIdent, tkIntLit, tkStrLit, tkPlus, tkMinus, tkIf, ...);
 TStorageKlass = (skVar, skLet, skCo, skCon);
 TNodeKind    = (nkIntLit, nkStrLit, nkBinOp, nkUnaryOp, nkCall, ...);
-TAurumType   = (atInt64, atBool, atVoid, atPChar);
+TLyxType   = (atInt64, atBool, atVoid, atPChar);
 ```
 
 ### Formatierung

@@ -48,7 +48,7 @@ PR_BODY=$(cat <<'EOF'
 Adds an initial TextMate grammar for the Lyx language (scope: source.lyx).
 Includes: grammar (grammars/lyx/lyx.tmLanguage.json), sample fixtures (samples/lyx) and a languages.yml snippet.
 
-This is an initial, conservative grammar. Please review and suggest improvements. The Lyx compiler repo is at: https://github.com/SEOLizer/Aurum
+This is an initial, conservative grammar. Please review and suggest improvements. The Lyx compiler repo is at: https://github.com/SEOLizer/Lyx
 EOF
 )
 

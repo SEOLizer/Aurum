@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.intellij.platform") version "2.11.0"
 }
 
-group = "org.aurum"
+group = "org.lyx"
 version = "0.1.0"
 
 repositories {
