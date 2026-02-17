@@ -1,2 +1,5 @@
-# Linguist mapping: treat Aurum source files as Rust for GitHub highlighting (temporary fallback)
+# Linguist mapping: treat Lyx source files as Rust for GitHub highlighting (temporary fallback)
+# Keep legacy .au mapping for older branches
 *.au linguist-language=Rust
+# New extension for Lyx source files
+*.lyx linguist-language=Rust
