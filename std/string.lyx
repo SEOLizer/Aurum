@@ -1,5 +1,5 @@
 // std/string.au
-// String helper functions implemented in Aurum
+// String helper functions implemented in Lyx
 
 pub fn strlen(s: pchar): int64 {
   var i: int64 := 0;

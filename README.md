@@ -1,10 +1,10 @@
-# Aurum
+# Lyx
 
-**Aurum** ist ein nativer Compiler für die gleichnamige Programmiersprache, geschrieben in FreePascal.
+**Lyx** ist ein nativer Compiler für die gleichnamige Programmiersprache, geschrieben in FreePascal.
 Er erzeugt direkt ausführbare **Linux x86_64 ELF64-Binaries** — ohne libc, ohne Linker, rein über Syscalls.
 
 ```
-Aurum Compiler v0.1.3
+Lyx Compiler v0.1.3
 Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.
 ```
 
@@ -17,25 +17,25 @@ Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.
 make build
 
 # Programm kompilieren und ausführen
-./aurumc examples/hello.au -o hello
+./aurumc examples/hello.lyx -o hello
 ./hello
 ```
 
 ```
-Hello Aurum
+Hello Lyx
 ```
 
 ---
 
-## Die Sprache Aurum
+## Die Sprache Lyx
 
-Aurum ist **prozedural** und **statisch typisiert** — inspiriert von C und Rust, mit einer eigenen, kompakten Syntax.
+Lyx ist **prozedural** und **statisch typisiert** — inspiriert von C und Rust, mit einer eigenen, kompakten Syntax.
 
 ### Hello World
 
-```aurum
+```lyx
 fn main(): int64 {
-  print_str("Hello Aurum\n");
+  print_str("Hello Lyx\n");
   return 0;
 }
 ```
@@ -44,7 +44,7 @@ fn main(): int64 {
 
 Vier Speicherklassen steuern Veränderbarkeit und Lebensdauer:
 
-```aurum
+```lyx
 fn main(): int64 {
   var x: int64 := 10;       // mutable
   let y: int64 := 20;       // immutable nach Init
@@ -70,7 +70,7 @@ fn main(): int64 {
 
 `con`-Deklarationen existieren auf Top-Level und werden zur Compilezeit aufgelöst — kein Stackslot, direkt als Immediate eingebettet:
 
-```aurum
+```lyx
 con LIMIT: int64 := 5;
 con MSG: pchar := "Loop\n";
 
@@ -112,7 +112,7 @@ Hinweis: `int` und `string` sind derzeit Alias-Typen (bzw. Abkürzungen) — `in
 
 Float-Literale werden mit Dezimalpunkt geschrieben und sind vom Typ `f64`:
 
-```aurum
+```lyx
 fn main(): int64 {
   var pi: f64 := 3.14159;
   var e: f64 := 2.71828;
@@ -128,7 +128,7 @@ fn main(): int64 {
 
 Arrays werden auf dem Stack allokiert und können literale Initialisierung, Lesezugriff und Zuweisung:
 
-```aurum
+```lyx
 fn main(): int64 {
   // Array-Literal
   var arr: array := [10, 20, 30];
@@ -153,7 +153,7 @@ Alle Elemente eines Arrays müssen denselben Typ haben (derzeit `int64`).
 
 | Priorität | Operatoren           | Beschreibung              |
 |:---------:|----------------------|---------------------------|
-| 1 (niedrig) | `\|\|`            | Logisches Oder            |
+| 1 (niedrig) | `||`            | Logisches Oder            |
 | 2         | `&&`                 | Logisches Und             |
 | 3         | `==` `!=` `<` `<=` `>` `>=` | Vergleich (liefert `bool`) |
 | 4         | `+` `-`              | Addition, Subtraktion     |
@@ -166,7 +166,7 @@ Zuweisung erfolgt mit `:=` (nicht `=`).
 
 #### if / else
 
-```aurum
+```lyx
 fn main(): int64 {
   var x: int64 := 42;
   if (x > 10) {
@@ -180,7 +180,7 @@ fn main(): int64 {
 
 #### while-Schleife
 
-```aurum
+```lyx
 fn main(): int64 {
   var i: int64 := 0;
   while (i < 5) {
@@ -202,7 +202,7 @@ fn main(): int64 {
 
 #### Bool-Ausdrücke als Bedingung
 
-```aurum
+```lyx
 fn main(): int64 {
   var active: bool := true;
   if (active)
@@ -217,7 +217,7 @@ switch/case wurde ergänzt und unterstützt nun fallweise sowohl Block‑Bodies 
 
 Beispiel (Block‑Bodies):
 
-```aurum
+```lyx
 fn classify(x: int64): int64 {
   switch (x % 3) {
     case 0: {
@@ -238,7 +238,7 @@ fn classify(x: int64): int64 {
 
 Beispiel (Single‑Statement‑Bodies):
 
-```aurum
+```lyx
 switch (n) {
   case 0: print_str("zero\n");
   case 1: print_str("one\n");
@@ -251,7 +251,7 @@ Hinweis: `case`‑Labels müssen momentan Ganzzahlen (int/int64) sein; Semantik 
 
 Funktionen sind global, folgen der SysV ABI (Parameter in Registern) und unterstützen bis zu 6 Parameter:
 
-```aurum
+```lyx
 fn add(a: int64, b: int64): int64 {
   return a + b;
 }
@@ -270,7 +270,7 @@ fn main(): int64 {
 
 Funktionen ohne Rückgabetyp sind implizit `void`:
 
-```aurum
+```lyx
 fn greet() {
   print_str("Hallo!\n");
 }
@@ -297,13 +297,13 @@ Standard-Units
 
 Ein Satz von Standard-Units befindet sich im Verzeichnis `std/` und liefert ergonomische Bibliotheksfunktionen:
 
-- std/math.au – Integer-Hilfen (abs64, min64, max64, div64, mod64, times_two)
-- std/io.au   – I/O-Wrappers (print, println, print_intln, exit_proc)
-- std/env.au  – Environment-API (init, arg_count, arg)
+- std/math.lyx – Integer-Hilfen (abs64, min64, max64, div64, mod64, times_two)
+- std/io.lyx   – I/O-Wrappers (print, println, print_intln, exit_proc)
+- std/env.lyx  – Environment-API (init, arg_count, arg)
 
 Import-Beispiel
 
-```aurum
+```lyx
 import std.math;
 import std.io;
 import std.env; // optional
@@ -325,7 +325,7 @@ CI / Integrationstests
 - Die GitHub Actions CI baut den Compiler, führt Unit-Tests und zusätzlich kompiliert und führt die Beispielprogramme in `examples/` aus, um die Laufzeitintegration zu prüfen.
 
 
-```aurum
+```lyx
 fn main(): int64 {
   print_int(0);
   print_str("\n");
@@ -356,7 +356,7 @@ fn main(): int64 {
 
 ### Kommentare
 
-```aurum
+```lyx
 // Zeilenkommentar
 
 /* Blockkommentar
@@ -377,7 +377,7 @@ fn  var  let  co  con  if  else  while  switch  case  break  default  return  tr
 
 Ein Programm, das alle Kernfeatures kombiniert:
 
-```aurum
+```lyx
 con MAX: int64 := 10;
 con FIZZ: pchar := "Fizz\n";
 con BUZZ: pchar := "Buzz\n";
@@ -430,10 +430,10 @@ make build          # Release-Build (-O2)
 make debug          # Debug-Build mit Checks (-g -gl -Ci -Cr -Co -gh)
 ```
 
-### Aurum-Programm kompilieren
+### Lyx-Programm kompilieren
 
 ```bash
-./aurumc eingabe.au -o ausgabe
+./aurumc eingabe.lyx -o ausgabe
 ./ausgabe
 echo $?             # Exit-Code prüfen
 ```
@@ -450,7 +450,7 @@ make e2e            # End-to-End Smoke-Tests
 ## Architektur
 
 ```
-Quellcode (.au)
+Quellcode (.lyx)
       |
   [ Lexer ]         Tokenizer -> TToken-Stream
       |
@@ -488,7 +488,7 @@ util/
   diag.pas                  Diagnostik (Fehler mit Zeile/Spalte)
   bytes.pas                 TByteBuffer (Byte-Encoding + Patching)
 tests/                      FPCUnit-Tests
-examples/                   Beispielprogramme in Aurum
+examples/                   Beispielprogramme in Lyx
 ```
 
 ### Design-Prinzipien
@@ -504,8 +504,8 @@ examples/                   Beispielprogramme in Aurum
 ## Editor-Hervorhebung & Grammatik
 
 - Eine initiale TextMate/VSCode‑Grammatik liegt im Repo unter `syntaxes/aurum.tmLanguage.json`. Sie deckt Keywords, Typen, Literale, Kommentare und grundlegende Konstrukte ab und wird iterativ verfeinert.
-- Kurzfristig wird ein pragmatisches Mapping per `.gitattributes` genutzt, damit GitHub‑Highlighting sofort sichtbar ist: `*.au linguist-language=Rust` (Fallback).
-- Ziel: Contribution zur GitHub‑Linguist‑Bibliothek mit einer finalen TextMate‑Grammatik, damit `.au`‑Dateien nativ auf GitHub hervorgehoben werden.
+- Kurzfristig wird ein pragmatisches Mapping per `.gitattributes` genutzt, damit GitHub‑Highlighting sofort sichtbar ist: `*.lyx linguist-language=Rust` (Fallback).
+- Ziel: Contribution zur GitHub‑Linguist‑Bibliothek mit einer finalen TextMate‑Grammatik, damit `.lyx`‑Dateien nativ auf GitHub hervorgehoben werden.
 
 Hinweis zum Testen lokal (VSCode)
 - Öffne das Repo in VSCode und nutze den "Extension Development Host", um `syntaxes/aurum.tmLanguage.json` zu laden.

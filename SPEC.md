@@ -1,4 +1,4 @@
-# Projekt Aurum
+# Projekt Lyx
 
 Perfekt: **x86_64 Linux als v1-Ziel** ist genau die richtige Wahl, *wenn* du es später erweiterbar halten willst. Der Trick ist, von Anfang an eine **saubere Trennung** zu machen: Frontend (Lexer/Parser/Semantik) unabhängig vom Backend, und im Backend nochmal trennen zwischen **ISA (x86_64)** und **Objektformat (ELF64)**.
 
@@ -30,7 +30,7 @@ Wichtig: Das IR ist *dein* Stabilitätsanker. Wenn du zu früh “AST direkt nac
 
 ### Ziel für v0.0.1
 
-Aurum kann genau das:
+Lyx kann genau das:
 
 ```
 print_int(1 + 2*3);
@@ -93,7 +93,7 @@ und schreibt daraus eine Datei.
 ## Konkrete Projektstruktur (FPC)
 
 ```
-aurumc/
+lyxc/
   aurumc.lpr
 
   frontend/
@@ -199,7 +199,7 @@ Später kannst du das in zwei Segmente splitten (RX / RW).
 
 ## Beispiel: Arrays und Float-Literale (v0.1.3)
 
-```aurum
+```lyx
 // Float-Konstanten
 con PI: f64 := 3.14159;
 
@@ -359,7 +359,7 @@ Wenn du das früh festlegst, bleibt dein Backend stabil.
 
 # 6) Builtins / Standardfunktionen
 
-Du brauchst eine minimale Basis — auch ohne „Runtime“.
+Du brauchst eine minimale Basis — auch ohne „Runtime".
 
 Typische Builtins:
 
@@ -406,7 +406,7 @@ Diese Dinge gehören ins Backend, nicht in die Sprache.
 
 # 9) Minimaler v1-Featureumfang (ehrliche Empfehlung)
 
-Wenn du wirklich schnell ein funktionierendes Aurum-Binary sehen willst, würde ich die Sprache für v1 exakt so beschneiden:
+Wenn du wirklich schnell ein funktionierendes Lyx-Binary sehen willst, würde ich die Sprache für v1 exakt so beschneiden:
 
 - `fn main() { ... }`
 - `let x: int = expr;`
@@ -431,7 +431,7 @@ Das ist nicht „wenig“ — das ist ein realistischer Kern.
 
 # 10) Die eigentlichen Kernanforderungen (Kurzliste)
 
-Wenn ich es brutal zusammenkoche, musst du für Aurum zuerst festlegen:
+Wenn ich es brutal zusammenkoche, musst du für Lyx zuerst festlegen:
 
 1. An Pascal angelehnt aber ein eignes Stil
 2. feste int64
@@ -441,7 +441,7 @@ Wenn ich es brutal zusammenkoche, musst du für Aurum zuerst festlegen:
 6. Kontrollfluss (if/while/return)
 7. Ziel: Linux x86_64 ELF64
 
-# Aurum v0.1.3 – Keywords (aktualisiert)
+# Lyx v0.1.3 – Keywords (aktualisiert)
 
 ## Reservierte Keywords
 
@@ -582,7 +582,7 @@ fn main(): int64 {
 
 ## Neue Builtins (v0.1.3+)
 
-```aurum
+```lyx
 fn main(): int64 {
   var s: pchar := "Hello";
   var l: int64 := strlen(s);     // -> 5

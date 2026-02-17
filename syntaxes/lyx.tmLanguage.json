@@ -1,6 +1,6 @@
 {
-  "name": "Aurum",
-  "scopeName": "source.aurum",
+  "name": "Lyx",
+  "scopeName": "source.lyx",
   "patterns": [
     { "include": "#comments" },
     { "include": "#strings" },
@@ -18,11 +18,11 @@
     "comments": {
       "patterns": [
         {
-          "name": "comment.line.double-slash.aurum",
+          "name": "comment.line.double-slash.lyx",
           "match": "//.*$"
         },
         {
-          "name": "comment.block.aurum",
+          "name": "comment.block.lyx",
           "begin": "/\\*",
           "end": "\\*/",
           "patterns": [
@@ -34,7 +34,7 @@
     "comment": {
       "patterns": [
         {
-          "name": "comment.block.aurum",
+          "name": "comment.block.lyx",
           "match": "."
         }
       ]
@@ -42,14 +42,14 @@
     "strings": {
       "patterns": [
         {
-          "name": "string.quoted.double.aurum",
+          "name": "string.quoted.double.lyx",
           "begin": "\"",
-          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.aurum" } },
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.lyx" } },
           "end": "\"",
-          "endCaptures": { "0": { "name": "punctuation.definition.string.end.aurum" } },
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.lyx" } },
           "patterns": [
             {
-              "name": "constant.character.escape.aurum",
+              "name": "constant.character.escape.lyx",
               "match": "\\\\(n|r|t|\\\\|\\\"|0)"
             }
           ]
@@ -59,7 +59,7 @@
     "numbers": {
       "patterns": [
         {
-          "name": "constant.numeric.integer.aurum",
+          "name": "constant.numeric.integer.lyx",
           "match": "\\b-?[0-9]+\\b"
         }
       ]
@@ -67,7 +67,7 @@
     "keywords": {
       "patterns": [
         {
-          "name": "keyword.control.aurum",
+          "name": "keyword.control.lyx",
           "match": "\\b(fn|var|let|co|con|if|else|while|return|true|false|extern|case|switch|break|default)\\b"
         }
       ]
@@ -75,7 +75,7 @@
     "types": {
       "patterns": [
         {
-          "name": "storage.type.aurum",
+          "name": "storage.type.lyx",
           "match": "\\b(int8|int16|int32|int64|int|bool|void|pchar|string)\\b"
         }
       ]
@@ -83,15 +83,15 @@
     "storage": {
       "patterns": [
         {
-          "name": "storage.modifier.aurum",
+          "name": "storage.modifier.lyx",
           "match": "\\b(var|let|co|con)\\b"
         },
         {
-          "name": "meta.declaration.variable.aurum",
+          "name": "meta.declaration.variable.lyx",
           "match": "\\b(var|let|co)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
           "captures": {
-            "1": { "name": "storage.modifier.aurum" },
-            "2": { "name": "entity.name.variable.aurum" }
+            "1": { "name": "storage.modifier.lyx" },
+            "2": { "name": "entity.name.variable.lyx" }
           }
         }
       ]
@@ -99,7 +99,7 @@
     "builtins": {
       "patterns": [
         {
-          "name": "support.function.builtin.aurum",
+          "name": "support.function.builtin.lyx",
           "match": "\\b(print_str|print_int|exit)\\b"
         }
       ]
@@ -107,12 +107,12 @@
     "declarations": {
       "patterns": [
         {
-          "name": "meta.declaration.constant.aurum",
+          "name": "meta.declaration.constant.lyx",
           "begin": "\\bcon\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*(int8|int16|int32|int64|int|bool|void|pchar|string)\\s*:=\\s*",
           "beginCaptures": {
-            "0": { "name": "keyword.declaration.con.aurum" },
-            "1": { "name": "entity.name.constant.aurum" },
-            "2": { "name": "storage.type.aurum" }
+            "0": { "name": "keyword.declaration.con.lyx" },
+            "1": { "name": "entity.name.constant.lyx" },
+            "2": { "name": "storage.type.lyx" }
           },
           "end": ";",
           "patterns": [
@@ -126,7 +126,7 @@
     "functions": {
       "patterns": [
         {
-          "name": "entity.name.function.aurum",
+          "name": "entity.name.function.lyx",
           "match": "(?<=\\bfn\\s+)[A-Za-z_][A-Za-z0-9_]*"
         }
       ]
@@ -134,11 +134,11 @@
     "operators": {
       "patterns": [
         {
-          "name": "keyword.operator.aurum",
+          "name": "keyword.operator.lyx",
           "match": ":=|==|!=|<=|>=|&&|\\|\\||!|\\+|\\-|\\*|/|%|<|>"
         },
         {
-          "name": "punctuation.aurum",
+          "name": "punctuation.lyx",
           "match": "[(){}:,;]"
         }
       ]
@@ -146,12 +146,12 @@
     "identifiers": {
       "patterns": [
         {
-          "name": "variable.other.aurum",
+          "name": "variable.other.lyx",
           "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
         }
       ]
     }
   },
-  "scopeName": "source.aurum",
-  "fileTypes": ["au"]
+  "scopeName": "source.lyx",
+  "fileTypes": ["lyx"]
 }

@@ -1,6 +1,6 @@
-# AGENTS.md – Aurum Compiler (FreePascal)
+# AGENTS.md – Lyx Compiler (FreePascal)
 
-Aurum ist ein nativer Compiler für die Sprache **Aurum**, geschrieben in **FreePascal (FPC 3.2.2)**.
+Lyx ist ein nativer Compiler für die Sprache **Lyx**, geschrieben in **FreePascal (FPC 3.2.2)**.
 Zielplattform: **Linux x86_64, ELF64**, ohne libc (reine Syscalls).
 Spezifikation: `SPEC.md` (Architektur, Roadmap) · `ebnf.md` (Grammatik, Typen, Semantik).
 
@@ -29,8 +29,8 @@ fpc -g -Mobjfpc -Sh tests/test_lexer.pas -otests/test_lexer && ./tests/test_lexe
 # Alle Tests (Makefile-Konvention)
 make test
 
-# Erzeugtes Aurum-Binary testen (Integrationstest)
-./aurumc examples/hello.au -o /tmp/hello && /tmp/hello
+# Erzeugtes Lyx-Binary testen (Integrationstest)
+./aurumc examples/hello.lyx -o /tmp/hello && /tmp/hello
 echo $?   # Exit-Code prüfen
 ```
 
@@ -65,7 +65,7 @@ aurumc/
     test_parser.pas        # Tests für Parser
     test_codegen.pas       # Tests für Backend
   examples/
-    hello.au               # Beispiel-Quelldateien in Aurum
+    hello.lyx               # Beispiel-Quelldateien in Lyx
 ```
 
 ## FreePascal Code-Style
@@ -137,7 +137,7 @@ end;
 Assert(Assigned(Node), 'ICE: Node darf nicht nil sein');
 ```
 
-- **Compile-Fehler** (falsche Aurum-Syntax): `TDiagnostics.Report(dkError, ...)`
+- **Compile-Fehler** (falsche Lyx-Syntax): `TDiagnostics.Report(dkError, ...)`
 - **Interne Fehler** (Compiler-Bug): `Assert` oder `EInternalError`
 - **Keine Exceptions** für normalen Kontrollfluss
 
@@ -148,7 +148,7 @@ Assert(Assigned(Node), 'ICE: Node darf nicht nil sein');
 - `TByteBuffer` verwaltet seinen internen Speicher selbst
 - Keine globalen Variablen für Zustand — alles in Instanzen kapseln
 
-## Aurum-Sprachübersicht (Kurzreferenz)
+## Lyx-Sprachübersicht (Kurzreferenz)
 
 Vollständige Spezifikation: siehe `ebnf.md`.
 

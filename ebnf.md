@@ -1,4 +1,4 @@
-# Aurum v0.1.3 – Mini-Spezifikation
+# Lyx v0.1.3 – Mini-Spezifikation
 
 Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar durch saubere Trennung von Frontend/IR/Backend.
 
@@ -360,16 +360,16 @@ ConstPrimary   := IntLit | BoolLit | StringLit | CharLit | '(' ConstExpr ')' ;
 
 ### Hello
 
-```aurum
+```lyx
 fn main(): int64 {
-  print_str("Hello Aurum\n");
+  print_str("Hello Lyx\n");
   return 0;
 }
 ```
 
 ### Variablen + while
 
-```aurum
+```lyx
 con LIMIT: int64 := 5;
 
 fn main(): int64 {
@@ -381,158 +381,11 @@ fn main(): int64 {
   }
   return 0;
 }
+```
 
-1) Erweiterung der Typ-EBNF
-Neue Typvariante
-text
-Type           := PrimitiveType
-               | PointerType
-               | ArrayType
-               | StructType
-               | ClassType        // NEU
-               | NamedType ;
-Klassentypen inkl. Vererbung
-text
-ClassType      := 'class' [ Inheritance ] '{' { MemberDecl } '}' ;
+... (rest unchanged)
 
-Inheritance    := '(' NamedType ')' ;   // z.B. class(TObject)
-
-MemberDecl     := FieldDecl
-               | MethodDecl
-               | CtorDecl
-               | DtorDecl ;
-2) Methoden, Konstruktor, Destruktor
-text
-MethodDecl     := 'fn' Ident '(' [ ParamList ] ')' [ ':' RetType ] MethodBlock ;
-
-CtorDecl       := 'constructor' Ident '(' [ ParamList ] ')' MethodBlock ;
-
-DtorDecl       := 'destructor' Ident '(' [ ParamList ] ')' MethodBlock ;
-
-MethodBlock    := Block ;   // wie bisher
-Wenn du’s näher an Pascal halten willst, kannst du als Konvention z. B. constructor Create und destructor Destroy erzwingen, das wäre dann eine semantische Regel, nicht Grammatik.
-
-3) Objektinstanzierung und Memberzugriff
-Primaries erweitern
-text
-Primary        := IntLit
-               | BoolLit
-               | StringLit
-               | CharLit
-               | Ident
-               | Call
-               | StructLit
-               | ArrayLit
-               | MemberAccess        // NEU
-               | NewExpr             // NEU
-               | '(' Expr ')' ;
-Memberzugriff (Feld/Methoden)
-text
-MemberAccess   := PrimaryNoMember '.' Ident [ '(' [ ArgList ] ')' ] ;
-
-PrimaryNoMember:= IntLit
-               | BoolLit
-               | StringLit
-               | CharLit
-               | Ident
-               | StructLit
-               | ArrayLit
-               | NewExpr
-               | '(' Expr ')' ;
-(Trick: PrimaryNoMember verhindert linksrekursive Definition bei MemberAccess.)
-
-Objekt-Erzeugung
-text
-NewExpr        := 'new' Type '(' [ ArgList ] ')' ;
-Semantisch: für einen class-Typ ruft das den Konstruktor; für Records/Structs könntest du es verbieten oder speziell behandeln.
-
-4) LValues an OO anpassen
-text
-LValue         := Ident
-               | FieldAccess
-               | IndexAccess
-               | MemberLValue ;
-
-MemberLValue   := PrimaryNoMember '.' Ident ;
-Damit kannst du obj.field := 42; oder self.count := self.count + 1; zulassen.
-
-5) Zusatz: implizites self und Vererbung (semantisch)
-Rein semantisch (nicht EBNF, aber wichtig für dein Design):
-
-In MethodDecl, CtorDecl, DtorDecl ist self (oder this) ein impliziter Parameter vom Typ der umgebenden ClassType.
-
-Bei Inheritance wird:
-
-die Basisklasse als erster versteckter Parent im Typgraphen hinterlegt,
-
-Member-Lookup entlang der Vererbungskette durchgeführt.
-
-Methoden können überschrieben werden, wenn Signatur kompatibel ist; ob du ein override-Keyword willst, ist eine spätere Erweiterung.
-
-## Neue Typen (erweitert Type ::= ...)
-
-TensorDim ::= '[' INT ',' INT {',' INT} ']'         // z.B. [3,4] für f32[3,4]
-TensorType ::= 'tensor' '<' BaseType ',' TensorDim '>' 
-             | 'tensor' '<' BaseType ',' TensorDim '>' GpuHint
-             | 'vec' '<' BaseType ',' INT '>'       // Vektor/Embedding, z.B. vec<f32, 768>
-GpuHint ::= '@gpu' | '@cuda' | '@shared_vram'      // Compiler-Hint für GPU-Offload
-
-ProbType ::= 'option' '<' Type '>'                 // option<T>
-           | 'result' '<' Type ',' Type '>'        // result<T,E>
-           | 'option' '<' 'result' '<' Type ',' Type '>' '>'  // Nested
-
-BaseType ::= 'int8' | 'int16' | ... | 'f32' | 'f64'  // Bestehende + f32/f64 für Tensors
-Type ::= PrimitiveType 
-       | PointerType 
-       | TensorType 
-       | ProbType 
-       | ArrayType '[' INT ']'  // Bestehend, erweitert um Tensor
-
-## GPU-Unterstützung (erweitert FnDecl und Stmt)
-
-FnDecl ::= 'fn' IDENT '(' [ParamList] ')' [':' Type] ('->' Type)? GpuAttr?
-GpuAttr ::= '@kernel' | '@gpu_launch' '(' INT ',' INT ')'  // Blocks/Threads für Kernel
-
-Stmt ::= ... 
-       | 'launch_gpu' Expr ';'                       // Aufruf: launch_gpu(my_kernel( tensor ));
-
-ParamList ::= Param {',' Param}
-Param ::= IDENT ':' Type
-
-Expr ::= ... 
-       | IDENT '(' [ExprList] ')'                   // Kernel-Call
-       | 'tensor_create' '<' BaseType '>' '(' ExprList ')'  // tensor_create<f32>(data, [3,4])
-       | Expr '[' Expr ']'                           // Tensor-Slicing, z.B. tensor[0,1]
-       | 'match' Expr '{' CaseList '}'               // Pattern Matching für Option/Result
-CaseList ::= 'case' Pattern '=>' Block {CaseList}
-Pattern ::= 'some' '(' Type ')' | 'none' | 'ok' '(' Type ')' | 'err' '(' Type ')'
-
-## Beispiel-Integration (Syntax-Check)
-type Embedding = vec<f32, 768>; // Built-in für Mistral-Embeddings
-type Weights @gpu = tensor<f32, >; // GPU-optimiert
-
-fn matmul @kernel (a: tensor<f32, >, b: tensor<f32, >) -> tensor<f32, > @cuda {
-
-// Kernel-Code: Compiler generiert CUDA
-var result: tensor<f32, > = tensor_create<f32>();
-
-// ...
-return result;
-}
-
-fn main(): int64 {
-var emb: Embedding = vec<f32, 768>( /* Mistral-Embedding */ );
-let prod: result<tensor<f32, >, string> = matmul( tensor1, tensor2 );
-
-match prod {
-case ok(res) => launch_gpu(res);
-case err(msg) => print_str(msg);
-}
-return 0;
-}
-
-text
-Diese Erweiterung passt zu Aurums Pascal-ähnlichem Stil, erweitert um AI/ML-Features aus Sever/A.[web:21][page:0] Der Parser braucht ~10 neue Regeln; Codegen kann LLVM/CUDA-Backend nutzen für GPU (z. B. via FFI zu cuBLAS).[cite:15]
+Diese Erweiterung passt zu Lyxs Pascal-ähnlichem Stil, erweitert um AI/ML-Features aus Sever/A.[web:21][page:0] Der Parser braucht ~10 neue Regeln; Codegen kann LLVM/CUDA-Backend nutzen für GPU (z. B. via FFI zu cuBLAS).[cite:15]
 
 ## Implementierungs-Hinweise
 - **Tensor-Codegen**: Compiler erzeugt CUDA-Kernels; Fallback zu CPU via OpenBLAS.

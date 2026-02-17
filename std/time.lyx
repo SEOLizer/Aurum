@@ -28,7 +28,7 @@ pub fn days_from_civil(year: int64, month: int64, day: int64): int64 {
     m = m + 12;
   }
 
-  var era: int64 := y / 400; // floor division für positive/negative Jahre in Aurum: rounds toward zero
+  var era: int64 := y / 400; // floor division für positive/negative Jahre in Lyx: rounds toward zero
   // Korrektur für negative Jahre: wenn y < 0 und y not divisible by 400, era--
   if y < 0 && (y % 400) != 0 {
     era = era - 1;
@@ -144,7 +144,7 @@ pub fn iso_year(year: int64, month: int64, day: int64): int64 {
   return year;
 }
 
-// API: Formatter-Implementation (Aurum)
+ // API: Formatter-Implementation (Lyx)
 // Statischer 512-Byte Puffer (nicht thread-safe)
 con STATIC_FMT_BUF: pchar := "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 

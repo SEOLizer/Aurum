@@ -1,11 +1,11 @@
 Standard-Units (std)
 =====================
 
-Dieses Verzeichnis enthält standardisierte Units, die als Bibliothek für Aurum-Programme dienen. Ziel ist, wiederverwendbare, rein in Aurum geschriebene Funktionen bereitzustellen, die keine externen Laufzeitabhängigkeiten benötigen.
+Dieses Verzeichnis enthält standardisierte Units, die als Bibliothek für Lyx-Programme dienen. Ziel ist, wiederverwendbare, rein in Lyx geschriebene Funktionen bereitzustellen, die keine externen Laufzeitabhängigkeiten benötigen.
 
 Aktuell implementiert
 
-- std/math.au
+- std/math.lyx
   - abs64(x: int64): int64
   - min64(a: int64, b: int64): int64
   - max64(a: int64, b: int64): int64
@@ -13,18 +13,18 @@ Aktuell implementiert
   - mod64(a: int64, b: int64): int64
   - times_two(x: int64): int64
 
-- std/io.au
+- std/io.lyx
   - print(s: pchar): void
   - println(s: pchar): void
   - print_intln(x: int64): void
   - exit_proc(code: int64): void
 
-- std/env.au
+- std/env.lyx
   - init(argc: int64, argv: pchar): void  -- Wrapper für interne env-Initialisierung (explizit)
   - arg_count(): int64
   - arg(i: int64): pchar
 
-- std/time.au (Entwurf)
+- std/time.lyx (Entwurf)
   - is_leap_year(y: int64): bool
   - days_from_civil(y,m,d): int64
   - civil_year_from_days(days): int64
@@ -60,5 +60,5 @@ Hinweis zur env-Initialisierung
 
 Tests
 
-- Beispiele befinden sich in `examples/` (use_math.au, use_io.au, use_env.au, use_time_format.au).
+- Beispiele befinden sich in `examples/` (use_math.lyx, use_io.lyx, use_env.lyx, use_time_format.lyx).
 - CI führt Integrationstests, die diese Beispiele bauen und ausführen.

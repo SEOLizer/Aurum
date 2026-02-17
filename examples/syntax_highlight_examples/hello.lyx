@@ -1,6 +1,6 @@
 fn main(): int64 {
   // Hello example for syntax highlighting
-  let msg: pchar := "Hello Aurum\n";
+  let msg: pchar := "Hello Lyx\n";
   print_str(msg);
   return 0;
 }

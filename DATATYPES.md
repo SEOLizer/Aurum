@@ -1,4 +1,4 @@
-# DATATYPES.md – Aurum Datentypen-Übersicht
+# DATATYPES.md – Lyx Datentypen-Übersicht
 
 ## Aktuell unterstützte Datentypen
 
@@ -173,7 +173,7 @@
   - Als Variablen (`var`, `let`)
   - Als Funktionsrückgabewerte
   - Automatische Typkonvertierung
-  - Tests: `test_simple_returns.au`, `test_basic_storage.au`
+  - Tests: `test_simple_returns.lyx`, `test_basic_storage.lyx`
 
 - **Boolean-Typ**: `bool`
   - Mit `var` und `let` 
@@ -229,7 +229,7 @@
 
 ## Beispiele
 
-```aurum
+```lyx
 // Alle Integer-Typen
 var a: int8 := 127;
 let b: uint16 := 65535;

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Script to fork github/linguist, copy Aurum grammar and samples, and open a PR.
+# Script to fork github/linguist, copy Lyx grammar and samples, and open a PR.
 # Usage: run after authenticating gh (gh auth login --web)
 
 echo "Check gh authentication..."
@@ -19,16 +19,16 @@ BRANCH=feat/aurum-grammar
 git checkout -b $BRANCH
 
 # Ensure directories
-mkdir -p grammars/aurum samples/aurum
+mkdir -p grammars/lyx samples/lyx
 
 # Copy prepared files from the Aurum repo (assumes script run from Aurum repo root)
-cp ../linguist-contrib/aurum/aurum.tmLanguage.json grammars/aurum/aurum.tmLanguage.json
-cp -r ../linguist-contrib/aurum/examples/* samples/aurum/ || true
+cp ../linguist-contrib/aurum/lyx.tmLanguage.json grammars/lyx/lyx.tmLanguage.json
+cp -r ../linguist-contrib/aurum/examples/* samples/lyx/ || true
 cp ../linguist-contrib/aurum/README.md . || true
 
 # Append languages.yml snippet to the end of lib/linguist/languages.yml
 if [ -f ../linguist-contrib/aurum/languages.yml.snippet ]; then
-  echo "\n# ---- Aurum language (added by automation) ----" >> lib/linguist/languages.yml
+  echo "\n# ---- Lyx language (added by automation) ----" >> lib/linguist/languages.yml
   cat ../linguist-contrib/aurum/languages.yml.snippet >> lib/linguist/languages.yml
   echo "Appended languages.yml.snippet to lib/linguist/languages.yml"
 else
@@ -36,8 +36,8 @@ else
 fi
 
 # Commit & push
-git add grammars/aurum samples/aurum lib/linguist/languages.yml README.md || true
-git commit -m "Add Aurum TextMate grammar and samples (automation)" || true
+git add grammars/lyx samples/lyx lib/linguist/languages.yml README.md || true
+git commit -m "Add Lyx TextMate grammar and samples (automation)" || true
 
 echo "Pushing branch to your fork..."
 git push -u origin $BRANCH
@@ -45,13 +45,13 @@ git push -u origin $BRANCH
 # Create PR
 echo "Creating PR to github/linguist..."
 PR_BODY=$(cat <<'EOF'
-Adds an initial TextMate grammar for the Aurum language (scope: source.aurum).
-Includes: grammar (grammars/aurum/aurum.tmLanguage.json), sample fixtures (samples/aurum) and a languages.yml snippet.
+Adds an initial TextMate grammar for the Lyx language (scope: source.lyx).
+Includes: grammar (grammars/lyx/lyx.tmLanguage.json), sample fixtures (samples/lyx) and a languages.yml snippet.
 
-This is an initial, conservative grammar. Please review and suggest improvements. The Aurum compiler repo is at: https://github.com/SEOLizer/Aurum
+This is an initial, conservative grammar. Please review and suggest improvements. The Lyx compiler repo is at: https://github.com/SEOLizer/Aurum
 EOF
 )
 
-gh pr create --repo github/linguist --title "Add Aurum language grammar" --body "$PR_BODY" --base main --head $(gh api user --jq .login):$BRANCH
+gh pr create --repo github/linguist --title "Add Lyx language grammar" --body "$PR_BODY" --base main --head $(gh api user --jq .login):$BRANCH
 
 echo "PR created. Please review the PR in your fork and add maintainer-facing notes/screenshots if needed."

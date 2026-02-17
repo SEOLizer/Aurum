@@ -27,10 +27,10 @@ var
 begin
   if ParamCount < 1 then
   begin
-    WriteLn(StdErr, 'Aurum Compiler v0.1.3');
+    WriteLn(StdErr, 'Lyx Compiler v0.1.3');
     WriteLn(StdErr, 'Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.');
     WriteLn(StdErr);
-    WriteLn(StdErr, 'Verwendung: aurumc <datei.au> [-o <output>]');
+    WriteLn(StdErr, 'Verwendung: aurumc <datei.lyx> [-o <output>]');
     Halt(1);
   end;
 
@@ -40,7 +40,7 @@ begin
   if (ParamCount >= 3) and (ParamStr(2) = '-o') then
     outputFile := ParamStr(3);
 
-  WriteLn('Aurum Compiler v0.1.3');
+  WriteLn('Lyx Compiler v0.1.3');
   WriteLn('Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.');
   WriteLn;
   WriteLn('Eingabe:  ', inputFile);

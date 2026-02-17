@@ -1,40 +1,40 @@
-Aurum Syntax Highlighting
+Lyx Syntax Highlighting
 
 Ziel
 ----
-Diese Dokumentation beschreibt die geplante TextMate/VSCode‑Grammatik für die Programmiersprache Aurum (.au) und erklärt das kurzfristige Fallback.
+Diese Dokumentation beschreibt die geplante TextMate/VSCode‑Grammatik für die Programmiersprache Lyx (.lyx) und erklärt das kurzfristige Fallback.
 
 Status
 ------
-- Es wurde ein initiales Grammar‑Skeleton erstellt: syntaxes/aurum.tmLanguage.json
-- Kurzfristiger Fallback via .gitattributes: *.au → Rust (linguist mapping)
+- Es wurde ein initiales Grammar‑Skeleton erstellt: syntaxes/lyx.tmLanguage.json
+- Kurzfristiger Fallback via .gitattributes: *.lyx → Rust (linguist mapping)
 
 Wo liegt die Grammatik?
 ----------------------
-- syntaxes/aurum.tmLanguage.json  (TextMate JSON Grammar)
+- syntaxes/lyx.tmLanguage.json  (TextMate JSON Grammar)
 
 Kurzbeschreibung der Scopes
 ---------------------------
-- comment.line.double-slash.aurum : // comment
-- comment.block.aurum            : /* ... */
-- string.quoted.double.aurum     : "string" (mit Escapes)
-- constant.numeric.integer.aurum : integer literals
-- keyword.control.aurum          : fn, if, else, while, return, extern, true, false
-- storage.modifier.aurum         : var, let, co, con
-- storage.type.aurum             : int64, bool, void, pchar
-- support.function.builtin.aurum : print_str, print_int, exit
-- entity.name.function.aurum     : function names after 'fn'
-- keyword.operator.aurum         : :=, ==, !=, <=, >=, &&, ||, +, -, *, /, %
+- comment.line.double-slash.lyx : // comment
+- comment.block.lyx            : /* ... */
+- string.quoted.double.lyx     : "string" (mit Escapes)
+- constant.numeric.integer.lyx : integer literals
+- keyword.control.lyx          : fn, if, else, while, return, extern, true, false
+- storage.modifier.lyx         : var, let, co, con
+- storage.type.lyx             : int64, bool, void, pchar
+- support.function.builtin.lyx : print_str, print_int, exit
+- entity.name.function.lyx     : function names after 'fn'
+- keyword.operator.lyx         : :=, ==, !=, <=, >=, &&, ||, +, -, *, /, %
 
 How to test locally (VSCode)
 ----------------------------
 1. Open this repository in VSCode.
-2. Use "Extension Development Host" (Command Palette: "Developer: Reload Window in Extension Development Host") and load the grammar by opening the file syntaxes/aurum.tmLanguage.json in the host.
-3. Open any .au file (e.g. examples/if_test.au) and use "Developer: Inspect TM Scopes" to inspect token scopes.
+2. Use "Extension Development Host" (Command Palette: "Developer: Reload Window in Extension Development Host") and load the grammar by opening the file syntaxes/lyx.tmLanguage.json in the host.
+3. Open any .lyx file (e.g. examples/if_test.lyx) and use "Developer: Inspect TM Scopes" to inspect token scopes.
 
 Fallback
 --------
-Bis die Grammar upstream in github/linguist gemergt wird, gibt es ein pragmatisches Fallback in .gitattributes, das alle .au Dateien als Rust behandelt. Das sorgt auf GitHub für sichtbares Highlighting, ist aber keine perfekte Lösung.
+Bis die Grammar upstream in github/linguist gemergt wird, gibt es ein pragmatisches Fallback in .gitattributes, das alle .lyx Dateien als Rust behandelt. Das sorgt auf GitHub für sichtbares Highlighting, ist aber keine perfekte Lösung.
 
 Nächste Schritte
 ----------------
