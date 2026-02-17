@@ -220,9 +220,6 @@ begin
   if a = b then Exit(True);
   // treat any integer widths as compatible for now
   if IsIntegerType(a) and IsIntegerType(b) then Exit(True);
-  // allow char to integer conversion
-  if (a = atChar) and IsIntegerType(b) then Exit(True);
-  if IsIntegerType(a) and (b = atChar) then Exit(True);
   // allow float type compatibility (f64 can be assigned to f32 variables)
   if IsFloatType(a) and IsFloatType(b) then Exit(True);
   Result := False;
@@ -520,6 +517,8 @@ var
   wh: TAstWhile;
   ret: TAstReturn;
   bs: TAstBlock;
+  forNode: TAstFor;
+  repNode: TAstRepeatUntil;
   i: Integer;
   s: TSymbol;
   sym: TSymbol;
@@ -644,6 +643,37 @@ begin
         PushScope;
         CheckStmt(wh.Body);
         PopScope;
+      end;
+    nkFor:
+      begin
+        forNode := TAstFor(stmt);
+        // Check start and end expressions are integers
+        ctype := CheckExpr(forNode.StartExpr);
+        if not IsIntegerType(ctype) then
+          FDiag.Error('for loop start must be integer', forNode.StartExpr.Span);
+        ctype := CheckExpr(forNode.EndExpr);
+        if not IsIntegerType(ctype) then
+          FDiag.Error('for loop end must be integer', forNode.EndExpr.Span);
+        // Declare loop variable in inner scope
+        PushScope;
+        sym := TSymbol.Create(forNode.VarName);
+        sym.Kind := symVar;
+        sym.DeclType := atInt64;
+        AddSymbolToCurrent(sym, forNode.Span);
+        CheckStmt(forNode.Body);
+        PopScope;
+      end;
+    nkRepeatUntil:
+      begin
+        repNode := TAstRepeatUntil(stmt);
+        // Body in eigenem Scope
+        PushScope;
+        CheckStmt(repNode.Body);
+        PopScope;
+        // Condition muss bool sein
+        ctype := CheckExpr(repNode.Cond);
+        if not TypeEqual(ctype, atBool) then
+          FDiag.Error('repeat-until condition must be bool', repNode.Cond.Span);
       end;
     nkReturn:
       begin
