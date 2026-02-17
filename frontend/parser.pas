@@ -765,14 +765,21 @@ begin
     Advance;
     if Check(tkIntLit) then
     begin
-      // fold unary minus applied directly to literal
+      // fold unary minus applied directly to integer literal
       value := -StrToInt64Def(FCurTok.Value, 0);
       span := FCurTok.Span;
       Advance;
       Exit(TAstIntLit.Create(value, span));
     end;
+    if Check(tkFloatLit) then
+    begin
+      // fold unary minus applied directly to float literal
+      Result := TAstFloatLit.Create('-' + FCurTok.Value, FCurTok.Span);
+      Advance;
+      Exit;
+    end;
     operand := ParseUnaryExpr;
-    Result := TAstUnaryOp.Create(tkMinus, operand, operand.Span);
+    Result := TAstUnaryOp.Create(tkMinus, operand, span);
     Exit;
   end;
 

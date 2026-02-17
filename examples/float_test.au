@@ -20,10 +20,16 @@ fn main(): int64 {
     print_float(small);
     print_str("\n");
 
-    // Test 4: Negative via subtraction
-    var neg: f64 := 0.0 - 42.5;
+    // Test 4: Negative literal (direct)
+    var neg: f64 := -42.5;
     print_str("-42.500000 = ");
     print_float(neg);
+    print_str("\n");
+
+    // Test 5: Large number
+    var big: f64 := 12345.6789;
+    print_str("12345.678900 = ");
+    print_float(big);
     print_str("\n");
 
     return 0;
