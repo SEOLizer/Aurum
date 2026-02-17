@@ -503,7 +503,7 @@ examples/                   Beispielprogramme in Lyx
 
 ## Editor-Hervorhebung & Grammatik
 
-- Eine initiale TextMate/VSCode‑Grammatik liegt im Repo unter `syntaxes/aurum.tmLanguage.json`. Sie deckt Keywords, Typen, Literale, Kommentare und grundlegende Konstrukte ab und wird iterativ verfeinert.
+- Eine initiale TextMate/VSCode‑Grammatik liegt im Repo unter `syntaxes/lyx.tmLanguage.json`. Sie deckt Keywords, Typen, Literale, Kommentare und grundlegende Konstrukte ab und wird iterativ verfeinert.
 - Kurzfristig wird ein pragmatisches Mapping per `.gitattributes` genutzt, damit GitHub‑Highlighting sofort sichtbar ist: `*.lyx linguist-language=Rust` (Fallback).
 - Ziel: Contribution zur GitHub‑Linguist‑Bibliothek mit einer finalen TextMate‑Grammatik, damit `.lyx`‑Dateien nativ auf GitHub hervorgehoben werden.
 
