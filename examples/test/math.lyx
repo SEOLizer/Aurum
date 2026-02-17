@@ -1,4 +1,4 @@
-// Test-Unit: math.au
+// Test-Unit: math.lyx
 // Mathematische Hilfsfunktionen
 
 unit test.math;

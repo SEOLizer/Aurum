@@ -45,7 +45,7 @@ var
 begin
   d := TDiagnostics.Create;
   try
-    d.Error('undeclared identifier', MakeSpan(3, 5, 3, 'test.au'));
+    d.Error('undeclared identifier', MakeSpan(3, 5, 3, 'test.lyx'));
     AssertEquals(1, d.Count);
     AssertTrue(d.HasErrors);
     e := d.GetEntry(0);
@@ -64,7 +64,7 @@ var
 begin
   d := TDiagnostics.Create;
   try
-    d.Warning('unused variable', MakeSpan(1, 1, 1, 'test.au'));
+    d.Warning('unused variable', MakeSpan(1, 1, 1, 'test.lyx'));
     AssertEquals(1, d.Count);
     AssertFalse(d.HasErrors);
     AssertEquals(0, d.ErrorCount);
@@ -81,7 +81,7 @@ var
 begin
   d := TDiagnostics.Create;
   try
-    d.Note('declared here', MakeSpan(2, 3, 5, 'test.au'));
+    d.Note('declared here', MakeSpan(2, 3, 5, 'test.lyx'));
     AssertEquals(1, d.Count);
     e := d.GetEntry(0);
     AssertTrue(e.Kind = dkNote);
@@ -161,7 +161,7 @@ var
 begin
   d := TDiagnostics.Create;
   try
-    d.Error('type mismatch', MakeSpan(10, 7, 4, 'main.au'));
+    d.Error('type mismatch', MakeSpan(10, 7, 4, 'main.lyx'));
     s := d.FormatEntry(0);
     AssertEquals('main.au:10:7: error: type mismatch', s);
   finally
@@ -188,7 +188,7 @@ procedure TDiagnosticsTest.TestMakeSpan;
 var
   sp: TSourceSpan;
 begin
-  sp := MakeSpan(42, 13, 7, 'hello.au');
+  sp := MakeSpan(42, 13, 7, 'hello.lyx');
   AssertEquals(42, sp.Line);
   AssertEquals(13, sp.Col);
   AssertEquals(7, sp.Len);

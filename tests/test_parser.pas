@@ -33,7 +33,7 @@ var
   p: TParser;
 begin
   FDiag := TDiagnostics.Create;
-  lex := TLexer.Create(src, 'test.au', FDiag);
+  lex := TLexer.Create(src, 'test.lyx', FDiag);
   try
     p := TParser.Create(lex, FDiag);
     try

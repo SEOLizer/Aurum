@@ -1,4 +1,4 @@
-// examples/use_env.au
+// examples/use_env.lyx
 import std.env;
 import std.io;
 

@@ -1,4 +1,4 @@
-// examples/use_io.au
+// examples/use_io.lyx
 import std.io;
 
 fn main(): int64 {

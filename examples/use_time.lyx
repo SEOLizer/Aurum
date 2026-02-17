@@ -1,4 +1,4 @@
-// examples/use_time.au
+// examples/use_time.lyx
 import std.time;
 import std.io;
 

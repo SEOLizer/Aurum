@@ -5,7 +5,7 @@ uses
   SysUtils, Classes,
   fpcunit, testregistry, consoletestrunner;
 
-// Zeit-Unit: Funktionen in std/time.au werden vom Compiler zur Laufzeit verfügbar gemacht
+// Zeit-Unit: Funktionen in std/time.lyx werden vom Compiler zur Laufzeit verfügbar gemacht
 // Tests rufen die externen Funktionsdeklarationen über die Compiler-Frontend API auf.
 // Hier werden sie als externe Prozeduren in der Testumgebung simuliert.
 
@@ -15,7 +15,7 @@ uses
 // Da die Test-Suite in FreePascal läuft (für den Compiler selbst), testen wir die
 // numerischen Algorithmen durch Vergleich der Referenzimplementierung in Pascal.
 // Die tatsächlichen Lyx-Unit-Funktionen werden durch Integrationstests geprüft
-// (Build + Ausführung von examples/use_time_format.au). Daher implementieren wir
+// (Build + Ausführung von examples/use_time_format.lyx). Daher implementieren wir
 // hier Überschlagsprüfungen für die Kernalgorithmen.
 
 type

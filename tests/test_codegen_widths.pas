@@ -70,7 +70,7 @@ begin
     '  var a: int8 := 130;' + LineEnding +
     '  return a;' + LineEnding +
     '}',
-    'test_int8.au'
+    'test_int8.lyx'
   );
   try
     foundMinus126 := False;
@@ -105,7 +105,7 @@ begin
     '  var b: uint8 := 250;' + LineEnding +
     '  return b;' + LineEnding +
     '}',
-    'test_uint8.au'
+    'test_uint8.lyx'
   );
   try
     found250 := False;
@@ -141,7 +141,7 @@ begin
     '  var z: int64 := y;' + LineEnding +  // load from y -> SExt
     '  return z;' + LineEnding +
     '}',
-    'test_nonlit.au'
+    'test_nonlit.lyx'
   );
   try
     foundTrunc := False;

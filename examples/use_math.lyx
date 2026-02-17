@@ -1,9 +1,9 @@
-// examples/use_math.au
+// examples/use_math.lyx
 import std.math;
 import std.io;
 
 fn main(): int64 {
-  let s := add_pub(3, 4);
+  let s: int64 := 3;
   print_int(times_two(s));
   print_str("\n");
   return 0;

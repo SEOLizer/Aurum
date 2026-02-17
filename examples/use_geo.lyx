@@ -1,4 +1,4 @@
-// examples/use_geo.au
+// examples/use_geo.lyx
 import std.geo;
 import std.io;
 

@@ -1,4 +1,4 @@
-// std/io.au
+// std/io.lyx
 // Einfache I/O-Wrapper um vorhandene builtins (print_str, print_int, exit)
 
 pub fn print(s: pchar): void {

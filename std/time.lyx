@@ -1,4 +1,4 @@
-// std/time.au
+// std/time.lyx
 // Basisfunktionen für Gregorianische Datumsberechnung
 // - days_from_civil / civil_from_days (Einzel-Zugrifforss)
 // - is_leap_year, day_of_year, weekday, iso_week, iso_year

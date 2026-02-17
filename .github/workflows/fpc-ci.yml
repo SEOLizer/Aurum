@@ -31,12 +31,12 @@ jobs:
       - name: Build aurumc compiler
         run: |
           set -e
-          fpc -O2 -Mobjfpc -Sh aurumc.lpr -oaurumc
+          fpc -O2 -Mobjfpc -Sh lyxc.lpr -olyxc
 
       - name: Run example integration tests
         run: |
           set -e
-          ./aurumc examples/use_env.au -o /tmp/use_env
+          ./lyxc examples/use_env.lyx -o /tmp/use_env
           /tmp/use_env arg1 arg2
-          ./aurumc examples/use_math.au -o /tmp/use_math
+          ./lyxc examples/use_math.lyx -o /tmp/use_math
           /tmp/use_math

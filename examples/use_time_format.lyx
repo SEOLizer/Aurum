@@ -1,4 +1,4 @@
-// examples/use_time_format.au
+// examples/use_time_format.lyx
 // Einfaches Beispiel zur Demonstration der numerischen Datumsfunktionen
 
 fn main(argc: int64, argv: pchar): int64 {

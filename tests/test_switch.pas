@@ -54,7 +54,7 @@ var
   stmt: TAstStmt;
   sw: TAstSwitch;
 begin
-  prog := ParseProgramFromFile('examples/syntax_highlight_examples/case_switch.au');
+  prog := ParseProgramFromFile('examples/syntax_highlight_examples/case_switch.lyx');
   try
     // Expect function classify + main -> at least 2 decls
     AssertTrue(Length(prog.Decls) >= 2);

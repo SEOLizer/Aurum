@@ -1,4 +1,4 @@
-// std/string.au
+// std/string.lyx
 // String helper functions implemented in Lyx
 
 pub fn strlen(s: pchar): int64 {

@@ -34,7 +34,7 @@ var
   s: TSema;
 begin
   d := TDiagnostics.Create;
-  lx := TLexer.Create(src, 'test.au', d);
+  lx := TLexer.Create(src, 'test.lyx', d);
   try
     p := TParser.Create(lx, d);
     try

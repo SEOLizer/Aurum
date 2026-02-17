@@ -94,7 +94,7 @@ var
   filePath, searchPath, fullPath: string;
 begin
   // Ersetze '.' durch '/' im Unit-Pfad
-  filePath := StringReplace(unitPath, '.', '/', [rfReplaceAll]) + '.au';
+  filePath := StringReplace(unitPath, '.', '/', [rfReplaceAll]) + '.lyx';
   
   // Suche in allen Suchpfaden
   for i := 0 to FSearchPaths.Count - 1 do

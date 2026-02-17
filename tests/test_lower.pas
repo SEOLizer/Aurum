@@ -14,9 +14,9 @@ var
 begin
   src := TStringList.Create;
   try
-    src.LoadFromFile('examples/call.au');
+    src.LoadFromFile('examples/call.lyx');
     d := TDiagnostics.Create;
-    lx := TLexer.Create(src.Text, 'examples/call.au', d);
+    lx := TLexer.Create(src.Text, 'examples/call.lyx', d);
     p := TParser.Create(lx, d);
     prog := p.ParseProgram;
     p.Free; lx.Free;

@@ -27,6 +27,7 @@ tests/test_codegen
 
 # Erzeugte Aurum-Binaries
 /tmp/*.au.out
+/tmp/*.lyx.out
 
 # Debug artifacts
 debug_parse

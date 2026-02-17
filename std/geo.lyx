@@ -1,4 +1,4 @@
-// std/geo.au
+// std/geo.lyx
 // Minimal offline geolocation parsers: parse decimal degrees to microdegrees (int64)
 
 // Helper: parse optional sign and digits; returns tuple via global pattern not available, so implement as single function

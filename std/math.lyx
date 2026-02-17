@@ -1,4 +1,4 @@
-// std/math.au
+// std/math.lyx
 // Kleine mathematische Hilfsfunktionen (public API)
 
 pub fn abs64(x: int64): int64 {

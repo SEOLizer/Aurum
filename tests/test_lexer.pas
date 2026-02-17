@@ -97,7 +97,7 @@ end;
 
 function TLexerTest.Lex(const src: string): TLexer;
 begin
-  Result := TLexer.Create(src, 'test.au', FDiag);
+  Result := TLexer.Create(src, 'test.lyx', FDiag);
 end;
 
 procedure TLexerTest.AssertToken(tok: TToken; expectedKind: TTokenKind;

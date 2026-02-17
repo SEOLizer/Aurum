@@ -1,4 +1,4 @@
-// examples/use_string.au
+// examples/use_string.lyx
 import std.string;
 import std.io;
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-GRAMMAR=syntaxes/aurum.tmLanguage.json
+GRAMMAR=syntaxes/lyx.tmLanguage.json
 EXAMPLES_DIR=examples/syntax_highlight_examples
 
 echo "Validating grammar JSON: $GRAMMAR"
 python3 - <<'PY'
 import json,sys
 try:
-    with open('syntaxes/aurum.tmLanguage.json','r') as f:
+    with open(GRAMMAR,'r') as f:
         json.load(f)
 except Exception as e:
     print('JSON parse error:', e)
@@ -37,7 +37,7 @@ for t in "${types_expected[@]}"; do
 done
 
 # Check examples contain relevant constructs
-for f in "$EXAMPLES_DIR"/*.au; do
+for f in "$EXAMPLES_DIR"/*.lyx; do
   echo "Checking example: $f"
   if grep -q "\bcon\b" "$f"; then
     echo " - contains con"
