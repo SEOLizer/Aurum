@@ -26,7 +26,7 @@ type
     // Trennzeichen
     tkLParen, tkRParen, tkLBrace, tkRBrace,
     tkLBracket, tkRBracket,
-    tkColon, tkComma, tkSemicolon, tkDot, tkAt,
+    tkColon, tkComma, tkSemicolon,     tkEllipsis, tkDot, tkAt,
     // Sonstiges
     tkEOF, tkError
   );
@@ -136,11 +136,13 @@ begin
     tkColon:     Result := ':';
     tkComma:     Result := ',';
     tkSemicolon: Result := ';';
+    tkEllipsis:  Result := '...';
     tkDot:       Result := '.';
     tkAt:        Result := '@';
     tkEOF:       Result := 'EOF';
     tkError:     Result := 'ERROR';
   end;
+end;
 end;
 
 { TLexer }
@@ -531,7 +533,19 @@ begin
     '}': begin Advance; Result := MakeToken(tkRBrace, '}', startLine, startCol, 1); end;
     ',': begin Advance; Result := MakeToken(tkComma, ',', startLine, startCol, 1); end;
     ';': begin Advance; Result := MakeToken(tkSemicolon, ';', startLine, startCol, 1); end;
-    '.': begin Advance; Result := MakeToken(tkDot, '.', startLine, startCol, 1); end;
+    '.': begin
+      // handle '...' ellipsis
+      if (FPos + 2 <= Length(FSource)) and (FSource[FPos + 1] = '.') and (FSource[FPos + 2] = '.') then
+      begin
+        // consume three dots
+        Advance; Advance; Advance;
+        Result := MakeToken(tkEllipsis, '...', startLine, startCol, 3);
+      end
+      else
+      begin
+        Advance; Result := MakeToken(tkDot, '.', startLine, startCol, 1);
+      end;
+    end;
     '@': begin Advance; Result := MakeToken(tkAt, '@', startLine, startCol, 1); end;
     '[': begin Advance; Result := MakeToken(tkLBracket, '[', startLine, startCol, 1); end;
     ']': begin Advance; Result := MakeToken(tkRBracket, ']', startLine, startCol, 1); end;

@@ -18,6 +18,9 @@ type
     // for functions
     ParamTypes: array of TLyxType;
     ParamCount: Integer;
+    IsExtern: Boolean;
+    HasVarArgs: Boolean;
+    CallingConv: string;
     constructor Create(const AName: string);
     destructor Destroy; override;
   end;
@@ -56,6 +59,9 @@ begin
   DeclTypeName := '';
   ParamCount := 0;
   SetLength(ParamTypes, 0);
+  IsExtern := False;
+  HasVarArgs := False;
+  CallingConv := '';
 end;
 
 destructor TSymbol.Destroy;
@@ -141,6 +147,7 @@ end;
 procedure TSema.DeclareBuiltinFunctions;
 var
   s: TSymbol;
+  alias: TSymbol;
 begin
   // print_str(pchar) -> void
   s := TSymbol.Create('print_str');
@@ -150,6 +157,14 @@ begin
   SetLength(s.ParamTypes, 1);
   s.ParamTypes[0] := atPChar;
   AddSymbolToCurrent(s, NullSpan);
+  // alias: puts -> print_str
+  alias := TSymbol.Create('puts');
+  alias.Kind := symFunc;
+  alias.DeclType := s.DeclType;
+  alias.ParamCount := s.ParamCount;
+  SetLength(alias.ParamTypes, alias.ParamCount);
+  alias.ParamTypes[0] := s.ParamTypes[0];
+  AddSymbolToCurrent(alias, NullSpan);
 
   // print_int(int64) -> void
   s := TSymbol.Create('print_int');
@@ -185,6 +200,16 @@ begin
   s.ParamCount := 1;
   SetLength(s.ParamTypes, 1);
   s.ParamTypes[0] := atPChar;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // printf(pchar, ...) -> int64  (varargs)
+  s := TSymbol.Create('printf');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atPChar;
+  s.HasVarArgs := True;
   AddSymbolToCurrent(s, NullSpan);
 
   // print_float(f64) -> void
@@ -512,14 +537,25 @@ begin
         begin
           if Length(call.Args) <> s.ParamCount then
             FDiag.Error(Format('wrong argument count for %s: expected %d, got %d', [call.Name, s.ParamCount, Length(call.Args)]), call.Span);
-          for i := 0 to High(call.Args) do
-          begin
-            atype := CheckExpr(call.Args[i]);
-            if (i < s.ParamCount) and (not TypeEqual(atype, s.ParamTypes[i])) then
-              FDiag.Error(Format('argument %d of %s: expected %s but got %s', [i, call.Name, LyxTypeToStr(s.ParamTypes[i]), LyxTypeToStr(atype)]), call.Args[i].Span);
-          end;
-          Result := s.DeclType;
-        end;
+        // argument type checking: support varargs
+           for i := 0 to High(call.Args) do
+           begin
+             atype := CheckExpr(call.Args[i]);
+             if i < s.ParamCount then
+             begin
+               if not TypeEqual(atype, s.ParamTypes[i]) then
+                 FDiag.Error(Format('argument %d of %s: expected %s but got %s', [i, call.Name, LyxTypeToStr(s.ParamTypes[i]), LyxTypeToStr(atype)]), call.Args[i].Span);
+             end
+             else
+             begin
+               // extra args: only allowed for varargs functions
+               if not s.HasVarArgs then
+                 FDiag.Error(Format('too many arguments for %s: expected %d, got %d', [call.Name, s.ParamCount, Length(call.Args)]), call.Args[i].Span);
+             end;
+           end;
+           Result := s.DeclType;
+         end;
+
       end;
     else
     begin
@@ -817,10 +853,16 @@ begin
        SetLength(sym.ParamTypes, sym.ParamCount);
        for j := 0 to sym.ParamCount - 1 do
          sym.ParamTypes[j] := fn.Params[j].ParamType;
+       // extern / varargs / calling conv
+       if fn.IsExtern then
+       begin
+         sym.IsExtern := True;
+         sym.HasVarArgs := fn.IsVarArgs;
+         sym.CallingConv := fn.CallingConv;
+       end;
        AddSymbolToCurrent(sym, fn.Span);
      end
 
-    end
     else if node is TAstConDecl then
     begin
       con := TAstConDecl(node);

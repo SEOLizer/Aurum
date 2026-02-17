@@ -23,6 +23,7 @@ type
     // Parsing-Methoden
     function ParseTopDecl: TAstNode;
     function ParseFuncDecl(isPub: Boolean): TAstFuncDecl;
+    function ParseExternDecl: TAstFuncDecl;
     function ParseConDecl(isPub: Boolean): TAstConDecl;
     function ParseTypeDecl(isPub: Boolean): TAstTypeDecl;
     function ParseUnitDecl: TAstUnitDecl;
@@ -236,8 +237,16 @@ var
   name: string;
   params: TAstParamList;
   retType: TLyxType;
+  isVarArgs: Boolean;
+  callingConv: string;
 begin
-  // called after 'extern' consumed and next token is 'fn'
+  // Allow optional calling convention identifier before 'fn', e.g. 'extern c fn'
+  callingConv := '';
+  if Check(tkIdent) and (FCurTok.Value = 'c') then
+  begin
+    callingConv := 'c';
+    Advance; // consume 'c'
+  end;
   Expect(tkFn);
   if Check(tkIdent) then
   begin
@@ -257,14 +266,32 @@ begin
     params := nil;
   Expect(tkRParen);
 
+  // optional calling convention: allow 'c' identifier after extern
+  if Check(tkIdent) and (FCurTok.Value = 'c') then
+  begin
+    // leave it to be consumed earlier if needed
+  end;
+
   if Accept(tkColon) then
     retType := ParseType
   else
     retType := atVoid;
 
+  // check for varargs in params via tkEllipsis presence
+  // If previous loop broke on ellipsis, ParseParamList has left params as-is
+  // Determine varargs flag by peeking current token before semicolon
+  var isVarArgs: Boolean;
+  isVarArgs := False;
+  if Check(tkEllipsis) then
+  begin
+    isVarArgs := True;
+    Advance; // consume ellipsis
+  end;
+
   Expect(tkSemicolon);
   // create function decl with no body and IsExtern flag
-  Result := TAstFuncDecl.Create(name, params, retType, nil, FCurTok.Span, False, True);
+  // For now, calling convention not parsed separately (empty)
+  Result := TAstFuncDecl.Create(name, params, retType, nil, FCurTok.Span, False, True, isVarArgs, 'c');
 end;
 
 function TParser.ParseConDecl(isPub: Boolean): TAstConDecl;
@@ -1086,6 +1113,13 @@ begin
   params := nil;
   while not Check(tkRParen) and not Check(tkEOF) do
   begin
+    // varargs (ellipsis)
+    if Check(tkEllipsis) then
+    begin
+      // do not consume here; caller will handle it after the parameter list
+      Break;
+    end;
+
     if Check(tkIdent) then
     begin
       name := FCurTok.Value; Advance;

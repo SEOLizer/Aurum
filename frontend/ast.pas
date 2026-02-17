@@ -466,9 +466,11 @@ type
     FBody: TAstBlock;
     FIsPublic: Boolean;
     FIsExtern: Boolean;
+    FIsVarArgs: Boolean;
+    FCallingConv: string;
   public
     constructor Create(const aName: string; const aParams: TAstParamList;
-      aReturnType: TLyxType; aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False; aIsExtern: Boolean = False);
+      aReturnType: TLyxType; aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False; aIsExtern: Boolean = False; aIsVarArgs: Boolean = False; const aCallingConv: string = '');
     destructor Destroy; override;
     property Name: string read FName;
     property Params: TAstParamList read FParams;
@@ -476,6 +478,8 @@ type
     property Body: TAstBlock read FBody;
     property IsPublic: Boolean read FIsPublic;
     property IsExtern: Boolean read FIsExtern;
+    property IsVarArgs: Boolean read FIsVarArgs;
+    property CallingConv: string read FCallingConv;
   end;
 
   { Con-Deklaration (Top-Level): con NAME: type := constExpr; }
@@ -1228,7 +1232,7 @@ end;
 
 constructor TAstFuncDecl.Create(const aName: string;
   const aParams: TAstParamList; aReturnType: TLyxType;
-  aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False; aIsExtern: Boolean = False);
+  aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False; aIsExtern: Boolean = False; aIsVarArgs: Boolean = False; const aCallingConv: string = '');
 begin
   inherited Create(nkFuncDecl, aSpan);
   FName := aName;
@@ -1237,6 +1241,8 @@ begin
   FBody := aBody;
   FIsPublic := aIsPublic;
   FIsExtern := aIsExtern;
+  FIsVarArgs := aIsVarArgs;
+  FCallingConv := aCallingConv;
 end;
 
 destructor TAstFuncDecl.Destroy;
