@@ -798,6 +798,8 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     condTmp: Integer;
     thenLabel, elseLabel, endLabel: string;
     whileNode: TAstWhile;
+    forNode: TAstFor;
+    repNode: TAstRepeatUntil;
     startLabel, bodyLabel, exitLabel: string;
     i: Integer;
     sw: TAstSwitch;
@@ -830,6 +832,10 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     // array assignment variables
     arrayAssignStmt: TAstArrayAssign;
     arrayTemp, indexTemp, valueTemp: Integer;
+    // for loop variables
+    startTmp, endTmp, iTmp, incTmp, cmpTmp: Integer;
+    forLoc: Integer;
+    endSlot: Integer;
   begin
   instr := Default(TIRInstr);
   Result := True;
@@ -1150,6 +1156,134 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
       // jump to start
       instr.Op := irJmp; instr.LabelName := startLabel; Emit(instr);
       // exit label
+      instr.Op := irLabel; instr.LabelName := exitLabel; Emit(instr);
+      Exit(True);
+    end;
+
+    if stmt is TAstFor then
+    begin
+      forNode := TAstFor(stmt);
+      startLabel := NewLabel('Lfor');
+      exitLabel := NewLabel('Lfor_end');
+
+      // Allocate loop variable
+      forLoc := AllocLocal(forNode.VarName, atInt64);
+
+      // Lower start expression and store to loop variable
+      startTmp := LowerExpr(forNode.StartExpr);
+      instr.Op := irStoreLocal;
+      instr.Dest := forLoc;
+      instr.Src1 := startTmp;
+      Emit(instr);
+
+      // Lower end expression and store to a hidden local (evaluated once)
+      endSlot := AllocLocal('__for_end_' + forNode.VarName, atInt64);
+      endTmp := LowerExpr(forNode.EndExpr);
+      instr.Op := irStoreLocal;
+      instr.Dest := endSlot;
+      instr.Src1 := endTmp;
+      Emit(instr);
+
+      // Loop start label
+      instr.Op := irLabel; instr.LabelName := startLabel; Emit(instr);
+
+      // Load loop variable and end value, compare
+      iTmp := NewTemp;
+      instr.Op := irLoadLocal;
+      instr.Dest := iTmp;
+      instr.Src1 := forLoc;
+      Emit(instr);
+
+      endTmp := NewTemp;
+      instr.Op := irLoadLocal;
+      instr.Dest := endTmp;
+      instr.Src1 := endSlot;
+      Emit(instr);
+
+      cmpTmp := NewTemp;
+      if forNode.IsDownto then
+        instr.Op := irCmpGe  // i >= end for downto
+      else
+        instr.Op := irCmpLe; // i <= end for to
+      instr.Dest := cmpTmp;
+      instr.Src1 := iTmp;
+      instr.Src2 := endTmp;
+      Emit(instr);
+
+      // Branch to exit if condition is false
+      instr.Op := irBrFalse;
+      instr.Src1 := cmpTmp;
+      instr.LabelName := exitLabel;
+      Emit(instr);
+
+      // Loop body (support break -> exitLabel)
+      FBreakStack.AddObject(exitLabel, nil);
+      LowerStmt(forNode.Body);
+      FBreakStack.Delete(FBreakStack.Count - 1);
+
+      // Increment/decrement loop variable
+      iTmp := NewTemp;
+      instr.Op := irLoadLocal;
+      instr.Dest := iTmp;
+      instr.Src1 := forLoc;
+      Emit(instr);
+
+      // Create constant 1
+      incTmp := NewTemp;
+      instr.Op := irConstInt;
+      instr.Dest := incTmp;
+      instr.ImmInt := 1;
+      Emit(instr);
+
+      // Add or subtract
+      cmpTmp := NewTemp;
+      if forNode.IsDownto then
+        instr.Op := irSub
+      else
+        instr.Op := irAdd;
+      instr.Dest := cmpTmp;
+      instr.Src1 := iTmp;
+      instr.Src2 := incTmp;
+      Emit(instr);
+
+      // Store back
+      instr.Op := irStoreLocal;
+      instr.Dest := forLoc;
+      instr.Src1 := cmpTmp;
+      Emit(instr);
+
+      // Jump back to start
+      instr.Op := irJmp; instr.LabelName := startLabel; Emit(instr);
+
+      // Exit label
+      instr.Op := irLabel; instr.LabelName := exitLabel; Emit(instr);
+      Exit(True);
+    end;
+
+    if stmt is TAstRepeatUntil then
+    begin
+      repNode := TAstRepeatUntil(stmt);
+      startLabel := NewLabel('Lrepeat');
+      exitLabel := NewLabel('Lrepeat_end');
+
+      // Start label
+      instr.Op := irLabel; instr.LabelName := startLabel; Emit(instr);
+
+      // Body (support break -> exitLabel)
+      FBreakStack.AddObject(exitLabel, nil);
+      LowerStmt(repNode.Body);
+      FBreakStack.Delete(FBreakStack.Count - 1);
+
+      // Evaluate condition
+      condTmp := LowerExpr(repNode.Cond);
+
+      // If condition is FALSE, jump back to start (repeat UNTIL true)
+      instr.Op := irBrFalse;
+      instr.Src1 := condTmp;
+      instr.LabelName := startLabel;
+      Emit(instr);
+
+      // Exit label (for break)
       instr.Op := irLabel; instr.LabelName := exitLabel; Emit(instr);
       Exit(True);
     end;
