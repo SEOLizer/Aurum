@@ -62,10 +62,10 @@ All features tested with:
 
 ```bash
 # Build compiler
-fpc -FUlib/ -Fu./util/ -Fu./frontend/ -Fu./ir/ -Fu./backend/ -Fu./backend/x86_64/ -Fu./backend/elf/ -O2 -Mobjfpc -Sh aurumc.lpr -oaurumc
+fpc -FUlib/ -Fu./util/ -Fu./frontend/ -Fu./ir/ -Fu./backend/ -Fu./backend/x86_64/ -Fu./backend/elf/ -O2 -Mobjfpc -Sh lyxc.lpr -olyxc
 
 # Test all features
-./aurumc demo_all_literals.lyx -o demo && ./demo
+./lyxc demo_all_literals.lyx -o demo && ./demo
 # Output: 42650 (int64=42, char='A'=65, array=0)
 ```
 

@@ -5,14 +5,14 @@ ROOT=$(dirname "$0")/../..
 cd "$ROOT"
 
 # build compiler
-fpc -O2 -Mobjfpc -Sh aurumc.lpr -oaurumc
+fpc -O2 -Mobjfpc -Sh lyxc.lpr -olyxc
 
 # run use_env
-./aurumc examples/use_env.au -o /tmp/use_env
+./lyxc examples/use_env.lyx -o /tmp/use_env
 /tmp/use_env foo bar || true
 
 # run use_math
-./aurumc examples/use_math.au -o /tmp/use_math
+./lyxc examples/use_math.lyx -o /tmp/use_math
 /tmp/use_math || true
 
 echo "Integration examples executed (outputs above)"

@@ -53,7 +53,7 @@ var
   lines: TStringList;
 begin
   // Build compiler
-  ret := RunCmd('fpc -O2 -Mobjfpc -Sh -FUlib/ -Fuutil/ -Fufrontend/ -Fuir/ -Fubackend/ -Fubackend/x86_64/ -Fubackend/elf/ aurumc.lpr -oaurumc');
+  ret := RunCmd('fpc -O2 -Mobjfpc -Sh -FUlib/ -Fuutil/ -Fufrontend/ -Fuir/ -Fubackend/ -Fubackend/x86_64/ -Fubackend/elf/ lyxc.lpr -olyxc');
   if ret <> 0 then
   begin
     Writeln('ERROR: building aurumc failed with code ', ret);
@@ -61,7 +61,7 @@ begin
   end;
 
   // Compile and run use_math example
-  ret := RunCmd('./aurumc examples/use_math.au -o /tmp/use_math');
+  ret := RunCmd('./lyxc examples/use_math.lyx -o /tmp/use_math');
   if ret <> 0 then
   begin
     Writeln('ERROR: compiling use_math failed with code ', ret);
@@ -81,7 +81,7 @@ begin
   end;
 
   // Compile and run use_env example with arguments
-  ret := RunCmd('./aurumc examples/use_env.au -o /tmp/use_env');
+  ret := RunCmd('./lyxc examples/use_env.lyx -o /tmp/use_env');
   if ret <> 0 then
   begin
     Writeln('ERROR: compiling use_env failed with code ', ret);

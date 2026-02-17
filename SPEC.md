@@ -94,7 +94,7 @@ und schreibt daraus eine Datei.
 
 ```
 lyxc/
-  aurumc.lpr
+  lyxc.lpr
 
   frontend/
     lexer.pas

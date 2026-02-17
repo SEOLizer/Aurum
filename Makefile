@@ -14,11 +14,11 @@ TESTS        = $(TEST_SOURCES:.pas=)
 
 build:
 	@mkdir -p lib
-	$(FPC) $(FPCFLAGS) $(RELEASE_FLAGS) aurumc.lpr -oaurumc
+	$(FPC) $(FPCFLAGS) $(RELEASE_FLAGS) lyxc.lpr -olyxc
 
 debug:
 	@mkdir -p lib
-	$(FPC) $(FPCFLAGS) $(DEBUG_FLAGS) aurumc.lpr -oaurumc
+	$(FPC) $(FPCFLAGS) $(DEBUG_FLAGS) lyxc.lpr -olyxc
 
 test: $(TESTS)
 	@echo "=== Alle Tests ==="
@@ -42,15 +42,15 @@ tests/test_%: tests/test_%.pas
 # End-to-end smoke tests for examples
 e2e: build
 	@echo "=== E2E: hello.au ==="
-	@./aurumc examples/hello.au -o /tmp/hello || exit 1
+	@./lyxc examples/hello.lyx -o /tmp/hello || exit 1
 	@/tmp/hello || exit 1
 	@echo "=== E2E: print_int.au ==="
-	@./aurumc examples/print_int.au -o /tmp/print_int || exit 1
+	@./lyxc examples/print_int.lyx -o /tmp/print_int || exit 1
 	@/tmp/print_int || exit 1
 	@echo "=== E2E passed ==="
 
 clean:
-	rm -f aurumc
+	rm -f lyxc
 	rm -f lib/*.ppu lib/*.o
 	rm -f tests/test_bytes tests/test_diag tests/test_lexer tests/test_parser
 	rm -f tests/test_sema tests/test_ir tests/test_elf tests/test_codegen

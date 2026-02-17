@@ -28,25 +28,25 @@ var
   r: Integer; outp: string; txt: string; lines: TStringList;
 begin
   // build compiler
-  r := RunCapture('fpc -O2 -Mobjfpc -Sh aurumc.lpr -oaurumc', txt);
+  r := RunCapture('fpc -O2 -Mobjfpc -Sh lyxc.lpr -olyxc', txt);
   if r <> 0 then Halt(1);
 
   // use_string -> expect 5
-  r := RunCapture('./aurumc examples/use_string.au -o /tmp/use_string', txt);
+  r := RunCapture('./lyxc examples/use_string.lyx -o /tmp/use_string', txt);
   if r <> 0 then Halt(2);
   r := RunCapture('/tmp/use_string', txt);
   if r <> 0 then Halt(3);
   if txt <> '5'#10 then Halt(4);
 
   // use_time -> expect numeric (>= 0)
-  r := RunCapture('./aurumc examples/use_time.au -o /tmp/use_time', txt);
+  r := RunCapture('./lyxc examples/use_time.lyx -o /tmp/use_time', txt);
   if r <> 0 then Halt(5);
   r := RunCapture('/tmp/use_time', txt);
   if r <> 0 then Halt(6);
   if Length(Trim(txt)) = 0 then Halt(7);
 
   // use_geo -> expect two numbers
-  r := RunCapture('./aurumc examples/use_geo.au -o /tmp/use_geo', txt);
+  r := RunCapture('./lyxc examples/use_geo.lyx -o /tmp/use_geo', txt);
   if r <> 0 then Halt(8);
   r := RunCapture('/tmp/use_geo', txt);
   if r <> 0 then Halt(9);

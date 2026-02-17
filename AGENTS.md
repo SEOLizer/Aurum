@@ -8,16 +8,16 @@ Spezifikation: `SPEC.md` (Architektur, Roadmap) · `ebnf.md` (Grammatik, Typen, 
 
 ```bash
 # Compiler bauen (Release)
-fpc -O2 -Mobjfpc -Sh aurumc.lpr -oaurumc
+fpc -O2 -Mobjfpc -Sh lyxc.lpr -olyxc
 
 # Debug-Build (Range/Overflow/Stack-Checks, Heaptrace)
-fpc -g -gl -Ci -Cr -Co -gh -Mobjfpc -Sh aurumc.lpr -oaurumc
+fpc -g -gl -Ci -Cr -Co -gh -Mobjfpc -Sh lyxc.lpr -olyxc
 
 # Einzelne Unit prüfen (Syntax + Typcheck, kein Linking)
 fpc -s -Mobjfpc -Sh frontend/lexer.pas
 
 # Unit-Ausgabeverzeichnis (empfohlen)
-fpc -FUlib/ -Mobjfpc -Sh aurumc.lpr -oaurumc
+fpc -FUlib/ -Mobjfpc -Sh lyxc.lpr -olyxc
 ```
 
 ## Tests
@@ -30,7 +30,7 @@ fpc -g -Mobjfpc -Sh tests/test_lexer.pas -otests/test_lexer && ./tests/test_lexe
 make test
 
 # Erzeugtes Lyx-Binary testen (Integrationstest)
-./aurumc examples/hello.lyx -o /tmp/hello && /tmp/hello
+./lyxc examples/hello.lyx -o /tmp/hello && /tmp/hello
 echo $?   # Exit-Code prüfen
 ```
 
@@ -40,7 +40,7 @@ ihre Suites im `initialization`-Abschnitt.
 ## Projektstruktur
 
 ```
-aurumc/
+lyxc/
   aurumc.lpr              # Hauptprogramm (Entry)
   frontend/
     lexer.pas              # Tokenizer → TToken-Stream

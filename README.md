@@ -17,7 +17,7 @@ Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.
 make build
 
 # Programm kompilieren und ausführen
-./aurumc examples/hello.lyx -o hello
+./lyxc examples/hello.lyx -o hello
 ./hello
 ```
 
@@ -433,7 +433,7 @@ make debug          # Debug-Build mit Checks (-g -gl -Ci -Cr -Co -gh)
 ### Lyx-Programm kompilieren
 
 ```bash
-./aurumc eingabe.lyx -o ausgabe
+./lyxc eingabe.lyx -o ausgabe
 ./ausgabe
 echo $?             # Exit-Code prüfen
 ```
@@ -470,7 +470,7 @@ Quellcode (.lyx)
 ### Projektstruktur
 
 ```
-aurumc.lpr                  Hauptprogramm
+lyxc.lpr                  Hauptprogramm
 frontend/
   lexer.pas                 Tokenizer
   parser.pas                Recursive-Descent Parser

@@ -1,5 +1,5 @@
 {$mode objfpc}{$H+}
-program aurumc;
+program lyxc;
 
 uses
   SysUtils, Classes, BaseUnix,
