@@ -39,6 +39,7 @@ type
     procedure CheckStmt(stmt: TAstStmt);
   public
     constructor Create(d: TDiagnostics);
+    destructor Destroy; override;
     procedure Analyze(prog: TAstProgram);
   end;
 
@@ -774,6 +775,16 @@ begin
   FTypeMap.Sorted := False;
   DeclareBuiltinFunctions;
   FCurrentReturn := atVoid;
+end;
+
+destructor TSema.Destroy;
+begin
+  // Pop and free all scopes and their symbols
+  while Length(FScopes) > 0 do
+    PopScope;
+  if Assigned(FTypeMap) then
+    FTypeMap.Free;
+  inherited Destroy;
 end;
 
 procedure TSema.Analyze(prog: TAstProgram);
