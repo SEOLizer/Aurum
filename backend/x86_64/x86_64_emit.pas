@@ -450,6 +450,16 @@ begin
   EmitU8(buf, $C0 or (xmmReg and $7));
 end;
 
+procedure WriteCvttsd2siRaxXmm(buf: TByteBuffer; xmmReg: Byte);
+begin
+  // cvttsd2si rax, xmm : F2 48 0F 2C /r  (truncate toward zero)
+  EmitU8(buf, $F2);
+  EmitRex(buf, 1, 0, 0, (xmmReg shr 3) and 1);
+  EmitU8(buf, $0F);
+  EmitU8(buf, $2C);
+  EmitU8(buf, $C0 or (xmmReg and $7));
+end;
+
 procedure WriteCvtsi2sdXmmRax(buf: TByteBuffer; xmmReg: Byte);
 begin
   // cvtsi2sd xmm, rax : F2 48 0F 2A /r
@@ -828,15 +838,16 @@ begin
               else if instr.ImmStr = 'print_float' then
               begin
                 // print_float(x: f64) -> void
-                // Simple implementation: convert to int64 and print as integer (truncates)
-                // Load float from slot
-                WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
-                // Convert to int64
-                WriteCvtsd2siRaxXmm(FCode, 0);
-                // Store to temporary location
-                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Src1) - 8, RAX);
-                
-                // Use print_int logic inline
+                // Full float-to-string: sign + integer part + '.' + 6-digit fractional part
+                //
+                // Algorithm:
+                //   1. Load double into XMM0
+                //   2. Check sign: if negative, print '-' and negate
+                //   3. Truncate to int part via cvttsd2si -> print as integer
+                //   4. Print '.'
+                //   5. frac = |value| - trunc(|value|), multiply by 1000000
+                //   6. Convert frac to int, print with leading zero-padding to 6 digits
+
                 if not bufferAdded then
                 begin
                   bufferOffset := totalDataOffset;
@@ -844,22 +855,177 @@ begin
                   Inc(totalDataOffset, 64);
                   bufferAdded := True;
                 end;
-                
-                // Load value into RAX
-                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1) - 8);
+
+                // Load float from slot into XMM0
+                WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+
+                // --- Step 1: Check sign ---
+                // Extract sign bit: movmskpd eax, xmm0  (66 0F 50 C0)
+                EmitU8(FCode, $66); EmitU8(FCode, $0F); EmitU8(FCode, $50); EmitU8(FCode, $C0);
+                // test eax, 1
+                EmitU8(FCode, $A9); EmitU32(FCode, 1);
+                // je skip_sign (value >= 0)
+                jeSignPos := FCode.Size;
+                WriteJeRel32(FCode, 0);
+
+                // Negative: print '-' character
+                leaPos := FCode.Size;
+                EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+                SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
+                bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
+                WriteMovMemImm8(FCode, RSI, 0, Ord('-'));
+                WriteMovRegImm64(FCode, RAX, 1); // sys_write
+                WriteMovRegImm64(FCode, RDI, 1); // stdout
+                WriteMovRegImm64(FCode, RDX, 1); // len=1
+                WriteSyscall(FCode);
+
+                // Negate XMM0: xorpd xmm0, sign_mask
+                // Load sign mask (0x8000000000000000) into XMM1 via RAX
+                WriteMovRegImm64(FCode, RAX, UInt64($8000000000000000));
+                // Use a temp location on stack: [rbp - 8*(totalSlots+1)] as scratch
+                // Actually use the buffer's first 8 bytes as temp scratch
+                // Safer: push/pop rax via the dest slot temporarily
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Src1), RAX);
+                WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Src1));
+                WriteXorpdXmmXmm(FCode, 0, 1);
+                // Restore original float slot won't matter; XMM0 has |value|
+
+                // skip_sign label
+                k := FCode.Size;
+                FCode.PatchU32LE(jeSignPos + 2, Cardinal(k - jeSignPos - 6));
+
+                // --- Step 2: XMM0 = |value|. Save it in XMM2 for later ---
+                // movsd xmm2, xmm0 (save |value|)
+                WriteMovsdXmmXmm(FCode, 2, 0);
+
+                // --- Step 3: Extract integer part ---
+                // cvttsd2si rax, xmm0  (truncate toward zero)
+                WriteCvttsd2siRaxXmm(FCode, 0);
+                // Save integer part in R12 for later fractional computation
+                WriteMovRegReg(FCode, R12, RAX);
+
+                // --- Step 4: Print integer part ---
                 // lea rsi, buffer
                 leaPos := FCode.Size;
                 EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
                 SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
                 bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
-                
-                // Print integer part only (simplified - uses existing print_int code pattern)
-                // For now, just print "0" as placeholder for full float output
-                WriteMovRegImm64(FCode, RAX, Ord('0'));
-                WriteMovMemRegByteNoDisp(FCode, RSI, 0);
+
+                // rdi = rsi + 64 (write pointer from end)
+                WriteMovRegReg(FCode, RDI, RSI);
+                WriteMovRegImm64(FCode, RDX, 64);
+                WriteAddRegReg(FCode, RDI, RDX);
+
+                // Handle zero integer part
+                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F8); EmitU8(FCode, 0); // cmp rax, 0
+                nonZeroPos := FCode.Size;
+                WriteJneRel32(FCode, 0);
+
+                // Zero path: write '0' at [rdi-1], then rdi--
+                WriteDecReg(FCode, RDI);
+                EmitU8(FCode, $C6); EmitU8(FCode, $07); EmitU8(FCode, Ord('0')); // mov byte [rdi], '0'
+                jmpDonePos := FCode.Size;
+                WriteJmpRel32(FCode, 0); // jump past digit loop
+
+                // Non-zero label
+                k := FCode.Size;
+                FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+
+                // Digit extraction loop: RAX = integer part (already positive)
+                loopStartPos := FCode.Size;
+                WriteCqo(FCode);
+                WriteMovRegImm64(FCode, RCX, 10);
+                WriteIdivReg(FCode, RCX);
+                EmitU8(FCode, $80); EmitU8(FCode, $C2); EmitU8(FCode, Byte(Ord('0'))); // add dl, '0'
+                WriteDecReg(FCode, RDI);
+                EmitU8(FCode, $88); EmitU8(FCode, $17); // mov [rdi], dl
+                WriteTestRaxRax(FCode);
+                jneLoopPos := FCode.Size;
+                WriteJneRel32(FCode, 0);
+                FCode.PatchU32LE(jneLoopPos + 2, Cardinal(loopStartPos - jneLoopPos - 6));
+
+                // Done label for zero case
+                k := FCode.Size;
+                FCode.PatchU32LE(jmpDonePos + 1, Cardinal(k - jmpDonePos - 5));
+
+                // Print integer part: length = (rsi+64) - rdi
+                EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $8E); EmitU32(FCode, 64); // lea rcx, [rsi+64]
+                WriteSubRegReg(FCode, RCX, RDI); // rcx = length
+                WriteMovRegReg(FCode, RDX, RCX);  // rdx = length
+                // syscall write(1, rdi, rdx)
+                WriteMovRegImm64(FCode, RAX, 1);
+                WriteMovRegReg(FCode, RSI, RDI);
+                WriteMovRegImm64(FCode, RDI, 1);
+                WriteSyscall(FCode);
+
+                // --- Step 5: Print '.' ---
+                leaPos := FCode.Size;
+                EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+                SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
+                bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
+                WriteMovMemImm8(FCode, RSI, 0, Ord('.'));
                 WriteMovRegImm64(FCode, RAX, 1);
                 WriteMovRegImm64(FCode, RDI, 1);
                 WriteMovRegImm64(FCode, RDX, 1);
+                WriteSyscall(FCode);
+
+                // --- Step 6: Compute fractional part ---
+                // XMM2 still has |value|
+                // Convert integer part (R12) back to double in XMM1
+                WriteMovRegReg(FCode, RAX, R12);
+                WriteCvtsi2sdXmmRax(FCode, 1);
+                // XMM0 = |value| - trunc = fractional part
+                WriteMovsdXmmXmm(FCode, 0, 2);    // xmm0 = |value|
+                WriteSubsdXmmXmm(FCode, 0, 1);    // xmm0 = frac
+
+                // Multiply frac by 1000000
+                WriteMovRegImm64(FCode, RAX, DoubleToQWord(1000000.0));
+                // Store 1000000.0 into a temp location (use dest slot temporarily)
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Src1), RAX);
+                WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Src1));
+                WriteMulsdXmmXmm(FCode, 0, 1);    // xmm0 = frac * 1000000
+
+                // Add 0.5 for rounding
+                WriteMovRegImm64(FCode, RAX, DoubleToQWord(0.5));
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Src1), RAX);
+                WriteMovsdXmmMem(FCode, 1, RBP, SlotOffset(localCnt + instr.Src1));
+                WriteAddsdXmmXmm(FCode, 0, 1);    // xmm0 = frac*1e6 + 0.5
+
+                // Convert to int
+                WriteCvttsd2siRaxXmm(FCode, 0);   // rax = fractional digits (0..999999)
+
+                // --- Step 7: Print fractional part with leading zeros (6 digits) ---
+                // We need exactly 6 digits, zero-padded from the left.
+                // Strategy: divide repeatedly by 10, fill buffer from right, always 6 chars.
+                leaPos := FCode.Size;
+                EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+                SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
+                bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
+
+                // RDI = RSI + 6 (write 6 chars, from position 5 down to 0)
+                WriteMovRegReg(FCode, RDI, RSI);
+                WriteAddRegImm32(FCode, RDI, 6);
+                // RBX = 6 (digit counter)
+                WriteMovRegImm64(FCode, RBX, 6);
+
+                // Fractional digit loop: extract 6 digits
+                loopStartPos := FCode.Size;
+                WriteCqo(FCode);
+                WriteMovRegImm64(FCode, RCX, 10);
+                WriteIdivReg(FCode, RCX);
+                EmitU8(FCode, $80); EmitU8(FCode, $C2); EmitU8(FCode, Byte(Ord('0'))); // add dl, '0'
+                WriteDecReg(FCode, RDI);
+                EmitU8(FCode, $88); EmitU8(FCode, $17); // mov [rdi], dl
+                WriteDecReg(FCode, RBX);
+                WriteTestRegReg(FCode, RBX, RBX);
+                jneLoopPos := FCode.Size;
+                WriteJneRel32(FCode, 0);
+                FCode.PatchU32LE(jneLoopPos + 2, Cardinal(loopStartPos - jneLoopPos - 6));
+
+                // Print fractional part: write(1, rsi, 6)
+                WriteMovRegImm64(FCode, RAX, 1);
+                WriteMovRegImm64(FCode, RDI, 1);
+                WriteMovRegImm64(FCode, RDX, 6);
                 WriteSyscall(FCode);
               end
              else if instr.ImmStr = 'buf_put_byte' then

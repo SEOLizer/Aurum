@@ -1,12 +1,30 @@
-// Float arithmetic test
+// Float arithmetic and print_float test
 fn main(): int64 {
+    // Test 1: Basic addition
     var x: f64 := 3.14;
     var y: f64 := 2.0;
     var z: f64 := x + y;
-    
-    print_str("Float test: ");
+    print_str("5.14 = ");
     print_float(z);
     print_str("\n");
-    
+
+    // Test 2: Zero
+    var zero: f64 := 0.0;
+    print_str("0.000000 = ");
+    print_float(zero);
+    print_str("\n");
+
+    // Test 3: Small fractional
+    var small: f64 := 0.001;
+    print_str("0.001000 = ");
+    print_float(small);
+    print_str("\n");
+
+    // Test 4: Negative via subtraction
+    var neg: f64 := 0.0 - 42.5;
+    print_str("-42.500000 = ");
+    print_float(neg);
+    print_str("\n");
+
     return 0;
 }
