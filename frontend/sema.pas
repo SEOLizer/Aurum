@@ -535,8 +535,11 @@ begin
         end
         else
         begin
-          if Length(call.Args) <> s.ParamCount then
-            FDiag.Error(Format('wrong argument count for %s: expected %d, got %d', [call.Name, s.ParamCount, Length(call.Args)]), call.Span);
+          // Check argument count: varargs functions can have more args than fixed params
+          if not s.HasVarArgs and (Length(call.Args) <> s.ParamCount) then
+            FDiag.Error(Format('wrong argument count for %s: expected %d, got %d', [call.Name, s.ParamCount, Length(call.Args)]), call.Span)
+          else if s.HasVarArgs and (Length(call.Args) < s.ParamCount) then
+            FDiag.Error(Format('too few arguments for varargs function %s: expected at least %d, got %d', [call.Name, s.ParamCount, Length(call.Args)]), call.Span);
         // argument type checking: support varargs
            for i := 0 to High(call.Args) do
            begin
@@ -851,15 +854,12 @@ begin
        sym.DeclType := fn.ReturnType;
        sym.ParamCount := Length(fn.Params);
        SetLength(sym.ParamTypes, sym.ParamCount);
-       for j := 0 to sym.ParamCount - 1 do
-         sym.ParamTypes[j] := fn.Params[j].ParamType;
-       // extern / varargs / calling conv
-       if fn.IsExtern then
-       begin
-         sym.IsExtern := True;
-         sym.HasVarArgs := fn.IsVarArgs;
-         sym.CallingConv := fn.CallingConv;
-       end;
+        for j := 0 to sym.ParamCount - 1 do
+          sym.ParamTypes[j] := fn.Params[j].ParamType;
+        // extern / varargs / calling conv
+        sym.IsExtern := fn.IsExtern;
+        sym.HasVarArgs := fn.IsVarArgs;
+        sym.CallingConv := fn.CallingConv;
        AddSymbolToCurrent(sym, fn.Span);
      end
 

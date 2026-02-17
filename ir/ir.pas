@@ -27,7 +27,7 @@ type
     // float conversion
     irFToI,    // float to int conversion
     irIToF,    // int to float conversion
-    irCallBuiltin, irCall,
+     irCallBuiltin, irCall, irVarCall,
     irJmp, irBrTrue, irBrFalse,
     irLabel,
     irReturn,

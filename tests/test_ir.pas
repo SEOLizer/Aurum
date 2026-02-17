@@ -10,6 +10,7 @@ type
   TIRTest = class(TTestCase)
   published
     procedure TestLowerSimpleFunction;
+    procedure TestLowerVarargsCall;
   end;
 
 procedure TIRTest.TestLowerSimpleFunction;
@@ -63,6 +64,84 @@ begin
     p.Free;
     l.Free;
     s.Free;
+  finally
+    d.Free;
+  end;
+end;
+
+procedure TIRTest.TestLowerVarargsCall;
+var
+  d: TDiagnostics;
+  l: TLexer;
+  p: TParser;
+  prog: TAstProgram;
+  s: TSema;
+  modl: TIRModule;
+  lower: TIRLowering;
+  fn: TIRFunction;
+  found: Boolean;
+  i: Integer;
+  hasCallWithMultipleArgs: Boolean;
+begin
+  d := TDiagnostics.Create;
+  try
+    // Test that built-in varargs function (printf) generates correct IR
+    l := TLexer.Create('fn main(): int64 { printf("hello"); printf("num: %d", 42); return 0; }', 'test.lyx', d);
+    try
+      p := TParser.Create(l, d);
+      try
+        prog := p.ParseProgram;
+        s := TSema.Create(d);
+        try
+          s.Analyze(prog);
+          AssertEquals('Semantic analysis should pass for varargs calls', 0, d.ErrorCount);
+          
+          modl := TIRModule.Create;
+          try
+            lower := TIRLowering.Create(modl, d);
+            try
+              lower.Lower(prog);
+              
+              // Find main function in IR
+              found := False;
+              for i := 0 to High(modl.Functions) do
+              begin
+                if modl.Functions[i].Name = 'main' then
+                begin
+                  fn := modl.Functions[i];
+                  found := True;
+                  Break;
+                end;
+              end;
+              AssertTrue('Should find main function in IR', found);
+              
+              // Check that there are call instructions with different argument counts
+              hasCallWithMultipleArgs := False;
+              for i := 0 to High(fn.Instructions) do
+              begin
+                if fn.Instructions[i].Op = irCall then
+                begin
+                  if fn.Instructions[i].ImmInt > 1 then // more than 1 argument
+                    hasCallWithMultipleArgs := True;
+                end;
+              end;
+              AssertTrue('Should have varargs calls with multiple arguments', hasCallWithMultipleArgs);
+              
+            finally
+              lower.Free;
+            end;
+          finally
+            modl.Free;
+          end;
+        finally
+          s.Free;
+        end;
+      finally
+        p.Free;
+      end;
+    finally
+      l.Free;
+    end;
   finally
     d.Free;
   end;

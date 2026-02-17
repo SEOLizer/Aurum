@@ -50,6 +50,7 @@ type
 
     function ParseType: TLyxType;
     function ParseParamList: TAstParamList;
+    function ParseParamListWithVarargs(out isVarArgs: Boolean): TAstParamList;
     function ParseArrayLiteral: TAstExpr;
     function ParseStructLiteral(const typeName: string): TAstExpr;
   public
@@ -261,32 +262,18 @@ begin
 
   Expect(tkLParen);
   if not Check(tkRParen) then
-    params := ParseParamList
+    params := ParseParamListWithVarargs(isVarArgs)
   else
-    params := nil;
-  Expect(tkRParen);
-
-  // optional calling convention: allow 'c' identifier after extern
-  if Check(tkIdent) and (FCurTok.Value = 'c') then
   begin
-    // leave it to be consumed earlier if needed
+    params := nil;
+    isVarArgs := False;
   end;
+  Expect(tkRParen);
 
   if Accept(tkColon) then
     retType := ParseType
   else
     retType := atVoid;
-
-  // check for varargs in params via tkEllipsis presence
-  // If previous loop broke on ellipsis, ParseParamList has left params as-is
-  // Determine varargs flag by peeking current token before semicolon
-  var isVarArgs: Boolean;
-  isVarArgs := False;
-  if Check(tkEllipsis) then
-  begin
-    isVarArgs := True;
-    Advance; // consume ellipsis
-  end;
 
   Expect(tkSemicolon);
   // create function decl with no body and IsExtern flag
@@ -1118,6 +1105,44 @@ begin
     begin
       // do not consume here; caller will handle it after the parameter list
       Break;
+    end;
+
+    if Check(tkIdent) then
+    begin
+      name := FCurTok.Value; Advance;
+    end
+    else
+    begin
+      name := '<anon>'; FDiag.Error('expected parameter name', FCurTok.Span);
+    end;
+    Expect(tkColon);
+    typ := ParseType;
+    p.Name := name; p.ParamType := typ; p.Span := FCurTok.Span;
+    SetLength(params, Length(params) + 1);
+    params[High(params)] := p;
+    if Accept(tkComma) then Continue else Break;
+  end;
+  Result := params;
+end;
+
+function TParser.ParseParamListWithVarargs(out isVarArgs: Boolean): TAstParamList;
+var
+  params: TAstParamList;
+  name: string;
+  typ: TLyxType;
+  p: TAstParam;
+begin
+  params := nil;
+  isVarArgs := False;
+  
+  while not Check(tkRParen) and not Check(tkEOF) do
+  begin
+    // varargs (ellipsis)
+    if Check(tkEllipsis) then
+    begin
+      isVarArgs := True;
+      Advance; // consume ellipsis
+      Break; // no more parameters after ...
     end;
 
     if Check(tkIdent) then

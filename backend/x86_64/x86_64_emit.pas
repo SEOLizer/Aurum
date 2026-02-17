@@ -2025,6 +2025,10 @@ begin
               EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $EC); EmitU8(FCode, Byte(callPad));
             end;
 
+            // Set AL=0 for varargs calls (SysV ABI: number of vector registers used)
+            // Since we don't use XMM registers for arguments, AL should always be 0
+            EmitU8(FCode, $30); EmitU8(FCode, $C0); // xor al, al
+
             // emit call and patch later
             SetLength(FJumpPatches, Length(FJumpPatches) + 1);
             FJumpPatches[High(FJumpPatches)].Pos := FCode.Size;

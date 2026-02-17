@@ -26,6 +26,7 @@ type
     procedure TestParseFieldAccess;
     procedure TestParseIndexAccess;
     procedure TestParseExternDecl; // new
+    procedure TestParseVarargsDecl; // varargs support
   end;
 
 function TParserTest.ParseProgramFromSource(const src: string): TAstProgram;
@@ -359,6 +360,33 @@ begin
     ident := TAstIdent(idxAcc.Obj);
     AssertEquals('arr', ident.Name);
     AssertTrue(idxAcc.Index is TAstIntLit);
+  finally
+    prog.Free;
+  end;
+end;
+
+procedure TParserTest.TestParseVarargsDecl;
+var
+  prog: TAstProgram;
+  d: TAstNode;
+  f: TAstFuncDecl;
+begin
+  // Test parsing varargs extern function (like printf)
+  prog := ParseProgramFromSource('extern fn printf(fmt: pchar, ...): int64;');
+  try
+    AssertTrue('Should have at least one declaration', Length(prog.Decls) >= 1);
+    d := prog.Decls[0];
+    AssertTrue('First declaration should be a function', d is TAstFuncDecl);
+    f := TAstFuncDecl(d);
+    
+    AssertEquals('Function name should be printf', 'printf', f.Name);
+    AssertTrue('Function should be extern', f.IsExtern);
+    AssertTrue('Function should be varargs', f.IsVarArgs);
+    AssertTrue('Extern function should have no body', f.Body = nil);
+    
+    // Check that it has at least one parameter (fmt)
+    AssertTrue('Should have at least one parameter', Length(f.Params) >= 1);
+    AssertEquals('First parameter should be fmt', 'fmt', f.Params[0].Name);
   finally
     prog.Free;
   end;

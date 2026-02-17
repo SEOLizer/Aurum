@@ -143,7 +143,6 @@ begin
     tkError:     Result := 'ERROR';
   end;
 end;
-end;
 
 { TLexer }
 

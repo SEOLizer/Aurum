@@ -24,6 +24,7 @@ type
     procedure TestCharTypeValid;
     procedure TestCharTypeMismatchError;
     procedure TestExternDeclaration; // new
+    procedure TestVarargsFunction; // varargs support
   end;
 
 function TSemaTest.AnalyzeSource(const src: string): TDiagnostics;
@@ -73,7 +74,7 @@ end;
 procedure TSemaTest.TestExternDeclaration;
 var d: TDiagnostics;
 begin
-  d := AnalyzeSource('extern fn puts(s: pchar): void; fn main(): int64 { puts("hi"); return 0; }');
+  d := AnalyzeSource('extern fn external_puts(s: pchar): void; fn main(): int64 { external_puts("hi"); return 0; }');
   try
     // extern declaration should satisfy call site
     AssertEquals(0, d.ErrorCount);
@@ -203,6 +204,35 @@ begin
   d := AnalyzeSource('fn main(): int64 { var c: char := 65; return 0; }');
   try
     AssertTrue(d.ErrorCount >= 1);
+  finally
+    d.Free;
+  end;
+end;
+
+procedure TSemaTest.TestVarargsFunction;
+var 
+  d: TDiagnostics;
+begin
+  // Test that built-in varargs function accepts variable number of arguments
+  d := AnalyzeSource('fn main(): int64 { printf("hello"); printf("num: %d", 42); printf("two: %d %d", 1, 2); return 0; }');
+  try
+    AssertEquals('Varargs function should accept variable arguments', 0, d.ErrorCount);
+  finally
+    d.Free;
+  end;
+
+  // Test that non-varargs function rejects extra arguments
+  d := AnalyzeSource('extern fn external_puts(s: pchar): void; fn main(): int64 { external_puts("hello", "extra"); return 0; }');
+  try
+    AssertTrue('Non-varargs function should reject extra arguments', d.ErrorCount > 0);
+  finally
+    d.Free;
+  end;
+
+  // Test that varargs function still requires minimum arguments
+  d := AnalyzeSource('fn main(): int64 { printf(); return 0; }');
+  try
+    AssertTrue('Varargs function should require minimum arguments', d.ErrorCount > 0);
   finally
     d.Free;
   end;
