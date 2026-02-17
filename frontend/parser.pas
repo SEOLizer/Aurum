@@ -170,6 +170,18 @@ begin
       Exit(nil);
     end;
   end;
+  if Check(tkExtern) then
+  begin
+    // extern function declaration
+    Advance; // consume 'extern'
+    if Check(tkFn) then
+      Exit(ParseExternDecl)
+    else
+    begin
+      FDiag.Error('expected fn after extern', FCurTok.Span);
+      Exit(nil);
+    end;
+  end;
   if Check(tkFn) then
     Exit(ParseFuncDecl(False));
   if Check(tkCon) then
@@ -216,7 +228,43 @@ begin
     retType := atVoid; // default
 
   body := ParseBlock;
-  Result := TAstFuncDecl.Create(name, params, retType, body, FCurTok.Span, isPub);
+  Result := TAstFuncDecl.Create(name, params, retType, body, FCurTok.Span, isPub, False);
+end;
+
+function TParser.ParseExternDecl: TAstFuncDecl;
+var
+  name: string;
+  params: TAstParamList;
+  retType: TLyxType;
+begin
+  // called after 'extern' consumed and next token is 'fn'
+  Expect(tkFn);
+  if Check(tkIdent) then
+  begin
+    name := FCurTok.Value;
+    Advance;
+  end
+  else
+  begin
+    name := '<anon>';
+    FDiag.Error('expected function name', FCurTok.Span);
+  end;
+
+  Expect(tkLParen);
+  if not Check(tkRParen) then
+    params := ParseParamList
+  else
+    params := nil;
+  Expect(tkRParen);
+
+  if Accept(tkColon) then
+    retType := ParseType
+  else
+    retType := atVoid;
+
+  Expect(tkSemicolon);
+  // create function decl with no body and IsExtern flag
+  Result := TAstFuncDecl.Create(name, params, retType, nil, FCurTok.Span, False, True);
 end;
 
 function TParser.ParseConDecl(isPub: Boolean): TAstConDecl;

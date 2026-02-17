@@ -465,15 +465,17 @@ type
     FReturnType: TLyxType;
     FBody: TAstBlock;
     FIsPublic: Boolean;
+    FIsExtern: Boolean;
   public
     constructor Create(const aName: string; const aParams: TAstParamList;
-      aReturnType: TLyxType; aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False);
+      aReturnType: TLyxType; aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False; aIsExtern: Boolean = False);
     destructor Destroy; override;
     property Name: string read FName;
     property Params: TAstParamList read FParams;
     property ReturnType: TLyxType read FReturnType;
     property Body: TAstBlock read FBody;
     property IsPublic: Boolean read FIsPublic;
+    property IsExtern: Boolean read FIsExtern;
   end;
 
   { Con-Deklaration (Top-Level): con NAME: type := constExpr; }
@@ -1226,7 +1228,7 @@ end;
 
 constructor TAstFuncDecl.Create(const aName: string;
   const aParams: TAstParamList; aReturnType: TLyxType;
-  aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False);
+  aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False; aIsExtern: Boolean = False);
 begin
   inherited Create(nkFuncDecl, aSpan);
   FName := aName;
@@ -1234,11 +1236,14 @@ begin
   FReturnType := aReturnType;
   FBody := aBody;
   FIsPublic := aIsPublic;
+  FIsExtern := aIsExtern;
 end;
 
 destructor TAstFuncDecl.Destroy;
 begin
-  FBody.Free;
+  // Free body only if present
+  if Assigned(FBody) then
+    FBody.Free;
   FParams := nil;
   inherited Destroy;
 end;

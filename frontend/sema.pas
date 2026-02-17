@@ -804,20 +804,22 @@ begin
     if node is TAstFuncDecl then
     begin
       fn := TAstFuncDecl(node);
-      // check duplicates
-      if ResolveSymbol(fn.Name) <> nil then
-      begin
-        FDiag.Error('redeclaration of function: ' + fn.Name, fn.Span);
-        Continue;
-      end;
-      sym := TSymbol.Create(fn.Name);
-      sym.Kind := symFunc;
-      sym.DeclType := fn.ReturnType;
-      sym.ParamCount := Length(fn.Params);
-      SetLength(sym.ParamTypes, sym.ParamCount);
-      for j := 0 to sym.ParamCount - 1 do
-        sym.ParamTypes[j] := fn.Params[j].ParamType;
-      AddSymbolToCurrent(sym, fn.Span);
+       // check duplicates
+       if ResolveSymbol(fn.Name) <> nil then
+       begin
+         FDiag.Error('redeclaration of function: ' + fn.Name, fn.Span);
+         Continue;
+       end;
+       sym := TSymbol.Create(fn.Name);
+       sym.Kind := symFunc;
+       sym.DeclType := fn.ReturnType;
+       sym.ParamCount := Length(fn.Params);
+       SetLength(sym.ParamTypes, sym.ParamCount);
+       for j := 0 to sym.ParamCount - 1 do
+         sym.ParamTypes[j] := fn.Params[j].ParamType;
+       AddSymbolToCurrent(sym, fn.Span);
+     end
+
     end
     else if node is TAstConDecl then
     begin
@@ -849,30 +851,33 @@ begin
   end;
 
   // Second pass: check function bodies
-  for i := 0 to High(prog.Decls) do
-  begin
-    node := prog.Decls[i];
-    if node is TAstFuncDecl then
-    begin
-      fn := TAstFuncDecl(node);
-      // enter function scope
-      PushScope;
-      // declare parameters as vars in local scope
-      for j := 0 to High(fn.Params) do
-      begin
-        sym := TSymbol.Create(fn.Params[j].Name);
-        sym.Kind := symVar;
-        sym.DeclType := fn.Params[j].ParamType;
-        AddSymbolToCurrent(sym, fn.Params[j].Span);
-      end;
-      // set current return type
-      FCurrentReturn := fn.ReturnType;
-      // check body
-      CheckStmt(fn.Body);
-      // leave function scope
-      PopScope;
-    end;
-  end;
+   for i := 0 to High(prog.Decls) do
+   begin
+     node := prog.Decls[i];
+     if node is TAstFuncDecl then
+     begin
+       fn := TAstFuncDecl(node);
+       // If function is extern or has no body, skip body checking
+       if (fn.IsExtern) or (fn.Body = nil) then
+         Continue;
+       // enter function scope
+       PushScope;
+       // declare parameters as vars in local scope
+       for j := 0 to High(fn.Params) do
+       begin
+         sym := TSymbol.Create(fn.Params[j].Name);
+         sym.Kind := symVar;
+         sym.DeclType := fn.Params[j].ParamType;
+         AddSymbolToCurrent(sym, fn.Params[j].Span);
+       end;
+       // set current return type
+       FCurrentReturn := fn.ReturnType;
+       // check body
+       CheckStmt(fn.Body);
+       // leave function scope
+       PopScope;
+     end;
+   end;
 end;
 
 end.

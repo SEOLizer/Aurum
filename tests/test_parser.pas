@@ -25,6 +25,7 @@ type
     procedure TestParseCharLiteral;
     procedure TestParseFieldAccess;
     procedure TestParseIndexAccess;
+    procedure TestParseExternDecl; // new
   end;
 
 function TParserTest.ParseProgramFromSource(const src: string): TAstProgram;
@@ -75,6 +76,41 @@ begin
     AssertEquals(1, Length(call.Args));
     AssertTrue(call.Args[0] is TAstStrLit);
     AssertEquals('Hello', TAstStrLit(call.Args[0]).Value);
+  finally
+    prog.Free;
+  end;
+end;
+
+procedure TParserTest.TestParseExternDecl;
+var
+  prog: TAstProgram;
+  d: TAstNode;
+  f: TAstFuncDecl;
+begin
+  prog := ParseProgramFromSource('extern fn puts(s: pchar): void; fn main(): int64 { puts("hi"); return 0; }');
+  try
+    // Expect two declarations: extern puts, and main
+    AssertTrue(Length(prog.Decls) >= 2);
+    // first decl should be extern func or second depending on ordering
+    d := prog.Decls[0];
+    if d is TAstFuncDecl then
+    begin
+      f := TAstFuncDecl(d);
+      // ensure extern flag possibly set
+      // find any func named 'puts'
+      if f.Name <> 'puts' then
+      begin
+        // scan for puts
+        for d in prog.Decls do
+          if (d is TAstFuncDecl) and (TAstFuncDecl(d).Name = 'puts') then
+          begin
+            f := TAstFuncDecl(d); Break;
+          end;
+      end;
+      AssertEquals('puts', f.Name);
+      AssertTrue(f.IsExtern);
+      AssertTrue(f.Body = nil);
+    end;
   finally
     prog.Free;
   end;

@@ -23,6 +23,7 @@ type
     procedure TestRepeatUntilConditionNonBoolError;
     procedure TestCharTypeValid;
     procedure TestCharTypeMismatchError;
+    procedure TestExternDeclaration; // new
   end;
 
 function TSemaTest.AnalyzeSource(const src: string): TDiagnostics;
@@ -63,6 +64,18 @@ var
 begin
   d := AnalyzeSource('fn main(): int64 { var x: int64 := 1; x := x + 2; return 0; }');
   try
+    AssertEquals(0, d.ErrorCount);
+  finally
+    d.Free;
+  end;
+end;
+
+procedure TSemaTest.TestExternDeclaration;
+var d: TDiagnostics;
+begin
+  d := AnalyzeSource('extern fn puts(s: pchar): void; fn main(): int64 { puts("hi"); return 0; }');
+  try
+    // extern declaration should satisfy call site
     AssertEquals(0, d.ErrorCount);
   finally
     d.Free;
