@@ -322,9 +322,7 @@ begin
   // movsd xmm, [base+disp32] : F2 0F 10 /r
   EmitU8(buf, $F2);
   if (xmmReg >= 8) or (baseReg >= 8) then
-    EmitRex(buf, 0, (xmmReg shr 3) and 1, 0, (baseReg shr 3) and 1)
-  else
-    EmitU8(buf, $40); // Rex.W=0 but need some rex prefix for xmm
+    EmitRex(buf, 0, (xmmReg shr 3) and 1, 0, (baseReg shr 3) and 1);
   EmitU8(buf, $0F);
   EmitU8(buf, $10);
   EmitU8(buf, $80 or ((xmmReg and $7) shl 3) or (baseReg and $7));
@@ -338,9 +336,7 @@ begin
   // movsd [base+disp32], xmm : F2 0F 11 /r
   EmitU8(buf, $F2);
   if (xmmReg >= 8) or (baseReg >= 8) then
-    EmitRex(buf, 0, (xmmReg shr 3) and 1, 0, (baseReg shr 3) and 1)
-  else
-    EmitU8(buf, $40);
+    EmitRex(buf, 0, (xmmReg shr 3) and 1, 0, (baseReg shr 3) and 1);
   EmitU8(buf, $0F);
   EmitU8(buf, $11);
   EmitU8(buf, $80 or ((xmmReg and $7) shl 3) or (baseReg and $7));
@@ -354,9 +350,7 @@ begin
   // movsd xmm1, xmm2 : F2 0F 10 /r (mod=11)
   EmitU8(buf, $F2);
   if (dstXmm >= 8) or (srcXmm >= 8) then
-    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
-  else
-    EmitU8(buf, $40);
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1);
   EmitU8(buf, $0F);
   EmitU8(buf, $10);
   EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
@@ -367,9 +361,7 @@ begin
   // addsd xmm1, xmm2 : F2 0F 58 /r (mod=11)
   EmitU8(buf, $F2);
   if (dstXmm >= 8) or (srcXmm >= 8) then
-    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
-  else
-    EmitU8(buf, $40);
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1);
   EmitU8(buf, $0F);
   EmitU8(buf, $58);
   EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
@@ -380,9 +372,7 @@ begin
   // subsd xmm1, xmm2 : F2 0F 5C /r (mod=11)
   EmitU8(buf, $F2);
   if (dstXmm >= 8) or (srcXmm >= 8) then
-    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
-  else
-    EmitU8(buf, $40);
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1);
   EmitU8(buf, $0F);
   EmitU8(buf, $5C);
   EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
@@ -393,9 +383,7 @@ begin
   // mulsd xmm1, xmm2 : F2 0F 59 /r (mod=11)
   EmitU8(buf, $F2);
   if (dstXmm >= 8) or (srcXmm >= 8) then
-    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
-  else
-    EmitU8(buf, $40);
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1);
   EmitU8(buf, $0F);
   EmitU8(buf, $59);
   EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
@@ -406,9 +394,7 @@ begin
   // divsd xmm1, xmm2 : F2 0F 5E /r (mod=11)
   EmitU8(buf, $F2);
   if (dstXmm >= 8) or (srcXmm >= 8) then
-    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
-  else
-    EmitU8(buf, $40);
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1);
   EmitU8(buf, $0F);
   EmitU8(buf, $5E);
   EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
@@ -419,9 +405,7 @@ begin
   // xorpd xmm1, xmm2 : 66 0F 57 /r (mod=11)
   EmitU8(buf, $66);
   if (dstXmm >= 8) or (srcXmm >= 8) then
-    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
-  else
-    EmitU8(buf, $40);
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1);
   EmitU8(buf, $0F);
   EmitU8(buf, $57);
   EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
@@ -432,9 +416,7 @@ begin
   // ucomisd xmm1, xmm2 : 66 0F 2E /r (mod=11)
   EmitU8(buf, $66);
   if (dstXmm >= 8) or (srcXmm >= 8) then
-    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1)
-  else
-    EmitU8(buf, $40);
+    EmitRex(buf, 0, (dstXmm shr 3) and 1, 0, (srcXmm shr 3) and 1);
   EmitU8(buf, $0F);
   EmitU8(buf, $2E);
   EmitU8(buf, $C0 or ((dstXmm and $7) shl 3) or (srcXmm and $7));
