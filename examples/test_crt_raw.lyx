@@ -1,0 +1,34 @@
+// examples/test_crt_raw.lyx
+// Experimental demo für std/crt_raw (benötigt libc / dynamische ELF)
+// Hinweis: Diese Demo ist illustrativ; std/crt_raw stellt prototypische Wrapper bereit.
+
+import std.crt_raw;
+import std.io;
+import std.crt;
+
+fn main(): int64 {
+  // Achtung: set_raw_mode ist ein Platzhalter und möglicherweise nicht implementiert.
+  var ok: int64 := set_raw_mode(true);
+  if (ok == 0) {
+    print_str("Raw mode enabled. Press keys (ESC to exit)\n");
+    var running: bool := true;
+    while (running) {
+      if (key_pressed()) {
+        var k: int64 := read_key_raw();
+        if (k == -1) { running := false; }
+        if (k == 27) { // ESC
+          running := false;
+        } else {
+          // show hex code
+          print_str("Key: ");
+          print_int(k);
+          print_str("\n");
+        }
+      }
+    }
+    set_raw_mode(false);
+  } else {
+    print_str("set_raw_mode not available on this platform or not implemented.\n");
+  }
+  return 0;
+}

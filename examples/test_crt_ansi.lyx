@@ -1,0 +1,42 @@
+// examples/test_crt_ansi.lyx
+// Demonstration der std/crt ANSI-Funktionen
+
+import std.crt;
+import std.io;
+
+fn main(): int64 {
+  clrscr();
+
+  // Kopfzeile
+  text_attr(white, blue);
+  write_str_at(1, 1, " Lyx CRT ANSI Demo ");
+  reset_attr();
+
+  // Bunte Zeilen
+  text_color(red); gotoxy(5,4); print_str("This is red text");
+  text_color(green); gotoxy(5,5); print_str("This is green text");
+  text_color(yellow); gotoxy(5,6); print_str("This is yellow text");
+  text_color(light_cyan); gotoxy(5,7); print_str("This is light cyan text");
+
+  // Hintergrundfarbe
+  text_attr(black, light_green); gotoxy(5,9); print_str("Black on light green background"); reset_attr();
+
+  // Cursor hide/show
+  gotoxy(1, 12);
+  print_str("Hiding cursor for 1s...");
+  hide_cursor();
+
+  // Kurze Warte-Schleife (simuliert busy-wait)
+  var i: int64 := 0;
+  while (i < 100000000) {
+    i := i + 1;
+  }
+
+  show_cursor();
+  gotoxy(1,14);
+  print_str("Done. Press Enter to exit.\n");
+
+  // Blocking: Einfacher Hinweis, keine direkte read implemented in std/crt baseline
+  // Benutzer kann Enter im Terminal drücken; Programm beendet sich.
+  return 0;
+}
