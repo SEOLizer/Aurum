@@ -4,7 +4,7 @@ unit x86_64_emit;
 interface
 
 uses
-  SysUtils, Classes, bytes, ir;
+  SysUtils, Classes, bytes, ir, backend_types;
 
 type
   TLabelPos = record
@@ -27,6 +27,10 @@ type
     FLeaStrIndex: array of Integer;
     FLabelPositions: array of TLabelPos;
     FJumpPatches: array of TJumpPatch;
+    FExternalSymbols: array of TExternalSymbol;
+    
+    procedure AddExternalSymbol(const name, libName: string);
+    function IsExternalSymbol(const name: string): Boolean;
   public
     constructor Create;
     destructor Destroy; override;
@@ -34,12 +38,26 @@ type
     function GetCodeBuffer: TByteBuffer;
     function GetDataBuffer: TByteBuffer;
     function GetFunctionOffset(const name: string): Integer;
+    function GetExternalSymbols: TExternalSymbolArray;
   end;
 
 implementation
 
 uses
   Math;
+
+function GetLibraryForSymbol(const symbolName: string): string;
+begin
+  // Simple heuristic mapping of common symbols to libraries
+  if (symbolName = 'printf') or (symbolName = 'malloc') or (symbolName = 'free') or
+     (symbolName = 'strlen') or (symbolName = 'strcmp') or (symbolName = 'exit') or
+     (symbolName = 'puts') then
+    Result := 'libc.so.6'
+  else if (symbolName = 'sin') or (symbolName = 'cos') or (symbolName = 'sqrt') then
+    Result := 'libm.so.6'
+  else
+    Result := 'libc.so.6'; // Default fallback
+end;
 
 { DoubleToQWord: Reinterprets IEEE 754 double bits as UInt64 }
 function DoubleToQWord(const d: Double): UInt64;
@@ -2029,6 +2047,12 @@ begin
             // Since we don't use XMM registers for arguments, AL should always be 0
             EmitU8(FCode, $30); EmitU8(FCode, $C0); // xor al, al
 
+            // Check if this is an external symbol and collect it
+            if IsExternalSymbol(instr.ImmStr) then
+            begin
+              AddExternalSymbol(instr.ImmStr, GetLibraryForSymbol(instr.ImmStr));
+            end;
+
             // emit call and patch later
             SetLength(FJumpPatches, Length(FJumpPatches) + 1);
             FJumpPatches[High(FJumpPatches)].Pos := FCode.Size;
@@ -2233,6 +2257,54 @@ begin
       Exit;
     end;
   end;
+end;
+
+procedure TX86_64Emitter.AddExternalSymbol(const name, libName: string);
+var
+  i: Integer;
+begin
+  // Check if already exists
+  for i := 0 to High(FExternalSymbols) do
+  begin
+    if FExternalSymbols[i].Name = name then
+      Exit; // Already exists
+  end;
+  
+  // Add new external symbol
+  SetLength(FExternalSymbols, Length(FExternalSymbols) + 1);
+  FExternalSymbols[High(FExternalSymbols)].Name := name;
+  FExternalSymbols[High(FExternalSymbols)].LibraryName := libName;
+end;
+
+function TX86_64Emitter.IsExternalSymbol(const name: string): Boolean;
+var
+  i: Integer;
+begin
+  Result := False;
+  // Check if it's in our external symbols list
+  for i := 0 to High(FExternalSymbols) do
+  begin
+    if FExternalSymbols[i].Name = name then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+  
+  // Check if it's a function that doesn't have a local definition
+  for i := 0 to High(FLabelPositions) do
+  begin
+    if FLabelPositions[i].Name = name then
+      Exit; // Found local definition, so it's not external
+  end;
+  
+  // If we reach here, it's likely external (no local definition found)
+  Result := True;
+end;
+
+function TX86_64Emitter.GetExternalSymbols: TExternalSymbolArray;
+begin
+  Result := Copy(FExternalSymbols, 0, Length(FExternalSymbols));
 end;
 
 end.
