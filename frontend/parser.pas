@@ -506,7 +506,7 @@ begin
 
   if Check(tkIf) then
   begin
-    // if (Expr) Stmt [else Stmt] - REQUIRES parentheses for now
+    // if (Expr) Stmt [else Stmt] - supports else if chains
     Advance; // if
     Expect(tkLParen);
     cond := ParseExpr;
@@ -514,7 +514,13 @@ begin
     thenStmt := Self.ParseStmt;
     elseStmt := nil;
     if Accept(tkElse) then
-      elseStmt := Self.ParseStmt;
+    begin
+      // Support else if: if next token is 'if', parse it recursively
+      if Check(tkIf) then
+        elseStmt := Self.ParseStmt  // This creates the else-if chain
+      else
+        elseStmt := Self.ParseStmt;
+    end;
     Exit(TAstIf.Create(cond, thenStmt, elseStmt, cond.Span));
   end;
 
@@ -587,6 +593,13 @@ begin
 
   if Check(tkRepeat) then
     Exit(ParseRepeatUntilStmt);
+
+  if Check(tkBreak) then
+  begin
+    Advance;
+    Expect(tkSemicolon);
+    Exit(TAstBreak.Create(FCurTok.Span));
+  end;
 
   if Check(tkReturn) then
   begin

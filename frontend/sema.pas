@@ -42,7 +42,10 @@ type
      function IsCastCompatible(fromType, toType: TLyxType): Boolean;
      function CheckExpr(expr: TAstExpr): TLyxType;
      procedure CheckStmt(stmt: TAstStmt);
-  public
+     // Resolve function overload by name and argument types
+     function ResolveFunction(const name: string; const argTypes: array of TLyxType): TSymbol;
+   public
+
     constructor Create(d: TDiagnostics);
     destructor Destroy; override;
     procedure Analyze(prog: TAstProgram);
@@ -88,13 +91,33 @@ end;
 procedure TSema.PopScope;
 var
   sl: TStringList;
-  i: Integer;
+  i, j: Integer;
+  obj: TObject;
+  lst: TList;
 begin
   if Length(FScopes) = 0 then Exit;
   sl := FScopes[High(FScopes)];
-  // free symbols
+  // free symbols (handle TSymbol or TList of TSymbol)
   for i := 0 to sl.Count - 1 do
-    TObject(sl.Objects[i]).Free;
+  begin
+    obj := sl.Objects[i];
+    if obj is TSymbol then
+      TSymbol(obj).Free
+    else if obj is TList then
+    begin
+      lst := TList(obj);
+      for j := 0 to lst.Count - 1 do
+      begin
+        TSymbol(lst.Items[j]).Free;
+      end;
+      lst.Free;
+    end
+    else
+    begin
+      // unknown object, free defensively
+      obj.Free;
+    end;
+  end;
   sl.Free;
   SetLength(FScopes, Length(FScopes) - 1);
 end;
@@ -102,6 +125,11 @@ end;
 procedure TSema.AddSymbolToCurrent(sym: TSymbol; span: TSourceSpan);
 var
   cur: TStringList;
+  idx: Integer;
+  existingObj: TObject;
+  lst: TList;
+  i: Integer;
+  existingSym: TSymbol;
 begin
   if Length(FScopes) = 0 then
   begin
@@ -109,19 +137,94 @@ begin
     Exit;
   end;
   cur := FScopes[High(FScopes)];
-  if cur.IndexOf(sym.Name) >= 0 then
+  idx := cur.IndexOf(sym.Name);
+  if idx < 0 then
   begin
-    FDiag.Error('redeclaration of symbol: ' + sym.Name, span);
+    // no existing symbol with that name
+    cur.AddObject(sym.Name, TObject(sym));
+    Exit;
+  end;
+
+  // existing entry present: could be a single TSymbol or a TList of TSymbol (overloads)
+  existingObj := cur.Objects[idx];
+  if existingObj is TSymbol then
+  begin
+    existingSym := TSymbol(existingObj);
+    // if both are functions, allow overloads if signature differs
+    if (existingSym.Kind = symFunc) and (sym.Kind = symFunc) then
+    begin
+      // Check signature collision
+      if (existingSym.ParamCount = sym.ParamCount) then
+      begin
+        // compare parameter types
+        for i := 0 to existingSym.ParamCount - 1 do
+        begin
+          if not TypeEqual(existingSym.ParamTypes[i], sym.ParamTypes[i]) then Break;
+        end;
+        if i = existingSym.ParamCount then
+        begin
+          // signatures identical
+          FDiag.Error('redeclaration of function with same signature: ' + sym.Name, span);
+          sym.Free;
+          Exit;
+        end;
+      end;
+      // create a list to hold overloads
+      lst := TList.Create;
+      lst.Add(existingSym);
+      lst.Add(sym);
+      cur.Objects[idx] := TObject(lst);
+      Exit;
+    end
+    else
+    begin
+      // not both functions - redeclaration error
+      FDiag.Error('redeclaration of symbol: ' + sym.Name, span);
+      sym.Free;
+      Exit;
+    end;
+  end
+  else if existingObj is TList then
+  begin
+    lst := TList(existingObj);
+    // check for identical signature among existing overloads
+    for i := 0 to lst.Count - 1 do
+    begin
+      existingSym := TSymbol(lst.Items[i]);
+      if (existingSym.ParamCount = sym.ParamCount) and (existingSym.Kind = sym.Kind) then
+      begin
+        // compare parameter types
+        for idx := 0 to existingSym.ParamCount - 1 do
+        begin
+          if not TypeEqual(existingSym.ParamTypes[idx], sym.ParamTypes[idx]) then Break;
+        end;
+        if idx = existingSym.ParamCount then
+        begin
+          FDiag.Error('redeclaration of function with same signature: ' + sym.Name, span);
+          sym.Free;
+          Exit;
+        end;
+      end;
+    end;
+    // append new overload
+    lst.Add(sym);
+    Exit;
+  end
+  else
+  begin
+    // unexpected object type
+    FDiag.Error('internal sema error: unexpected symbol object type', span);
     sym.Free;
     Exit;
   end;
-  cur.AddObject(sym.Name, TObject(sym));
 end;
 
  function TSema.ResolveSymbol(const name: string): TSymbol;
  var
    i, idx: Integer;
    sl: TStringList;
+   obj: TObject;
+   lst: TList;
  begin
    Result := nil;
    for i := High(FScopes) downto 0 do
@@ -130,8 +233,21 @@ end;
      idx := sl.IndexOf(name);
      if idx >= 0 then
      begin
-       Result := TSymbol(sl.Objects[idx]);
-       Exit;
+       obj := sl.Objects[idx];
+       if obj is TSymbol then
+       begin
+         Result := TSymbol(obj);
+         Exit;
+       end
+       else if obj is TList then
+       begin
+         lst := TList(obj);
+         if lst.Count > 0 then
+         begin
+           Result := TSymbol(lst.Items[0]);
+           Exit;
+         end;
+       end;
      end;
    end;
  end;
@@ -494,6 +610,78 @@ begin
   end;
 end;
 
+// Resolve function overload by name and argument types
+function TSema.ResolveFunction(const name: string; const argTypes: array of TLyxType): TSymbol;
+var
+  i, idx, j: Integer;
+  sl: TStringList;
+  obj: TObject;
+  sym: TSymbol;
+  lst: TList;
+  cand: TSymbol;
+  argCount: Integer;
+  match: Boolean;
+begin
+  Result := nil;
+  argCount := Length(argTypes);
+  for i := High(FScopes) downto 0 do
+  begin
+    sl := FScopes[i];
+    idx := sl.IndexOf(name);
+    if idx < 0 then Continue;
+    obj := sl.Objects[idx];
+    if obj is TSymbol then
+    begin
+      sym := TSymbol(obj);
+      if sym.Kind <> symFunc then Continue;
+      // check parameter compatibility
+      if (not sym.HasVarArgs) and (sym.ParamCount <> argCount) then Continue;
+      if sym.HasVarArgs and (argCount < sym.ParamCount) then Continue;
+      // check fixed params
+      match := True;
+      for j := 0 to sym.ParamCount - 1 do
+      begin
+        if not TypeEqual(sym.ParamTypes[j], argTypes[j]) then
+        begin
+          match := False;
+          Break;
+        end;
+      end;
+      if match then
+      begin
+        Result := sym;
+        Exit;
+      end;
+    end
+    else if obj is TList then
+    begin
+      lst := TList(obj);
+      for j := 0 to lst.Count - 1 do
+      begin
+        cand := TSymbol(lst.Items[j]);
+        if cand.Kind <> symFunc then Continue;
+        if (not cand.HasVarArgs) and (cand.ParamCount <> argCount) then Continue;
+        if cand.HasVarArgs and (argCount < cand.ParamCount) then Continue;
+        match := True;
+        // check fixed params
+        for idx := 0 to cand.ParamCount - 1 do
+        begin
+          if not TypeEqual(cand.ParamTypes[idx], argTypes[idx]) then
+          begin
+            match := False;
+            Break;
+          end;
+        end;
+        if match then
+        begin
+          Result := cand;
+          Exit;
+        end;
+      end;
+    end;
+  end;
+end;
+
 function IsFloatType(t: TLyxType): Boolean;
 begin
   case t of
@@ -552,6 +740,7 @@ var
   fname: string;
   ftype: TLyxType;
   found: Boolean;
+  argTypes: array of TLyxType;
 begin
   if expr = nil then
   begin
@@ -808,15 +997,15 @@ begin
     nkCall:
       begin
         call := TAstCall(expr);
-        s := ResolveSymbol(call.Name);
+        // Evaluate argument types first
+        SetLength(argTypes, Length(call.Args));
+        for i := 0 to High(call.Args) do
+          argTypes[i] := CheckExpr(call.Args[i]);
+
+        s := ResolveFunction(call.Name, argTypes);
         if s = nil then
         begin
-          FDiag.Error('call to undeclared function: ' + call.Name, call.Span);
-          Result := atUnresolved;
-        end
-        else if s.Kind <> symFunc then
-        begin
-          FDiag.Error('attempt to call non-function: ' + call.Name, call.Span);
+          FDiag.Error('call to undeclared or incompatible function overload: ' + call.Name, call.Span);
           Result := atUnresolved;
         end
         else
@@ -826,24 +1015,25 @@ begin
             FDiag.Error(Format('wrong argument count for %s: expected %d, got %d', [call.Name, s.ParamCount, Length(call.Args)]), call.Span)
           else if s.HasVarArgs and (Length(call.Args) < s.ParamCount) then
             FDiag.Error(Format('too few arguments for varargs function %s: expected at least %d, got %d', [call.Name, s.ParamCount, Length(call.Args)]), call.Span);
-        // argument type checking: support varargs
-           for i := 0 to High(call.Args) do
-           begin
-             atype := CheckExpr(call.Args[i]);
-             if i < s.ParamCount then
-             begin
-               if not TypeEqual(atype, s.ParamTypes[i]) then
-                 FDiag.Error(Format('argument %d of %s: expected %s but got %s', [i, call.Name, LyxTypeToStr(s.ParamTypes[i]), LyxTypeToStr(atype)]), call.Args[i].Span);
-             end
-             else
-             begin
-               // extra args: only allowed for varargs functions
-               if not s.HasVarArgs then
-                 FDiag.Error(Format('too many arguments for %s: expected %d, got %d', [call.Name, s.ParamCount, Length(call.Args)]), call.Args[i].Span);
-             end;
-           end;
-           Result := s.DeclType;
+
+          // argument type checking: support varargs
+          for i := 0 to High(call.Args) do
+          begin
+            atype := argTypes[i];
+            if i < s.ParamCount then
+            begin
+              if not TypeEqual(atype, s.ParamTypes[i]) then
+                FDiag.Error(Format('argument %d of %s: expected %s but got %s', [i, call.Name, LyxTypeToStr(s.ParamTypes[i]), LyxTypeToStr(atype)]), call.Args[i].Span);
+            end
+            else
+            begin
+              // extra args: only allowed for varargs functions
+              if not s.HasVarArgs then
+                FDiag.Error(Format('too many arguments for %s: expected %d, got %d', [call.Name, s.ParamCount, Length(call.Args)]), call.Args[i].Span);
+            end;
           end;
+          Result := s.DeclType;
+        end;
 
        end;
      nkCast:
