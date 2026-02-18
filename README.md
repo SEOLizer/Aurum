@@ -293,6 +293,77 @@ Fünf eingebaute Funktionen stehen ohne Import zur Verfügung:
 | `strlen(s)`       | `pchar -> int64`       | Berechnet String-Länge              |
 | `exit(code)`      | `int64 -> void`        | Beendet das Programm mit Exit-Code  |
 
+### Externe Funktionen (v0.1.4+)
+
+Der Lyx-Compiler unterstützt jetzt Deklarationen externer Funktionen aus System-Libraries:
+
+```lyx
+extern fn malloc(size: int64): pchar;
+extern fn printf(format: pchar, ...): int64;
+extern fn strlen(str: pchar): int64;
+
+fn main(): int64 {
+  let ptr: pchar := malloc(64);
+  let len: int64 := strlen("Hello");
+  printf("Allocated %d bytes, string length: %d\n", 64, len);
+  return 0;
+}
+```
+
+#### Varargs-Unterstützung
+
+Externe Funktionen können variable Argumentlisten mit `...` deklarieren:
+
+```lyx
+extern fn printf(fmt: pchar, ...): int64;
+
+fn main(): int64 {
+  printf("Int: %d, String: %s, Float: %f\n", 42, "test", 3.14);
+  return 0;
+}
+```
+
+#### Dynamische vs. Statische ELF-Binaries
+
+Der Compiler erkennt automatisch, ob externe Symbole verwendet werden:
+
+- **Statische ELF**: Wenn keine externen Funktionen aufgerufen werden
+- **Dynamische ELF**: Automatisch bei Verwendung externer Symbole
+
+```bash
+# Statisches Binary (keine externen Aufrufe)
+./lyxc hello.lyx -o hello_static
+# Output: "Generating static ELF (no external symbols)"
+
+# Dynamisches Binary (mit malloc/printf)
+./lyxc extern_example.lyx -o extern_dynamic  
+# Output: "Generating dynamic ELF with 2 external symbols"
+```
+
+#### Library-Zuordnung
+
+Der Compiler ordnet Symbole automatisch den passenden Libraries zu:
+
+| Symbol | Library |
+|--------|---------|
+| `printf`, `malloc`, `strlen`, `exit` | `libc.so.6` |
+| `sin`, `cos`, `sqrt` | `libm.so.6` |
+| Unbekannte Symbole | `libc.so.6` (Fallback) |
+
+#### PLT/GOT-Mechanik
+
+Dynamische Binaries nutzen die **Procedure Linkage Table (PLT)** und **Global Offset Table (GOT)**:
+
+- **PLT-Stubs**: Jede externe Funktion erhält einen PLT-Eintrag
+- **GOT-Entries**: Enthalten Runtime-Adressen der Library-Funktionen
+- **Relocations**: Dynamic Linker patcht GOT zur Laufzeit
+
+```bash
+# ELF-Struktur analysieren
+readelf -l extern_binary    # PT_INTERP, PT_DYNAMIC Headers
+readelf -d extern_binary    # NEEDED libraries, Symbol tables
+```
+
 Standard-Units
 
 Ein Satz von Standard-Units befindet sich im Verzeichnis `std/` und liefert ergonomische Bibliotheksfunktionen:
@@ -369,9 +440,92 @@ fn main(): int64 {
 fn  var  let  co  con  if  else  while  switch  case  break  default  return  true  false  extern  array
 ```
 
-`extern` ist für zukünftige Erweiterungen reserviert.
+`extern` wird für externe Funktionsdeklarationen verwendet (v0.1.4+).
 
 ---
+
+## Praktische SO-Library Beispiele (v0.1.4)
+
+### Memory Management mit malloc/free
+
+```lyx
+extern fn malloc(size: int64): pchar;
+extern fn free(ptr: pchar): void;
+
+fn main(): int64 {
+  // Dynamischer Speicher allokieren
+  let buffer: pchar := malloc(256);
+  
+  // Buffer verwenden (vereinfacht)
+  print_str("Buffer allocated at: ");
+  
+  // Speicher wieder freigeben
+  free(buffer);
+  
+  print_str("Memory freed\n");
+  return 0;
+}
+```
+
+### Formatierte Ausgabe mit printf
+
+```lyx
+extern fn printf(format: pchar, ...): int64;
+
+fn main(): int64 {
+  var count: int64 := 42;
+  var pi: f64 := 3.14159;
+  var name: pchar := "Lyx";
+  
+  // Verschiedene Datentypen ausgeben
+  printf("Language: %s\n", name);
+  printf("Count: %d\n", count);  
+  printf("Pi: %.2f\n", pi);
+  printf("Mixed: %s has %d features!\n", name, count);
+  
+  return 0;
+}
+```
+
+### String-Verarbeitung
+
+```lyx
+extern fn strlen(str: pchar): int64;
+extern fn strcat(dest: pchar, src: pchar): pchar;
+extern fn strcpy(dest: pchar, src: pchar): pchar;
+
+fn main(): int64 {
+  var greeting: pchar := "Hello";
+  var target: pchar := "World";
+  
+  var len1: int64 := strlen(greeting);
+  var len2: int64 := strlen(target);
+  
+  printf("'%s' has %d characters\n", greeting, len1);
+  printf("'%s' has %d characters\n", target, len2);
+  
+  return 0;
+}
+```
+
+### Math-Library Funktionen
+
+```lyx
+extern fn sin(x: f64): f64;
+extern fn cos(x: f64): f64; 
+extern fn sqrt(x: f64): f64;
+
+fn main(): int64 {
+  var angle: f64 := 1.5708;  // π/2
+  var number: f64 := 16.0;
+  
+  printf("sin(%.4f) = %.4f\n", angle, sin(angle));
+  printf("cos(%.4f) = %.4f\n", angle, cos(angle));
+  printf("sqrt(%.1f) = %.4f\n", number, sqrt(number));
+  
+  return 0;
+}
+```
 
 ## Vollständiges Beispiel
 
