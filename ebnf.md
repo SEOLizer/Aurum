@@ -204,7 +204,7 @@ LValue         := Ident | FieldAccess | IndexAccess ;
 
 IfStmt         := 'if' '(' Expr ')' Stmt [ 'else' Stmt ] ;
 
-WhileStmt      := 'while' '(' Expr ')' Stmt ;
+WhileStmt      := 'while' [ '(' ] Expr [ ')' ] Stmt ;
 
 ForStmt        := 'for' Ident ':=' Expr ( 'to' | 'downto' ) Expr 'do' Stmt ;
 

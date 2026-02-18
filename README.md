@@ -6,6 +6,11 @@ Er erzeugt direkt ausführbare **Linux x86_64 ELF64-Binaries** — ohne libc, oh
 ```
 Lyx Compiler v0.1.4
 Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.
+
+✅ Vollständiges Module System mit Import/Export
+✅ Cross-Unit Function Calls und Symbol Resolution  
+✅ Standard Library (std.math, std.io)
+✅ Robuste Parser mit While/If/Function Support
 ```
 
 ---
@@ -91,6 +96,40 @@ Loop
 Loop
 Loop
 ```
+
+### Module System und Standard Library
+
+Lyx unterstützt ein vollständiges **Import/Export-System** für die Organisation von Code in wiederverwendbare Module:
+
+```lyx
+// std/math.lyx
+pub fn abs64(x: int64): int64 {
+  if (x < 0) {
+    return -x;
+  }
+  return x;
+}
+
+pub fn times_two(x: int64): int64 {
+  return x * 2;
+}
+```
+
+```lyx
+// main.lyx
+import std.math;
+
+fn main(): int64 {
+  let result: int64 := abs64(-42);
+  print_int(times_two(result));  // Output: 84
+  return 0;
+}
+```
+
+**Verfügbare Standard Library:**
+- `std.math`: Mathematische Funktionen (`abs64`, `min64`, `max64`, `times_two`)
+- `std.io`: I/O Funktionen (in Entwicklung)
+- `std.string`: String-Manipulation (geplant)
 
 ### Typen
 

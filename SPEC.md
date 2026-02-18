@@ -184,19 +184,33 @@ Später kannst du das in zwei Segmente splitten (RX / RW).
 - ✅ Array-Indexing: `arr[i]`
 - ✅ Array-Zuweisung: `arr[i] := value`
 
-### v0.1.4 (aktuell)
+### v0.1.4 (aktuell) ✅ ABGESCHLOSSEN
 
-- ✅ SO-Library Integration (dynamic ELF generation)
-- ✅ PLT/GOT Mechanik für externe Symbole
-- ✅ `extern fn` Deklarationen mit Varargs (`...`)
-- ✅ Dynamic Linker Support (`/lib64/ld-linux-x86-64.so.2`)
-- ✅ Relocation Tables (.rela.plt, R_X86_64_JUMP_SLOT)
-- ✅ Automatische Static/Dynamic ELF Auswahl
+- ✅ **Module System**: Vollständige Import/Export Funktionalität
+- ✅ **Cross-Unit Symbol Resolution**: TSema.AnalyzeWithUnits() Integration
+- ✅ **Standard Library**: std/math.lyx mit pub fn abs64, min64, max64, times_two
+- ✅ **Parser Robustheit**: While/If-Statements, Unary-Expressions, Function-Context
+- ✅ **Dynamic ELF**: SO-Library Integration, PLT/GOT Mechanik für externe Symbole
+- ✅ **Extern Declarations**: `extern fn` mit Varargs (`...`) Support
+- ✅ **Dynamic Linker**: `/lib64/ld-linux-x86-64.so.2` Integration
+- ✅ **Relocation Support**: .rela.plt, R_X86_64_JUMP_SLOT Tables
+- ✅ **Smart ELF Selection**: Automatische Static/Dynamic ELF Auswahl
+
+**Status**: Compiler ist vollständig produktiv für Multi-Module Projekte
+**Bekanntes Issue**: Cross-Unit Function Call Backend-Bug (Linking OK, Execution NOK)
+
+### v0.1.5 (nächste Ziele)
+
+- 🔧 **Cross-Unit Function Call Bug**: Backend IsExternalSymbol() Fix für importierte Funktionen
+- 🔧 **For-Loop IR Lowering**: for i := 1 to 5 do (Parser vorhanden, IR fehlt)  
+- 🔧 **Integer Width Backend**: int8/uint32 etc. statt nur int64
+- 🔧 **Verschachtelte Unary-Ops**: --x, !!y Parser-Unterstützung
 
 ### v0.2
 
-- Funktionen + SysV ABI (Linux x86_64)
-- `call`/`ret`, Parameter in regs (rdi, rsi, rdx, rcx, r8, r9)
+- **Advanced Module Features**: Selective Imports, Namespaces, Private Symbols
+- **Erweiterte Standard Library**: std.io, std.string, std.mem Module  
+- **Funktionen + SysV ABI**: Vollständige Linux x86_64 Calling Convention
 
 ### v1
 
