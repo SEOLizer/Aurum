@@ -128,8 +128,11 @@ fn main(): int64 {
 
 **Verfügbare Standard Library:**
 - `std.math`: Mathematische Funktionen (`abs64`, `min64`, `max64`, `times_two`)
-- `std.io`: I/O Funktionen (in Entwicklung)
-- `std.string`: String-Manipulation (geplant)
+- `std.io`: I/O Funktionen (`print`, `println`, `print_intln`, `exit_proc`)
+- `std.string`: Umfassende String-Manipulation (`str_length`, `str_char_at`, `str_find`, `str_to_lower`, etc.)
+- `std.env`: Environment-API (`arg_count`, `arg`, `init`)
+- `std.time`: Datums- und Zeit-Funktionen (numerische Berechnungen)
+- `std.geo`: Geolocation-Parser für Decimal Degrees
 
 ### Typen
 
@@ -198,8 +201,34 @@ Alle Elemente eines Arrays müssen denselben Typ haben (derzeit `int64`).
 | 4         | `+` `-`              | Addition, Subtraktion     |
 | 5         | `*` `/` `%`          | Multiplikation, Division, Modulo |
 | 6 (hoch)  | `!` `-` (unär)       | Logisches NOT, Negation   |
+| 7         | `as`                 | Type-Casting              |
 
 Zuweisung erfolgt mit `:=` (nicht `=`).
+
+### Type-Casting mit `as`
+
+Lyx unterstützt explizite Type-Casts mit der `as`-Syntax:
+
+```lyx
+fn main(): int64 {
+  var x: int64 := 42;
+  var f: f64 := x as f64;      // int64 -> f64 Konvertierung
+  var back: int64 := f as int64; // f64 -> int64 Konvertierung
+  
+  // String-Konvertierungen
+  var s: pchar := int_to_str(x);
+  var parsed: int64 := str_to_int(s);
+  
+  print_int(parsed);  // 42
+  return 0;
+}
+```
+
+**Unterstützte Casts:**
+- `int64 as f64`: Integer zu Float (SSE2 cvtsi2sd)
+- `f64 as int64`: Float zu Integer mit Truncation (SSE2 cvttsd2si)
+- Identity Casts: `int64 as int64`, `f64 as f64`
+- String-Konvertierungen über Builtin-Funktionen
 
 ### Kontrollfluss
 
@@ -322,15 +351,48 @@ fn main(): int64 {
 
 ### Builtins
 
-Fünf eingebaute Funktionen stehen ohne Import zur Verfügung:
+Über 30 eingebaute Funktionen stehen ohne Import zur Verfügung:
 
+#### Basis I/O Builtins
 | Funktion          | Signatur               | Beschreibung                        |
 |-------------------|------------------------|-------------------------------------|
 | `print_str(s)`    | `pchar -> void`        | Gibt String bis `\0` aus            |
 | `print_int(x)`    | `int64 -> void`        | Gibt Integer als Dezimalzahl aus    |
-| `print_float(x)`  | `f64 -> void`          | Gibt Float aus (Placeholder: `?`)   |
-| `strlen(s)`       | `pchar -> int64`       | Berechnet String-Länge              |
+| `print_float(x)`  | `f64 -> void`          | Gibt Float aus (vereinfacht)        |
 | `exit(code)`      | `int64 -> void`        | Beendet das Programm mit Exit-Code  |
+
+#### String-Manipulation Builtins
+| Funktion                    | Signatur                                    | Beschreibung                        |
+|-----------------------------|---------------------------------------------|-------------------------------------|
+| `str_length(s)`             | `pchar -> int64`                           | Berechnet String-Länge              |
+| `str_char_at(s, index)`     | `pchar, int64 -> int64`                    | Liest Character an Position         |
+| `str_set_char(s, index, c)` | `pchar, int64, int64 -> void`             | Setzt Character an Position         |
+| `str_compare(s1, s2)`       | `pchar, pchar -> int64`                   | String-Vergleich (0=gleich)         |
+| `str_copy_builtin(dest, src)` | `pchar, pchar -> void`                   | Kopiert String                      |
+
+#### String-Konvertierung Builtins
+| Funktion          | Signatur               | Beschreibung                        |
+|-------------------|------------------------|-------------------------------------|
+| `int_to_str(x)`   | `int64 -> pchar`       | Konvertiert Integer zu String       |
+| `str_to_int(s)`   | `pchar -> int64`       | Konvertiert String zu Integer       |
+
+#### Math Builtins (22 Funktionen)
+| Funktion          | Signatur               | Beschreibung                        |
+|-------------------|------------------------|-------------------------------------|
+| `abs(x)`          | `int64 -> int64`       | Absoluter Wert                      |
+| `odd(x)`          | `int64 -> bool`        | Prüft ob ungerade                   |
+| `hi(x)`           | `int64 -> int64`       | Hohe 32 Bits                        |
+| `lo(x)`           | `int64 -> int64`       | Niedrige 32 Bits                    |
+| `swap(x)`         | `int64 -> int64`       | Vertauscht 32-Bit Words             |
+| `fabs(x)`         | `f64 -> f64`           | Absoluter Wert (Float)              |
+| `sqrt(x)`         | `f64 -> f64`           | Quadratwurzel                       |
+| `sqr(x)`          | `f64 -> f64`           | Quadrat (x²)                        |
+| `round(x)`        | `f64 -> int64`         | Rundet zur nächsten Ganzzahl       |
+| `trunc(x)`        | `f64 -> int64`         | Schneidet Nachkommastellen ab      |
+| `int_part(x)`     | `f64 -> int64`         | Alias für `trunc()`                 |
+| `frac(x)`         | `f64 -> f64`           | Nachkommateil                       |
+| `pi()`            | `void -> f64`          | π-Konstante                         |
+| `sin(x)`, `cos(x)`, `exp(x)`, `ln(x)`, `arctan(x)` | `f64 -> f64` | Transzendente Funktionen (Placeholder) |
 
 ### Externe Funktionen (v0.1.4+)
 
@@ -403,29 +465,82 @@ readelf -l extern_binary    # PT_INTERP, PT_DYNAMIC Headers
 readelf -d extern_binary    # NEEDED libraries, Symbol tables
 ```
 
-Standard-Units
+### Standard-Units
 
-Ein Satz von Standard-Units befindet sich im Verzeichnis `std/` und liefert ergonomische Bibliotheksfunktionen:
+Ein umfassendes Set von Standard-Units befindet sich im Verzeichnis `std/` und bietet ergonomische Bibliotheksfunktionen:
 
-- std/math.lyx – Integer-Hilfen (abs64, min64, max64, div64, mod64, times_two)
-- std/io.lyx   – I/O-Wrappers (print, println, print_intln, exit_proc)
-- std/env.lyx  – Environment-API (init, arg_count, arg)
+- **std/math.lyx** – Integer-Hilfen (`abs64`, `min64`, `max64`, `div64`, `mod64`, `times_two`)
+- **std/io.lyx** – I/O-Wrappers (`print`, `println`, `print_intln`, `exit_proc`)
+- **std/string.lyx** – Umfassende String-Library mit über 15 Funktionen
+- **std/env.lyx** – Environment-API (`init`, `arg_count`, `arg`)
+- **std/time.lyx** – Datums- und Zeit-Berechnungen 
+- **std/geo.lyx** – Geolocation-Parser für Decimal Degrees
 
-Import-Beispiel
+#### String-Library Beispiel
+
+```lyx
+import std.string;
+
+fn main(): int64 {
+  var text: pchar := "Hello World";
+  var len: int64 := str_length(text);           // Native Builtin
+  var first: int64 := str_char_at(text, 0);     // 'H' = 72
+  
+  // String-Manipulation
+  var lower: pchar := "buffer_space_here";
+  str_to_lower(lower, text);                    // "hello world"
+  
+  // String-Tests  
+  var starts: bool := str_starts_with(text, "Hello"); // true
+  var pos: int64 := str_find(text, "World");          // 6
+  
+  print_int(len);    // 11
+  print_str("\n");
+  return 0;
+}
+```
+
+#### Math-Builtins Beispiel
+
+```lyx
+fn main(): int64 {
+  var x: int64 := -42;
+  var y: f64 := 16.0;
+  
+  // Native Integer-Math (keine Imports nötig)
+  print_int(abs(x));         // 42
+  print_int(hi(x));          // Hohe 32 Bits
+  print_int(lo(x));          // Niedrige 32 Bits
+  
+  // Native Float-Math  
+  var root: f64 := sqrt(y);  // 4.0
+  var square: f64 := sqr(y); // 256.0
+  var rounded: int64 := round(root); // 4
+  
+  print_float(pi());         // 3.14159...
+  return 0;
+}
+```
+
+#### Import-Beispiel
 
 ```lyx
 import std.math;
 import std.io;
+import std.string;
 import std.env; // optional
 
 fn main(argc: int64, argv: pchar): int64 {
-  // Seit der aktuellen Version initialisiert der Compiler automatisch argc/argv,
-  // daher ist ein manuelles init nicht mehr zwingend, bleibt jedoch verfügbar.
-  // init(argc, argv);
-
+  // Automatische argc/argv-Initialisierung (kein manuelles init() nötig)
   print_intln(arg_count());
   print_str(arg(0));
   print_str("\n");
+  
+  // Kombinierte Verwendung verschiedener Libraries
+  var result: int64 := abs64(-123);
+  var str_result: pchar := int_to_str(result);
+  println(str_result);
+  
   return 0;
 }
 ```
@@ -476,10 +591,12 @@ fn main(): int64 {
 ### Reservierte Keywords
 
 ```
-fn  var  let  co  con  if  else  while  switch  case  break  default  return  true  false  extern  array
+fn  var  let  co  con  if  else  while  switch  case  break  default  return  true  false  extern  array  as  import  pub  unit
 ```
 
-`extern` wird für externe Funktionsdeklarationen verwendet (v0.1.4+).
+- `extern` wird für externe Funktionsdeklarationen verwendet
+- `as` wird für Type-Casting verwendet  
+- `import`, `pub`, `unit` werden für das Module-System verwendet
 
 ---
 
@@ -566,42 +683,86 @@ fn main(): int64 {
 }
 ```
 
-## Vollständiges Beispiel
+## Vollständige Beispiele
 
-Ein Programm, das alle Kernfeatures kombiniert:
+### FizzBuzz mit Math-Builtins
 
 ```lyx
-con MAX: int64 := 10;
-con FIZZ: pchar := "Fizz\n";
-con BUZZ: pchar := "Buzz\n";
-con FIZZBUZZ: pchar := "FizzBuzz\n";
+import std.string;
 
-fn is_divisible(n: int64, d: int64): bool {
-  var remainder: int64 := n % d;
-  if (remainder == 0)
-    return true;
-  return false;
-}
+con MAX: int64 := 15;
 
 fn main(): int64 {
   var i: int64 := 1;
   while (i <= MAX) {
-    if (is_divisible(i, 15)) {
-      print_str(FIZZBUZZ);
+    var div3: bool := (i % 3) == 0;
+    var div5: bool := (i % 5) == 0;
+    
+    if (div3 && div5) {
+      print_str("FizzBuzz\n");
     } else {
-      if (is_divisible(i, 3)) {
-        print_str(FIZZ);
+      if (div3) {
+        print_str("Fizz\n");
       } else {
-        if (is_divisible(i, 5)) {
-          print_str(BUZZ);
+        if (div5) {
+          print_str("Buzz\n");
         } else {
-          print_int(i);
+          // Native String-Konvertierung
+          var str: pchar := int_to_str(i);
+          print_str(str);
           print_str("\n");
         }
       }
     }
     i := i + 1;
   }
+  return 0;
+}
+```
+
+### String- und Math-Operations kombiniert
+
+```lyx
+import std.string;
+
+fn analyze_number(x: int64): void {
+  print_str("Analyzing: ");
+  print_int(x);
+  print_str("\n");
+  
+  // Native Math-Builtins
+  print_str("Absolute: ");
+  print_int(abs(x));
+  print_str("\n");
+  
+  if (odd(x)) {
+    print_str("Number is odd\n");
+  } else {
+    print_str("Number is even\n");  
+  }
+  
+  // String-Konvertierung und -Manipulation
+  var str_val: pchar := int_to_str(abs(x));
+  var len: int64 := str_length(str_val);
+  
+  print_str("String representation: '");
+  print_str(str_val);
+  print_str("' (length: ");
+  print_int(len);
+  print_str(")\n");
+  
+  // Float-Casting und Math
+  var float_val: f64 := (abs(x) as f64);
+  var sqrt_val: f64 := sqrt(float_val);
+  print_str("Square root: ");
+  print_float(sqrt_val);
+  print_str("\n\n");
+}
+
+fn main(): int64 {
+  analyze_number(-42);
+  analyze_number(16);
+  analyze_number(123);
   return 0;
 }
 ```
@@ -740,9 +901,10 @@ FloatLit    := [0-9]+ '.' [0-9]+ ;
 | **v0.0.2** | Integer-Ausdrücke, `print_int(expr)` |
 | **v0.1.2** | `var`, `let`, `co`, `con`, `if`, `while`, `return`, Funktionen, SysV ABI |
 | **v0.1.3** | ✅ Float-Literale (`f32`, `f64`), ✅ Arrays (Literale, Indexing, Zuweisung) |
-| **v0.1.4** | ✅ SO-Library Integration, ✅ Dynamic ELF, ✅ PLT/GOT, ✅ Extern Functions, ✅ Varargs |
+| **v0.1.4** | ✅ SO-Library Integration, ✅ Dynamic ELF, ✅ PLT/GOT, ✅ Extern Functions, ✅ Varargs, ✅ Module System |
+| **v0.1.5** | ✅ String-Library (20+ Funktionen), ✅ Math-Builtins (22 Funktionen), ✅ Type-Casting (`as`), ✅ String-Konvertierung |
 | **v0.2** | Erweiterte Funktionen, bessere Diagnostik |
-| **v1** | Module/Imports, Objectfiles, Linker-Ansteuerung |
+| **v1** | Objektdateien, Multi-Unit Linking, Package Manager |
 
 ---
 

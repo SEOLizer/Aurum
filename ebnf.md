@@ -31,7 +31,7 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 
 ### Keywords (reserviert)
 
-`fn var let co con if else while return true false extern unit import pub as array`
+`fn var let co con if else while switch case break default return true false extern unit import pub as array`
 
 ### Operatoren / Trennzeichen
 
@@ -278,8 +278,9 @@ AndExpr        := CmpExpr { '&&' CmpExpr } ;
 CmpExpr        := AddExpr [ ( '==' | '!=' | '<' | '<=' | '>' | '>=' ) AddExpr ] ;
 
 AddExpr        := MulExpr { ( '+' | '-' ) MulExpr } ;
-MulExpr        := UnaryExpr { ( '*' | '/' | '%' ) UnaryExpr } ;
+MulExpr        := CastExpr { ( '*' | '/' | '%' ) CastExpr } ;
 
+CastExpr       := UnaryExpr [ 'as' Type ] ;
 UnaryExpr      := ( '!' | '-' ) UnaryExpr | Primary ;
 
 Call           := Ident '(' [ ArgList ] ')' ;
@@ -298,21 +299,23 @@ ConstOrExpr    := ConstAndExpr { '||' ConstAndExpr } ;
 ConstAndExpr   := ConstCmpExpr { '&&' ConstCmpExpr } ;
 ConstCmpExpr   := ConstAddExpr [ ( '==' | '!=' | '<' | '<=' | '>' | '>=' ) ConstAddExpr ] ;
 ConstAddExpr   := ConstMulExpr { ( '+' | '-' ) ConstMulExpr } ;
-ConstMulExpr   := ConstUnaryExpr { ( '*' | '/' | '%' ) ConstUnaryExpr } ;
+ConstMulExpr   := ConstCastExpr { ( '*' | '/' | '%' ) ConstCastExpr } ;
+ConstCastExpr  := ConstUnaryExpr [ 'as' Type ] ;
 ConstUnaryExpr := ( '!' | '-' ) ConstUnaryExpr | ConstPrimary ;
 
-ConstPrimary   := IntLit | BoolLit | StringLit | CharLit | '(' ConstExpr ')' ;
+ConstPrimary   := IntLit | FloatLit | BoolLit | StringLit | CharLit | '(' ConstExpr ')' ;
 ```
 
 ---
 
-## 7) Semantikregeln (v0.1.3)
+## 7) Semantikregeln (v0.1.5)
 
 ### Namespaces / Scopes
 
-* Top-Level Scope: Funktionen + `con`
-* Funktionsscope: Parameter + lokale `var/let/co`
+* Top-Level Scope: Funktionen + `con` + Unit-Deklarationen
+* Funktionsscope: Parameter + lokale `var/let/co`  
 * Block erzeugt neuen Scope
+* Import-Scope: Importierte Symbole werden in qualifizierten Namespace aufgelöst
 
 ### Zuweisungsregeln
 
@@ -322,13 +325,29 @@ ConstPrimary   := IntLit | BoolLit | StringLit | CharLit | '(' ConstExpr ')' ;
 
 ### Return-Regeln
 
-* Funktion mit Rückgabetyp `int64/bool/pchar` muss auf allen Pfaden `return <expr>;` liefern (v0.1.3: einfache syntaktische Prüfung reicht erstmal)
+* Funktion mit Rückgabetyp `int64/bool/pchar/f64` muss auf allen Pfaden `return <expr>;` liefern
 * Funktion mit `void` erlaubt `return;` oder gar keinen return (dann implizit `return;`)
+
+### Type-Casting Regeln
+
+* `as`-Casting ist explizit und erlaubt folgende Konvertierungen:
+  * `int64 as f64`: Integer zu Float (SSE2 cvtsi2sd)
+  * `f64 as int64`: Float zu Integer mit Truncation (SSE2 cvttsd2si)
+  * Identity Casts: `int64 as int64`, `f64 as f64` (No-Op)
+* Cast-Kompatibilität wird zur Compile-Zeit geprüft
+* Ungültige Casts erzeugen Compile-Fehler
 
 ### Bool-Regeln
 
 * `if`/`while` verlangen `bool`
 * `&&`/`||` short-circuit (Codegen muss Sprünge setzen)
+
+### Builtin-Funktionen Regeln
+
+* Über 30 Builtin-Funktionen sind ohne Import verfügbar
+* Builtins werden nicht als externe Symbole behandelt (statische ELF-Generation)
+* String-Builtins arbeiten mit null-terminierten pchar
+* Math-Builtins nutzen native x86-64 Instruktionen für maximale Performance
 
 ---
 
@@ -367,7 +386,7 @@ fn main(): int64 {
 }
 ```
 
-### Variablen + while
+### Variablen + while + Type-Casting
 
 ```lyx
 con LIMIT: int64 := 5;
@@ -377,9 +396,38 @@ fn main(): int64 {
   while (i < LIMIT) {
     print_int(i);
     print_str("\n");
+    
+    // Type-Casting Beispiel
+    var f: f64 := i as f64;
+    var sqrt_val: f64 := sqrt(f);
+    var back_to_int: int64 := sqrt_val as int64;
+    
+    // String-Konvertierung
+    var str_val: pchar := int_to_str(i);
+    print_str("String: ");
+    print_str(str_val);
+    print_str("\n");
+    
     i := i + 1;
   }
   return 0;
+}
+```
+
+### Module-System Beispiel
+
+```lyx
+unit math.utils;
+
+import std.string;
+
+pub fn factorial(n: int64): int64 {
+  if (n <= 1) { return 1; }
+  return n * factorial(n - 1);
+}
+
+pub fn format_number(x: int64): pchar {
+  return int_to_str(abs(x));
 }
 ```
 
