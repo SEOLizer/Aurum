@@ -2,19 +2,19 @@
 // Kleine mathematische Hilfsfunktionen (public API)
 
 pub fn abs64(x: int64): int64 {
-  if x < 0 {
+  if (x < 0) {
     return -x;
   }
   return x;
 }
 
 pub fn min64(a: int64, b: int64): int64 {
-  if a < b { return a; }
+  if (a < b) { return a; }
   return b;
 }
 
 pub fn max64(a: int64, b: int64): int64 {
-  if a > b { return a; }
+  if (a > b) { return a; }
   return b;
 }
 

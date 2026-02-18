@@ -506,17 +506,11 @@ begin
 
   if Check(tkIf) then
   begin
-    // Flexible if syntax: "if (condition)" or "if condition"
+    // if (Expr) Stmt [else Stmt] - REQUIRES parentheses for now
     Advance; // if
-    if Accept(tkLParen) then
-    begin
-      cond := ParseExpr;
-      Expect(tkRParen);
-    end
-    else
-    begin
-      cond := ParseExpr;
-    end;
+    Expect(tkLParen);
+    cond := ParseExpr;
+    Expect(tkRParen);
     thenStmt := Self.ParseStmt;
     elseStmt := nil;
     if Accept(tkElse) then

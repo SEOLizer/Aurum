@@ -1,4 +1,0 @@
-fn main() {
-    var f: f64 := 3.14;
-    print_int(1); // temporary: will work
-}

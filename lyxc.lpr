@@ -115,10 +115,10 @@ begin
           Halt(1);
         end;
 
-        // Phase 3: Semantische Analyse
+        // Phase 3: Semantische Analyse (mit Unit-Integration)
         s := TSema.Create(d);
         try
-          s.Analyze(prog);
+          s.AnalyzeWithUnits(prog, um);
           if d.HasErrors then
           begin
             d.PrintAll;

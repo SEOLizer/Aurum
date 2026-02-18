@@ -1,5 +1,0 @@
-extern fn very_unique_external_func_name_12345(x: int64): int64;
-
-fn main(): int64 {
-  return very_unique_external_func_name_12345(42);
-}

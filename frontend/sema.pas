@@ -4,7 +4,7 @@ unit sema;
 interface
 
 uses
-  SysUtils, Classes, ast, diag, lexer;
+  SysUtils, Classes, ast, diag, lexer, unit_manager;
 
 type
   TSymbolKind = (symVar, symLet, symCon, symFunc);
@@ -37,6 +37,7 @@ type
     function ResolveSymbol(const name: string): TSymbol;
     function ResolveTypeDecl(const name: string): TAstTypeDecl;
     procedure DeclareBuiltinFunctions;
+    procedure CollectImportedSymbols(um: TUnitManager);
     function TypeEqual(a, b: TLyxType): Boolean;
     function CheckExpr(expr: TAstExpr): TLyxType;
     procedure CheckStmt(stmt: TAstStmt);
@@ -44,6 +45,7 @@ type
     constructor Create(d: TDiagnostics);
     destructor Destroy; override;
     procedure Analyze(prog: TAstProgram);
+    procedure AnalyzeWithUnits(prog: TAstProgram; um: TUnitManager);
   end;
 
 implementation
@@ -920,6 +922,64 @@ begin
        PopScope;
      end;
    end;
+end;
+
+{ Analyze program with imported units }
+procedure TSema.AnalyzeWithUnits(prog: TAstProgram; um: TUnitManager);
+begin
+  // First collect all public symbols from imported units
+  CollectImportedSymbols(um);
+  // Then analyze normally
+  Analyze(prog);
+end;
+
+{ Collect public functions from all loaded units }
+procedure TSema.CollectImportedSymbols(um: TUnitManager);
+var
+  loadedUnit: TLoadedUnit;
+  i, j, k: Integer;
+  decl: TAstNode;
+  fn: TAstFuncDecl;
+  sym: TSymbol;
+begin
+  // Iterate through all loaded units
+  for i := 0 to um.Units.Count - 1 do
+  begin
+    loadedUnit := TLoadedUnit(um.Units.Objects[i]);
+    if loadedUnit.AST = nil then Continue;
+    
+    // Check each declaration in the unit
+    for j := 0 to High(loadedUnit.AST.Decls) do
+    begin
+      decl := loadedUnit.AST.Decls[j];
+      
+      // Only process public function declarations
+      if (decl is TAstFuncDecl) then
+      begin
+        fn := TAstFuncDecl(decl);
+        if fn.IsPublic then
+        begin
+          // Check for duplicates (could be already imported)
+          if ResolveSymbol(fn.Name) <> nil then
+            Continue; // Skip duplicates
+          
+          // Create symbol for imported function
+          sym := TSymbol.Create(fn.Name);
+          sym.Kind := symFunc;
+          sym.DeclType := fn.ReturnType;
+          sym.ParamCount := Length(fn.Params);
+          SetLength(sym.ParamTypes, sym.ParamCount);
+          for k := 0 to sym.ParamCount - 1 do
+            sym.ParamTypes[k] := fn.Params[k].ParamType;
+          sym.IsExtern := fn.IsExtern;
+          sym.HasVarArgs := fn.IsVarArgs;
+          sym.CallingConv := fn.CallingConv;
+          
+          AddSymbolToCurrent(sym, fn.Span);
+        end;
+      end;
+    end;
+  end;
 end;
 
 end.

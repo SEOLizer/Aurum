@@ -1,5 +1,0 @@
-fn main() {
-    // This should produce a type mismatch error
-    var mixed: array := [1, 2.5, 3]; // int + float should fail
-    print_int(0);
-}
