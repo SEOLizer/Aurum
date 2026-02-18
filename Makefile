@@ -47,6 +47,15 @@ e2e: build
 	@echo "=== E2E: print_int.au ==="
 	@./lyxc examples/print_int.lyx -o /tmp/print_int || exit 1
 	@/tmp/print_int || exit 1
+	@echo "=== E2E: crt ANSI demo ==="
+	@./lyxc examples/test_crt_ansi.lyx -o /tmp/test_crt_ansi || exit 1
+	@/tmp/test_crt_ansi || exit 1
+	@echo "=== E2E: crt Raw demo (optional) ==="
+	@if [ -n "$$CRT_RAW" ]; then \
+		echo "=== E2E: crt raw demo ==="; \
+		./lyxc examples/test_crt_raw.lyx -o /tmp/test_crt_raw || exit 1; \
+		/tmp/test_crt_raw || exit 1; \
+	fi
 	@echo "=== E2E passed ==="
 
 clean:

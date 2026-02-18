@@ -12,6 +12,9 @@
 
 pub type crt_color = (black, blue, green, cyan, red, magenta, brown, light_gray, dark_gray, light_blue, light_green, light_cyan, light_red, light_magenta, yellow, white)
 
+// Low-level read syscall (optional dynamic linking if used)
+extern fn read(fd: int64, buf: pchar, count: int64): int64;
+
 // Interne Hilfsfunktion: Gibt ANSI-Code als String-Literal für die Vordergrundfarbe zurück.
 // Hinweis: Escape-Sequenzen nutzen "\x1b" als ESC. Terminal muss ANSI/VT100-kompatibel sein.
 
@@ -120,14 +123,15 @@ pub proc write_str_at(col: int64, row: int64, s: pchar): void {
 }
 
 // Blocking read (kanonisch). Liefert ASCII-Code oder -1 bei EOF.
+// Implementierung mittels libc read(fd, buf, 1). Hinweis: Verwendung von extern read
+// macht das Binary dynamisch (libc dependency). Dies ist ein bewusstes Trade-off, um
+// ein einfaches blocking getchar()-ähnliches Verhalten ohne Raw-Mode zu bieten.
 pub func read_char(): int64 {
-  var buf: pchar := " ";
-  // Einfacher Ansatz: read one char via built-in externs nicht verfügbar.
-  // Verwende simplified pattern: call getchar via extern nicht in Baseline.
-  // Stattdessen: read line mit read? Da Baseline keine high-level IO, wir bieten Platzhalter.
-  // Implementierung: Benutzer kann std/crt_raw für raw input nutzen.
-  // Hier: dokumentiertes Verhalten - blockierender Platzhalter, gibt -1 zurück (nicht implementiert)
-  return -1;
+  var buf: pchar := "\0";
+  var r: int64 := read(0, buf, 1);
+  if (r <= 0) { return -1; }
+  // buf[0] ist das gelesene Byte (ASCII/UTF-8 first byte)
+  return buf[0];
 }
 
 // Dokumentation

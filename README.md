@@ -473,8 +473,9 @@ Ein umfassendes Set von Standard-Units befindet sich im Verzeichnis `std/` und b
 - **std/io.lyx** – I/O-Wrappers (`print`, `println`, `print_intln`, `exit_proc`)
 - **std/string.lyx** – Umfassende String-Library mit über 15 Funktionen
 - **std/env.lyx** – Environment-API (`init`, `arg_count`, `arg`)
-- **std/time.lyx** – Datums- und Zeit-Berechnungen 
+- **std/time.lyx** – Datums- und Zeit-Berechnungen (numerische Berechnungen)
 - **std/geo.lyx** – Geolocation-Parser für Decimal Degrees
+- **std/crt.lyx** – ANSI Console Utilities (Farben, Cursor, clrscr). Siehe `examples/test_crt_ansi.lyx` für eine Demo.
 
 #### String-Library Beispiel
 
@@ -547,7 +548,7 @@ fn main(argc: int64, argv: pchar): int64 {
 
 CI / Integrationstests
 
-- Die GitHub Actions CI baut den Compiler, führt Unit-Tests und zusätzlich kompiliert und führt die Beispielprogramme in `examples/` aus, um die Laufzeitintegration zu prüfen.
+- Die GitHub Actions CI baut den Compiler, führt Unit-Tests und zusätzlich kompiliert und führt die Beispielprogramme in `examples/` (inkl. `examples/test_crt_ansi.lyx`) aus, um die Laufzeitintegration zu prüfen. Das `make e2e`-Target kompiliert und führt `hello.lyx`, `print_int.lyx` und `test_crt_ansi.lyx`; optionales `test_crt_raw.lyx` wird nur ausgeführt, wenn die CI-Variable `CRT_RAW` gesetzt ist.
 
 
 ```lyx
