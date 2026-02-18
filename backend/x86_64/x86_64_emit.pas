@@ -28,9 +28,11 @@ type
     FLabelPositions: array of TLabelPos;
     FJumpPatches: array of TJumpPatch;
     FExternalSymbols: array of TExternalSymbol;
+    FPLTStubs: array of TLabelPos; // PLT stub positions for external symbols
     
     procedure AddExternalSymbol(const name, libName: string);
     function IsExternalSymbol(const name: string): Boolean;
+    procedure GeneratePLTStubs;
   public
     constructor Create;
     destructor Destroy; override;
@@ -2219,7 +2221,7 @@ begin
   // patch jumps to labels
   for i := 0 to High(FJumpPatches) do
   begin
-    // find target label position
+    // find target label position (check both normal labels and PLT stubs)
     targetPos := -1;
     for j := 0 to High(FLabelPositions) do
     begin
@@ -2227,6 +2229,19 @@ begin
       begin
         targetPos := FLabelPositions[j].Pos;
         Break;
+      end;
+    end;
+    
+    // If not found in normal labels, check PLT stubs
+    if targetPos < 0 then
+    begin
+      for j := 0 to High(FPLTStubs) do
+      begin
+        if FPLTStubs[j].Name = FJumpPatches[i].LabelName then
+        begin
+          targetPos := FPLTStubs[j].Pos;
+          Break;
+        end;
       end;
     end;
     if targetPos >= 0 then
@@ -2238,10 +2253,13 @@ begin
         FCode.PatchU32LE(jmpPos + 1, Cardinal(rel32)) // jmp rel32: opcode at pos, rel32 at pos+1
       else
         FCode.PatchU32LE(jmpPos + 2, Cardinal(rel32)); // jcc rel32: opcode 0F xx at pos, rel32 at pos+2
-    end;
-  end;
+     end;
+   end;
+   
+   // Generate PLT stubs for external symbols at the end of code
+   GeneratePLTStubs;
 
-  // debug dump removed in release
+   // debug dump removed in release
 end;
 
 function TX86_64Emitter.GetFunctionOffset(const name: string): Integer;
@@ -2305,6 +2323,48 @@ end;
 function TX86_64Emitter.GetExternalSymbols: TExternalSymbolArray;
 begin
   Result := Copy(FExternalSymbols, 0, Length(FExternalSymbols));
+end;
+
+procedure TX86_64Emitter.GeneratePLTStubs;
+var
+  i: Integer;
+  pltStub: TLabelPos;
+  stubName: string;
+begin
+  // Generate PLT stubs for each external symbol
+  // PLT stub pattern (simplified):
+  // symbolName@plt:
+  //   jmp qword [symbolName@got]  ; ff 25 xx xx xx xx
+  //   nop                         ; 90
+  
+  for i := 0 to High(FExternalSymbols) do
+  begin
+    stubName := FExternalSymbols[i].Name + '@plt';
+    
+    // Record PLT stub position
+    pltStub.Name := stubName;
+    pltStub.Pos := FCode.Size;
+    SetLength(FPLTStubs, Length(FPLTStubs) + 1);
+    FPLTStubs[High(FPLTStubs)] := pltStub;
+    
+    // Generate minimal PLT stub: jmp [got_entry]
+    // For now, this will be a placeholder that causes a crash
+    // TODO: Implement proper GOT lookup
+    EmitU8(FCode, $FF); EmitU8(FCode, $25); // jmp qword [rip+disp32]
+    EmitU32(FCode, 0);  // placeholder for GOT offset (will be patched by ELF writer)
+    EmitU8(FCode, $90); // nop for alignment
+    EmitU8(FCode, $90); // nop
+  end;
+  
+  // Update jump patches to use PLT stubs instead of direct calls
+  for i := 0 to High(FJumpPatches) do
+  begin
+    if IsExternalSymbol(FJumpPatches[i].LabelName) then
+    begin
+      // Redirect external call to PLT stub
+      FJumpPatches[i].LabelName := FJumpPatches[i].LabelName + '@plt';
+    end;
+  end;
 end;
 
 end.

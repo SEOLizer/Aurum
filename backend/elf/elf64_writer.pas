@@ -17,7 +17,7 @@ implementation
 procedure BuildDynamicElfHeader(elfHeader: TByteBuffer; entryVA: UInt64; phnum: Integer); forward;
 procedure BuildProgramHeaders(phdrs: TByteBuffer; codeOffset, codeSize, 
   dataOffset, dataSize, dynstrOffset: UInt64; const interpPath: string; 
-  dynamicOffset: UInt64); forward;
+  dynamicOffset, dynamicSize: UInt64); forward;
 procedure BuildDynstrSection(dynstrBuf: TByteBuffer; symNames, libNames: TStringList); forward;
 procedure BuildDynsymSection(dynsymBuf: TByteBuffer; symNames: TStringList); forward;
 procedure BuildDynamicSection(dynamicBuf: TByteBuffer; libNames: TStringList; 
@@ -168,34 +168,36 @@ begin
     symCount := Length(externSymbols);
     libCount := libNames.Count;
     
-    // Calculate section offsets (simplified layout for now)
-    codeOffset := pageSize; // 0x1000
-    dataOffset := codeOffset + AlignUp(codeSize, pageSize);
-    
-    // Dynamic sections (will be refined)
-    dynstrOffset := dataOffset + AlignUp(dataSize, 8);
-    dynsymOffset := dynstrOffset + AlignUp(256, 8); // rough estimate  
-    dynamicOffset := dynsymOffset + AlignUp((symCount + 1) * 24, 8);
-    
-    // Create buffers
-    elfHeader := TByteBuffer.Create;
-    phdrs := TByteBuffer.Create;
+    // Build sections first to calculate accurate sizes
     dynstrBuf := TByteBuffer.Create;
     dynsymBuf := TByteBuffer.Create; 
     dynamicBuf := TByteBuffer.Create;
     
     try
-      // Build ELF header for dynamic executable
-      BuildDynamicElfHeader(elfHeader, entryVA, 3); // 3 program headers for now
-      
-      // Build program headers
-      BuildProgramHeaders(phdrs, codeOffset, codeSize, dataOffset, dataSize, 
-                         dynstrOffset, interpPath, dynamicOffset);
-      
-      // Build dynamic sections (minimal implementation)
+      // Build dynamic sections to get their actual sizes
       BuildDynstrSection(dynstrBuf, symNames, libNames);
       BuildDynsymSection(dynsymBuf, symNames);
-      BuildDynamicSection(dynamicBuf, libNames, dynstrOffset, dynsymOffset);
+      BuildDynamicSection(dynamicBuf, libNames, 0, 0); // offsets will be patched later
+      
+      // Calculate accurate layout with proper alignment
+      codeOffset := AlignUp(64 + 3*56 + interpSize, pageSize); // Headers + interp, page aligned
+      dataOffset := codeOffset + AlignUp(codeSize, pageSize);
+      dynstrOffset := dataOffset + AlignUp(dataSize, 8);
+      dynsymOffset := dynstrOffset + AlignUp(dynstrBuf.Size, 8);
+      dynamicOffset := dynsymOffset + AlignUp(dynsymBuf.Size, 8);
+    
+      // Now create other buffers with correct offsets
+      elfHeader := TByteBuffer.Create;
+      phdrs := TByteBuffer.Create;
+      
+      // Rebuild dynamic section with correct virtual addresses
+      dynamicBuf.Clear;
+      BuildDynamicSection(dynamicBuf, libNames, baseVA + dynstrOffset, baseVA + dynsymOffset);
+      
+      // Build ELF header and program headers with correct info
+      BuildDynamicElfHeader(elfHeader, entryVA, 3);
+      BuildProgramHeaders(phdrs, codeOffset, codeSize, dataOffset, dataSize, 
+                         dynstrOffset, interpPath, dynamicOffset, dynamicBuf.Size);
       
       // Write ELF file
       fileBuf := TFileStream.Create(filename, fmCreate);
@@ -204,8 +206,8 @@ begin
         fileBuf.WriteBuffer(elfHeader.GetBuffer^, elfHeader.Size);
         fileBuf.WriteBuffer(phdrs.GetBuffer^, phdrs.Size);
         
-        // Write interpreter path
-        while fileBuf.Position < interpSize + 64 + phdrs.Size do 
+        // Write interpreter path at correct offset (0xe8 as seen in readelf)
+        while fileBuf.Position < Int64(64 + phdrs.Size) do 
           fileBuf.WriteByte(0);
         fileBuf.WriteBuffer(PChar(interpPath)^, Length(interpPath));
         fileBuf.WriteByte(0);
@@ -282,7 +284,7 @@ end;
 
 procedure BuildProgramHeaders(phdrs: TByteBuffer; codeOffset, codeSize, 
   dataOffset, dataSize, dynstrOffset: UInt64; const interpPath: string; 
-  dynamicOffset: UInt64);
+  dynamicOffset, dynamicSize: UInt64);
 const
   baseVA: UInt64 = $400000;
   pageSize: UInt64 = 4096;
@@ -313,8 +315,8 @@ begin
   phdrs.WriteU64LE(dynamicOffset);
   phdrs.WriteU64LE(baseVA + dynamicOffset);
   phdrs.WriteU64LE(baseVA + dynamicOffset);
-  phdrs.WriteU64LE(128); // rough estimate
-  phdrs.WriteU64LE(128);
+  phdrs.WriteU64LE(dynamicSize); // actual size
+  phdrs.WriteU64LE(dynamicSize);
   phdrs.WriteU64LE(8); // align
 end;
 
