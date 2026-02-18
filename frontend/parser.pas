@@ -506,11 +506,17 @@ begin
 
   if Check(tkIf) then
   begin
-    // if (Expr) Stmt [else Stmt]
+    // Flexible if syntax: "if (condition)" or "if condition"
     Advance; // if
-    Expect(tkLParen);
-    cond := ParseExpr;
-    Expect(tkRParen);
+    if Accept(tkLParen) then
+    begin
+      cond := ParseExpr;
+      Expect(tkRParen);
+    end
+    else
+    begin
+      cond := ParseExpr;
+    end;
     thenStmt := Self.ParseStmt;
     elseStmt := nil;
     if Accept(tkElse) then
@@ -521,9 +527,16 @@ begin
   if Check(tkWhile) then
   begin
     Advance;
-    Expect(tkLParen);
-    cond := ParseExpr;
-    Expect(tkRParen);
+    // Flexible while syntax: "while (condition)" or "while condition"
+    if Accept(tkLParen) then
+    begin
+      cond := ParseExpr;
+      Expect(tkRParen);
+    end
+    else
+    begin
+      cond := ParseExpr;
+    end;
     bodyStmt := Self.ParseStmt;
     Exit(TAstWhile.Create(cond, bodyStmt, cond.Span));
   end;
@@ -821,6 +834,7 @@ var
   span: TSourceSpan;
   value: Int64;
 begin
+  // Simple, non-recursive approach for debugging
   if Check(tkMinus) then
   begin
     span := FCurTok.Span;
@@ -840,7 +854,8 @@ begin
       Advance;
       Exit;
     end;
-    operand := ParseUnaryExpr;
+    // For variables and other expressions, use ParsePrimary directly
+    operand := ParsePrimary;
     Result := TAstUnaryOp.Create(tkMinus, operand, span);
     Exit;
   end;
@@ -849,7 +864,8 @@ begin
   begin
     op := FCurTok.Kind;
     Advance;
-    operand := ParseUnaryExpr;
+    // For variables and other expressions, use ParsePrimary directly
+    operand := ParsePrimary;
     Result := TAstUnaryOp.Create(op, operand, operand.Span);
     Exit;
   end;
