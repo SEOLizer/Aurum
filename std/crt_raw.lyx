@@ -1,0 +1,61 @@
+// std/crt_raw.lyx
+// Optionale Raw-Mode-Erweiterungen für std/crt
+// - Bietet non-blocking read, getch/key_pressed, set_raw_mode
+// - Implementiert über externe libc/termios-Funktionen
+// - Verwendung dieser Unit erzeugt dynamische ELF (libc benötigt)
+// - Explizit experimentell: Dokumentiere Abhängigkeit und setze pub für API
+
+// Wichtig: Layout der termios-Struct ist plattformabhängig. Diese Unit stellt einfache
+// Wrapper bereit, die ein termios-Byte-Array (pchar, Länge abhängig) an die externen
+// Funktionen übergeben. Vollständige、plattformkorrekte Implementierung kann C-Wrapper
+// erfordern. Use with caution.
+
+// Externe Funktionen (libc) — werden dynamisch gelinkt
+extern fn tcgetattr(fd: int64, termios_p: pchar): int64;
+extern fn tcsetattr(fd: int64, optional_actions: int64, termios_p: pchar): int64;
+extern fn select(nfds: int64, readfds: pchar, writefds: pchar, exceptfds: pchar, timeout: pchar): int64;
+extern fn read(fd: int64, buf: pchar, count: int64): int64;
+extern fn ioctl(fd: int64, request: int64, argp: pchar): int64;
+
+// Simple constants (POSIX typical)
+const TCSANOW: int64 := 0; // apply changes immediately
+
+// API
+pub proc set_raw_mode(enabled: bool): int64 {
+  // Experimentelle Implementierung:
+  // - Erstellt ein termios-Puffer (platform-dependent) und ruft tcgetattr/tcsetattr
+  // - In Lyx können wir kein komplexes Struct-Layout bequem definieren, also
+  //   erwarten wir, dass Benutzer höhere Level-C-Wrappers bereitstellen falls nötig.
+  // Rückgabewert: 0 = OK, -1 = Fehler
+  return -1; // placeholder: erfordert platform-spezifische Implementierung
+}
+
+pub func key_pressed(): bool {
+  // Prüft, ob Daten auf stdin (fd=0) bereitstehen mittels select mit timeout=0
+  // Platzhalter: Da wir hier keine FD-Set-Helper haben, liefern wir false.
+  return false;
+}
+
+pub func read_key_raw(): int64 {
+  // Liest ein Byte aus stdin im Raw-Mode (roher Keycode). Liefert -1 bei Fehler oder EOF.
+  // Diese Funktion erwartet, dass set_raw_mode(true) zuvor aufgerufen wurde.
+  var buf: pchar := "\0";
+  var r: int64 := read(0, buf, 1);
+  if (r <= 0) { return -1; }
+  return buf[0];
+}
+
+// Hinweise & Risiken
+// - Diese Unit ist experimentell: termios-Strukturen sind nicht portabel ohne genaue
+//   Layoutdefinitionen. In der Praxis empfiehlt sich ein geringer C-Wrapper und ein extern
+//   symbol, das die Raw-Konfiguration übernimmt.
+// - Nutzung dieser Unit führt zu dynamischen ELFs (libc wird benötigt). Dokumentiere das
+//   deutlich in README und Beispiele/Tests.
+
+// Beispiel (pseudocode):
+// import std.crt_raw;
+// set_raw_mode(true);
+// while (!key_pressed()) { /* non-blocking loop */ }
+// var k := read_key_raw();
+// set_raw_mode(false);
+

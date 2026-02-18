@@ -1,0 +1,140 @@
+// std/crt.lyx
+// ANSI-basierte Turbo-Pascal-ähnliche CRT-Unit (Baseline)
+// - Pure Lyx-Implementierung
+// - Nutzt ANSI-ESC-Sequenzen für Farben und Cursor-Operationen
+// - Keine externen Abhängigkeiten → statische ELFs möglich
+// - Erweiterte Raw-/termios-Funktionalität ist in std/crt_raw.lyx (optional)
+
+// API-Design (pub):
+// - Farben: text_color, text_background, text_attr
+// - Bildschirm / Cursor: clrscr, clreol, gotoxy, hide_cursor, show_cursor
+// - I/O: write_str_at, read_char (blocking canonical)
+
+pub type crt_color = (black, blue, green, cyan, red, magenta, brown, light_gray, dark_gray, light_blue, light_green, light_cyan, light_red, light_magenta, yellow, white)
+
+// Interne Hilfsfunktion: Gibt ANSI-Code als String-Literal für die Vordergrundfarbe zurück.
+// Hinweis: Escape-Sequenzen nutzen "\x1b" als ESC. Terminal muss ANSI/VT100-kompatibel sein.
+
+pub proc fg_sequence(c: crt_color): pchar {
+  switch (c) {
+    case black: return "\x1b[30m";
+    case red: return "\x1b[31m";
+    case green: return "\x1b[32m";
+    case brown: return "\x1b[33m"; // gelb/braun
+    case blue: return "\x1b[34m";
+    case magenta: return "\x1b[35m";
+    case cyan: return "\x1b[36m";
+    case light_gray: return "\x1b[37m";
+    case dark_gray: return "\x1b[90m";
+    case light_red: return "\x1b[91m";
+    case light_green: return "\x1b[92m";
+    case yellow: return "\x1b[93m";
+    case light_blue: return "\x1b[94m";
+    case light_magenta: return "\x1b[95m";
+    case light_cyan: return "\x1b[96m";
+    case white: return "\x1b[97m";
+    default: return "\x1b[39m"; // default foreground
+  }
+}
+
+pub proc bg_sequence(c: crt_color): pchar {
+  switch (c) {
+    case black: return "\x1b[40m";
+    case red: return "\x1b[41m";
+    case green: return "\x1b[42m";
+    case brown: return "\x1b[43m";
+    case blue: return "\x1b[44m";
+    case magenta: return "\x1b[45m";
+    case cyan: return "\x1b[46m";
+    case light_gray: return "\x1b[47m";
+    case dark_gray: return "\x1b[100m";
+    case light_red: return "\x1b[101m";
+    case light_green: return "\x1b[102m";
+    case yellow: return "\x1b[103m";
+    case light_blue: return "\x1b[104m";
+    case light_magenta: return "\x1b[105m";
+    case light_cyan: return "\x1b[106m";
+    case white: return "\x1b[107m";
+    default: return "\x1b[49m"; // default background
+  }
+}
+
+// Setzt nur Vordergrundfarbe
+pub proc text_color(c: crt_color): void {
+  print_str(fg_sequence(c));
+}
+
+// Setzt nur Hintergrundfarbe
+pub proc text_background(c: crt_color): void {
+  print_str(bg_sequence(c));
+}
+
+// Setzt Vorder- und Hintergrund zusammen
+pub proc text_attr(fg: crt_color, bg: crt_color): void {
+  print_str(fg_sequence(fg));
+  print_str(bg_sequence(bg));
+}
+
+// Reset aller Attribute
+pub proc reset_attr(): void {
+  print_str("\x1b[0m");
+}
+
+// Bildschirm und Cursor
+pub proc clrscr(): void {
+  // ESC[2J = clear screen; ESC[H = cursor home
+  print_str("\x1b[2J");
+  print_str("\x1b[H");
+}
+
+pub proc clreol(): void {
+  // ESC[K clears from cursor to end of line
+  print_str("\x1b[K");
+}
+
+// gotoxy: col (1-based), row (1-based)
+pub proc gotoxy(col: int64, row: int64): void {
+  // ESC[row;colH
+  // Wir bauen eine kleine Formatierung: "\x1b[%d;%dH"
+  // Da printf/format nicht im Baseline garantiert ist, verwenden wir einfachen Ansatz mit Int->String
+  var buf1: pchar := "\x1b[";
+  print_str(buf1);
+  print_int(row);
+  print_str(";");
+  print_int(col);
+  print_str("H");
+}
+
+pub proc hide_cursor(): void {
+  print_str("\x1b[?25l");
+}
+
+pub proc show_cursor(): void {
+  print_str("\x1b[?25h");
+}
+
+// Schreibfunktionen
+pub proc write_str_at(col: int64, row: int64, s: pchar): void {
+  gotoxy(col, row);
+  print_str(s);
+}
+
+// Blocking read (kanonisch). Liefert ASCII-Code oder -1 bei EOF.
+pub func read_char(): int64 {
+  var buf: pchar := " ";
+  // Einfacher Ansatz: read one char via built-in externs nicht verfügbar.
+  // Verwende simplified pattern: call getchar via extern nicht in Baseline.
+  // Stattdessen: read line mit read? Da Baseline keine high-level IO, wir bieten Platzhalter.
+  // Implementierung: Benutzer kann std/crt_raw für raw input nutzen.
+  // Hier: dokumentiertes Verhalten - blockierender Platzhalter, gibt -1 zurück (nicht implementiert)
+  return -1;
+}
+
+// Dokumentation
+// - Diese Unit bietet ANSI-basierte Terminalsteuerung. Terminals benötigen ANSI/VT100-Kompatibilität.
+// - Für echtes Nicht-Blocking-Input oder Keycodes siehe std/crt_raw.lyx (benötigt termios/ioctl externs).
+// - Funktionen sind bewusst minimal gehalten und kompatibel mit statischen ELFs.
+
+// Export-Beispiele (in README oder examples):
+// import std.crt;
+// text_color(red); text_background(black); gotoxy(10,5); print_str("Hello world"); reset_attr();
