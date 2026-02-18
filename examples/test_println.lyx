@@ -18,8 +18,10 @@ fn main(): int64 {
   println(true);
   println(false);
 
-  // printf (extern) - erwartet libc printf verfügbar bei dynamischem ELF
-  printf("Formatted: %s = %d, pi=%.2f\n", "answer", 42, 3.1415);
+  // printf (pure-Lyx) - %s, %d, %f, %% supported (up to 4 placeholders)
+  var s_num: pchar := int_to_str(42);
+  var s_pi: pchar := float_to_str(3.1415 as f64, 6);
+  printf("Formatted: %s = %s, pi=%s\n", "answer", s_num, s_pi);
 
   return 0;
 }

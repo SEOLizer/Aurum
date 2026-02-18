@@ -50,6 +50,9 @@ e2e: build
 	@echo "=== E2E: crt ANSI demo ==="
 	@./lyxc examples/test_crt_ansi.lyx -o /tmp/test_crt_ansi || exit 1
 	@/tmp/test_crt_ansi || exit 1
+	@echo "=== E2E: println/printf demo ==="
+	@./lyxc examples/test_println.lyx -o /tmp/test_println || exit 1
+	@/tmp/test_println || exit 1
 	@echo "=== E2E: crt Raw demo (optional) ==="
 	@if [ -n "$$CRT_RAW" ]; then \
 		echo "=== E2E: crt raw demo ==="; \

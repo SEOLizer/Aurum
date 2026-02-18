@@ -20,8 +20,25 @@ Dieses Verzeichnis enthält standardisierte Units, die als umfassende Bibliothek
 **I/O-Convenience-Funktionen:**
 - `print(s: pchar): void` - Wrapper für `print_str`
 - `println(s: pchar): void` - Print mit automatischem Newline
+- `println(x: int64 | f64 | bool): void` - Überladene Varianten für Zahlen/Booleans
 - `print_intln(x: int64): void` - Print Integer mit Newline  
 - `exit_proc(code: int64): void` - Wrapper für `exit`
+
+**printf (pure-Lyx)**
+- `printf(fmt: pchar, ...)` ist eine reine-Lyx-Implementierung, die ohne libc auskommt.
+- Unterstützte Platzhalter: `%s` (pchar), `%d` (int64), `%f` (f64), `%%` → literal `%`.
+- Maximal unterstützte Platzhalter pro Aufruf: 4
+- Standard-Precision für `%f`: 6 Dezimalstellen.
+- Automatische Konvertierung: Wrapper für gängige Kombinationen konvertieren `int64` und `f64` automatisch zu `pchar`.
+- Fehlende Argumente werden als leerer String ersetzt.
+
+Beispiel:
+
+```lyx
+var s_num: pchar := int_to_str(42);
+var s_pi: pchar := float_to_str(3.1415 as f64, 6);
+printf("Formatted: %s = %s, pi=%s\n", "answer", s_num, s_pi);
+```
 
 ### std/string.lyx ⭐ **NEU**
 **Umfassende String-Manipulation (20+ Funktionen):**
