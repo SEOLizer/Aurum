@@ -47,5 +47,17 @@ begin
   // Check formatted line
   if Pos('Formatted: answer = 42, pi=3.141500', txt) = 0 then Halt(8);
 
+  // run negative printf example
+  r := RunCapture('./lyxc examples/test_printf_negative.lyx -o /tmp/test_printf_negative', txt);
+  if r <> 0 then Halt(9);
+  r := RunCapture('/tmp/test_printf_negative', txt);
+  if r <> 0 then Halt(10);
+
+  // check outputs from negative example
+  if Pos('A:one B:2 C:3.140000 D:four', txt) = 0 then Halt(11);
+  if Pos('X:onlyone Y:', txt) = 0 then Halt(12); // Y empty
+  if Pos('%q', txt) = 0 then Halt(13);
+  if Pos('literal percent: % done', txt) = 0 then Halt(14);
+
   Writeln('printf example ok');
 end.

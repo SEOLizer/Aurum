@@ -69,6 +69,7 @@ pub func printf_core(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: pchar): in
   var n: int64 := str_length(fmt);
   var printed: int64 := 0;
   var chbuf: pchar := " ";
+  var argIndex: int64 := 1; // next argument to consume (1..4)
   while (i < n) do
   begin
     var c: int64 := str_char_at(fmt, i);
@@ -86,10 +87,16 @@ pub func printf_core(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: pchar): in
       end
       else if (spec = 115) // 's'
       begin
-        var arg: pchar := a1;
-        // choose next non-empty argument in order: a1..a4 based on internal arg counter
-        // We pop from left by shifting a1..a4
-        if (arg = "") then arg := a2; if (arg = "") then arg := a3; if (arg = "") then arg := a4;
+              // select argument by index
+        var selIdx: int64 := argIndex;
+        var arg: pchar := "";
+        if selIdx = 1 then arg := a1
+        else if selIdx = 2 then arg := a2
+        else if selIdx = 3 then arg := a3
+        else if selIdx = 4 then arg := a4
+        else arg := "";
+        // increment argIndex for next placeholder
+        argIndex := argIndex + 1;
         if (arg <> "") then begin print_str(arg); printed := printed + str_length(arg); end;
       end
       else if (spec = 100) // 'd'
