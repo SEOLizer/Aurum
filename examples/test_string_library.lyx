@@ -1,0 +1,42 @@
+// Test für String-Library Functions
+import std.string;
+
+fn main(): int64 {
+  print_str("=== String Library Tests ===\n");
+  
+  // Test 1: Character conversion
+  print_str("Test 1: Character conversion\n");
+  var lower_a: int64 := char_to_lower(65);  // 'A' -> 'a'
+  var upper_z: int64 := char_to_upper(122); // 'z' -> 'Z'
+  print_str("'A' to lower: ");
+  print_int(lower_a);
+  print_str(" (should be 97)\n");
+  print_str("'z' to upper: ");
+  print_int(upper_z);
+  print_str(" (should be 90)\n\n");
+  
+  // Test 2: Whitespace detection
+  print_str("Test 2: Whitespace detection\n");
+  var is_space: bool := is_whitespace(32);   // space
+  var is_tab: bool := is_whitespace(9);     // tab
+  var is_a: bool := is_whitespace(65);      // 'A'
+  print_str("Space is whitespace: ");
+  if (is_space) { print_str("true"); } else { print_str("false"); }
+  print_str("\nTab is whitespace: ");
+  if (is_tab) { print_str("true"); } else { print_str("false"); }
+  print_str("\n'A' is whitespace: ");
+  if (is_a) { print_str("true"); } else { print_str("false"); }
+  print_str("\n\n");
+  
+  // Test 3: Safe character access
+  print_str("Test 3: Safe character access\n");
+  var valid_char: int64 := str_safe_char_at("Hello", 1);
+  var invalid_char: int64 := str_safe_char_at("Hello", 10);
+  print_str("str_safe_char_at('Hello', 1): ");
+  print_int(valid_char);
+  print_str("\nstr_safe_char_at('Hello', 10): ");
+  print_int(invalid_char);
+  print_str(" (should be -1)\n");
+  
+  return 0;
+}
