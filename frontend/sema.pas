@@ -222,6 +222,60 @@ begin
   SetLength(s.ParamTypes, 1);
   s.ParamTypes[0] := atF64;
   AddSymbolToCurrent(s, NullSpan);
+
+  // ============================================================================
+  // STRING MANIPULATION BUILTINS
+  // ============================================================================
+
+  // str_char_at(pchar, int64) -> int64
+  s := TSymbol.Create('str_char_at');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 2;
+  SetLength(s.ParamTypes, 2);
+  s.ParamTypes[0] := atPChar;
+  s.ParamTypes[1] := atInt64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // str_set_char(pchar, int64, int64) -> void
+  s := TSymbol.Create('str_set_char');
+  s.Kind := symFunc;
+  s.DeclType := atVoid;
+  s.ParamCount := 3;
+  SetLength(s.ParamTypes, 3);
+  s.ParamTypes[0] := atPChar;  // string
+  s.ParamTypes[1] := atInt64;  // index
+  s.ParamTypes[2] := atInt64;  // new char value
+  AddSymbolToCurrent(s, NullSpan);
+
+  // str_length(pchar) -> int64
+  s := TSymbol.Create('str_length');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atPChar;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // str_compare(pchar, pchar) -> int64
+  s := TSymbol.Create('str_compare');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 2;
+  SetLength(s.ParamTypes, 2);
+  s.ParamTypes[0] := atPChar;
+  s.ParamTypes[1] := atPChar;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // str_copy_builtin(pchar, pchar) -> void
+  s := TSymbol.Create('str_copy_builtin');
+  s.Kind := symFunc;
+  s.DeclType := atVoid;
+  s.ParamCount := 2;
+  SetLength(s.ParamTypes, 2);
+  s.ParamTypes[0] := atPChar;  // dest
+  s.ParamTypes[1] := atPChar;  // src
+  AddSymbolToCurrent(s, NullSpan);
 end;
 
 function IsIntegerType(t: TLyxType): Boolean;

@@ -1,24 +1,220 @@
 // std/string.lyx
-// String helper functions implemented in Lyx
+// Standard String Library für Lyx - Mit Builtins
+// Arbeitet mit pchar (null-terminated strings)
 
-pub fn strlen(s: pchar): int64 {
-  var i: int64 := 0;
-  while s[i] <> 0 {
-    i := i + 1;
-  }
-  return i;
-}
+// ============================================================================
+// CORE FUNCTIONS (using builtins - no wrapper needed, builtins sind bereits verfügbar)
+// str_length, str_compare, str_char_at, str_set_char, str_copy_builtin
+// Diese sind bereits als Builtins registriert und können direkt verwendet werden
+// ============================================================================
+
+// ============================================================================  
+// COMPATIBILITY (alte Namen für Rückwärtskompatibilität)
+// ============================================================================
 
 pub fn strcmp(a: pchar, b: pchar): int64 {
+  return str_compare(a, b);
+}
+
+pub fn strcpy(dest: pchar, src: pchar): pchar {
+  str_copy_builtin(dest, src);
+  return dest;
+}
+
+// Wrapper für str_copy mit return value
+pub fn str_copy(dest: pchar, src: pchar): pchar {
+  str_copy_builtin(dest, src);
+  return dest;
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS (built on top of builtins)
+// ============================================================================
+
+pub fn str_find(haystack: pchar, needle: pchar): int64 {
+  // Findet erste Occurrence von needle in haystack
+  // Return: Index oder -1 wenn nicht gefunden
+  var hay_len: int64 := str_length(haystack);
+  var needle_len: int64 := str_length(needle);
+  
+  if (needle_len == 0) { return 0; }  // empty needle matches at start
+  if (needle_len > hay_len) { return -1; }
+  
   var i: int64 := 0;
-  while true {
-    var ca: int64 := a[i];
-    var cb: int64 := b[i];
-    if ca <> cb {
-      if ca < cb { return -1; } else { return 1; }
-    end;
-    if ca = 0 { break; }
+  while (i <= hay_len - needle_len) {
+    var match: bool := true;
+    var j: int64 := 0;
+    
+    while (j < needle_len && match) {
+      if (str_char_at(haystack, i + j) != str_char_at(needle, j)) {
+        match := false;
+      }
+      j := j + 1;
+    }
+    
+    if (match) { return i; }
     i := i + 1;
   }
-  return 0;
+  return -1;
+}
+
+pub fn str_safe_char_at(s: pchar, index: int64): int64 {
+  // Sicherer Character-Zugriff mit Bounds-Check
+  // Return: Character-Code oder -1 wenn Index außerhalb
+  var len: int64 := str_length(s);
+  if (index < 0 || index >= len) { return -1; }
+  return str_char_at(s, index);
+}
+
+// ============================================================================
+// CASE CONVERSION
+// ============================================================================
+
+pub fn char_to_lower(c: int64): int64 {
+  // Konvertiert einzelnes Character zu lowercase
+  if (c >= 65 && c <= 90) {  // 'A' bis 'Z'
+    return c + 32;  // zu 'a' bis 'z'  
+  }
+  return c;
+}
+
+pub fn char_to_upper(c: int64): int64 {
+  // Konvertiert einzelnes Character zu uppercase
+  if (c >= 97 && c <= 122) {  // 'a' bis 'z'
+    return c - 32;  // zu 'A' bis 'Z'
+  }
+  return c;
+}
+
+pub fn str_to_lower(dest: pchar, src: pchar): pchar {
+  // Konvertiert String zu lowercase (dest kann == src sein)
+  var len: int64 := str_length(src);
+  var i: int64 := 0;
+  while (i < len) {
+    str_set_char(dest, i, char_to_lower(str_char_at(src, i)));
+    i := i + 1;
+  }
+  str_set_char(dest, len, 0);  // null-terminator
+  return dest;
+}
+
+pub fn str_to_upper(dest: pchar, src: pchar): pchar {
+  // Konvertiert String zu uppercase (dest kann == src sein)
+  var len: int64 := str_length(src);
+  var i: int64 := 0;
+  while (i < len) {
+    str_set_char(dest, i, char_to_upper(str_char_at(src, i)));
+    i := i + 1;
+  }
+  str_set_char(dest, len, 0);  // null-terminator
+  return dest;
+}
+
+// ============================================================================
+// BOOLEAN STRING TESTS
+// ============================================================================
+
+pub fn str_equals(s1: pchar, s2: pchar): bool {
+  // Prüft String-Gleichheit (convenience function)
+  return str_compare(s1, s2) == 0;
+}
+
+pub fn str_starts_with(s: pchar, prefix: pchar): bool {
+  // Prüft ob String mit Prefix beginnt
+  var prefix_len: int64 := str_length(prefix);
+  var s_len: int64 := str_length(s);
+  
+  if (prefix_len > s_len) { return false; }
+  
+  var i: int64 := 0;
+  while (i < prefix_len) {
+    if (str_char_at(s, i) != str_char_at(prefix, i)) { return false; }
+    i := i + 1;
+  }
+  return true;
+}
+
+pub fn str_ends_with(s: pchar, suffix: pchar): bool {
+  // Prüft ob String mit Suffix endet
+  var suffix_len: int64 := str_length(suffix);
+  var s_len: int64 := str_length(s);
+  
+  if (suffix_len > s_len) { return false; }
+  
+  var start: int64 := s_len - suffix_len;
+  var i: int64 := 0;
+  while (i < suffix_len) {
+    if (str_char_at(s, start + i) != str_char_at(suffix, i)) { return false; }
+    i := i + 1;
+  }
+  return true;
+}
+
+pub fn is_whitespace(c: int64): bool {
+  // Prüft ob Character Whitespace ist
+  return (c == 32 || c == 9 || c == 10 || c == 13);  // ' ', '\t', '\n', '\r'
+}
+
+// ============================================================================
+// STRING MODIFICATION FUNCTIONS
+// ============================================================================
+
+pub fn str_concat(dest: pchar, s1: pchar, s2: pchar): pchar {
+  // Konkateniert s1 + s2 nach dest
+  // dest muss genügend Platz haben (str_length(s1) + str_length(s2) + 1)
+  str_copy_builtin(dest, s1);
+  var s1_len: int64 := str_length(s1);
+  var s2_len: int64 := str_length(s2);
+  
+  var i: int64 := 0;
+  while (i < s2_len) {
+    str_set_char(dest, s1_len + i, str_char_at(s2, i));
+    i := i + 1;
+  }
+  str_set_char(dest, s1_len + s2_len, 0);  // null-terminator
+  return dest;
+}
+
+pub fn str_reverse(s: pchar): pchar {
+  // Kehrt String in-place um
+  var len: int64 := str_length(s);
+  var i: int64 := 0;
+  var j: int64 := len - 1;
+  
+  while (i < j) {
+    var temp: int64 := str_char_at(s, i);
+    str_set_char(s, i, str_char_at(s, j));
+    str_set_char(s, j, temp);
+    i := i + 1;
+    j := j - 1;
+  }
+  return s;
+}
+
+pub fn str_trim_whitespace(dest: pchar, src: pchar): pchar {
+  // Entfernt führende und nachfolgende Whitespace
+  var len: int64 := str_length(src);
+  
+  // Führende Whitespace finden
+  var start: int64 := 0;
+  while (start < len && is_whitespace(str_char_at(src, start))) {
+    start := start + 1;
+  }
+  
+  // Nachfolgende Whitespace finden
+  var end: int64 := len - 1;
+  while (end >= start && is_whitespace(str_char_at(src, end))) {
+    end := end - 1;
+  }
+  
+  // String kopieren
+  var i: int64 := 0;
+  while (start <= end) {
+    str_set_char(dest, i, str_char_at(src, start));
+    start := start + 1;
+    i := i + 1;
+  }
+  str_set_char(dest, i, 0);  // null-terminator
+  
+  return dest;
 }

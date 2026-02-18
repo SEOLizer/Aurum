@@ -1,0 +1,38 @@
+// Test für String-Operations mit neuen Builtins
+fn main(): int64 {
+  print_str("=== String Builtin Tests ===\n");
+  
+  // Test 1: str_length
+  print_str("Test 1: str_length\n");
+  var len1: int64 := str_length("Hello");
+  var len2: int64 := str_length("");
+  var len3: int64 := str_length("World!");
+  print_str("Length of 'Hello': ");
+  print_int(len1);
+  print_str("\nLength of '': ");
+  print_int(len2); 
+  print_str("\nLength of 'World!': ");
+  print_int(len3);
+  print_str("\n\n");
+  
+  // Test 2: str_char_at
+  print_str("Test 2: str_char_at\n");
+  var s: pchar := "ABC123";
+  var c0: int64 := str_char_at(s, 0);
+  var c1: int64 := str_char_at(s, 1); 
+  var c2: int64 := str_char_at(s, 2);
+  var c3: int64 := str_char_at(s, 3);
+  print_str("Characters in 'ABC123': ");
+  print_int(c0); print_str(" ");
+  print_int(c1); print_str(" "); 
+  print_int(c2); print_str(" ");
+  print_int(c3); print_str("\n");
+  print_str("Should be: 65 66 67 49 (A B C 1)\n\n");
+  
+  // Test 3: str_set_char (modifying a string)
+  print_str("Test 3: str_set_char\n");
+  // Note: In realen Anwendungen müssten wir einen Buffer haben
+  // Für jetzt nur demonstrieren dass die Funktion aufgerufen werden kann
+  
+  return 0;
+}

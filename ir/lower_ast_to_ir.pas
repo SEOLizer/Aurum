@@ -317,7 +317,7 @@ end;
 function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
 var
   instr: TIRInstr;
-  t1, t2: Integer;
+  t1, t2, t3: Integer;
   si: Integer;
   argTemps: array of Integer;
   ai: Integer;
@@ -799,6 +799,67 @@ begin
       instr.Dest := resultTemp;  // Return value destination
       Emit(instr);
       Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'str_char_at' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // pchar
+      t2 := LowerExpr(TAstCall(expr).Args[1]);  // index
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'str_char_at';
+      instr.Src1 := t1;
+      instr.Src2 := t2;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'str_set_char' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // pchar
+      t2 := LowerExpr(TAstCall(expr).Args[1]);  // index
+      t3 := LowerExpr(TAstCall(expr).Args[2]);  // char value
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'str_set_char';
+      instr.Src1 := t1;
+      instr.Src2 := t2;
+      instr.ImmInt := t3;  // third arg in ImmInt
+      Emit(instr);
+      Exit(-1); // void
+    end
+    else if TAstCall(expr).Name = 'str_length' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'str_length';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'str_compare' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // s1
+      t2 := LowerExpr(TAstCall(expr).Args[1]);  // s2
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'str_compare';
+      instr.Src1 := t1;
+      instr.Src2 := t2;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'str_copy_builtin' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // dest
+      t2 := LowerExpr(TAstCall(expr).Args[1]);  // src
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'str_copy_builtin';
+      instr.Src1 := t1;
+      instr.Src2 := t2;
+      Emit(instr);
+      Exit(-1); // void
     end
     else
     begin

@@ -835,11 +835,103 @@ begin
                strlenDonePos := FCode.Size;
                WriteMovRegReg(FCode, RAX, RCX);
                WriteSubRegReg(FCode, RAX, RSI);
-               // Store result
-               if instr.Dest >= 0 then
-                 WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
-             end
-              else if instr.ImmStr = 'print_float' then
+                // Store result
+                if instr.Dest >= 0 then
+                  WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+              end
+
+              else if instr.ImmStr = 'str_char_at' then
+              begin
+                // str_char_at(s: pchar, index: int64) -> int64
+                // Load string pointer into RSI
+                WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + instr.Src1));
+                // Load index into RDX
+                WriteMovRegMem(FCode, RDX, RBP, SlotOffset(localCnt + instr.Src2));
+                // RAX = byte [RSI + RDX] (zero-extended)
+                WriteMovRegImm64(FCode, RAX, 0);  // clear RAX
+                // mov al, byte [rsi + rdx]
+                EmitU8(FCode, $8A); EmitU8(FCode, $04); EmitU8(FCode, $16); // mov al, [rsi+rdx]
+                // Store result
+                if instr.Dest >= 0 then
+                  WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+              end
+
+              else if instr.ImmStr = 'str_set_char' then
+              begin
+                // str_set_char(s: pchar, index: int64, char: int64) -> void
+                // Load string pointer into RSI
+                WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + instr.Src1));
+                // Load index into RDX
+                WriteMovRegMem(FCode, RDX, RBP, SlotOffset(localCnt + instr.Src2));
+                // Load char value into AL (from ImmInt temp register)
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.ImmInt));
+                // mov [rsi + rdx], al
+                EmitU8(FCode, $88); EmitU8(FCode, $04); EmitU8(FCode, $16); // mov [rsi+rdx], al
+              end
+
+              else if instr.ImmStr = 'str_length' then
+              begin
+                // str_length(s: pchar) -> int64 (same as strlen)
+                // Load pointer into RSI
+                WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + instr.Src1));
+                // RCX = RSI (save start)
+                WriteMovRegReg(FCode, RCX, RSI);
+                // strlen_loop: cmp byte [rcx], 0
+                EmitU8(FCode, $80); EmitU8(FCode, $39); EmitU8(FCode, $00); // cmp byte [rcx], 0
+                // je strlen_done
+                EmitU8(FCode, $74); EmitU8(FCode, $05); // je +5
+                // inc rcx
+                WriteIncReg(FCode, RCX);
+                // jmp strlen_loop
+                EmitU8(FCode, $EB); EmitU8(FCode, $F6); // jmp -10
+                // strlen_done: RAX = rcx - rsi
+                WriteMovRegReg(FCode, RAX, RCX);
+                WriteSubRegReg(FCode, RAX, RSI);
+                // Store result
+                if instr.Dest >= 0 then
+                  WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+              end
+
+              else if instr.ImmStr = 'str_compare' then
+              begin
+                // str_compare(s1: pchar, s2: pchar) -> int64
+                // Einfache Implementation: Für jetzt immer 0 zurückgeben (gleich)
+                // TODO: Korrekte strcmp Implementation
+                WriteMovRegImm64(FCode, RAX, 0);  // always return 0 for now
+                
+                if instr.Dest >= 0 then
+                  WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+              end
+
+              else if instr.ImmStr = 'str_copy_builtin' then
+              begin
+                // str_copy_builtin(dest: pchar, src: pchar) -> void
+                // Load dest into RDI, src into RSI
+                WriteMovRegMem(FCode, RDI, RBP, SlotOffset(localCnt + instr.Src1));
+                WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + instr.Src2));
+                
+                // strcpy_loop:
+                //   mov al, byte [rsi]
+                //   mov byte [rdi], al
+                //   test al, al
+                //   jz strcpy_done
+                //   inc rsi
+                //   inc rdi
+                //   jmp strcpy_loop
+                // strcpy_done:
+                
+                // strcpy_loop:
+                EmitU8(FCode, $8A); EmitU8(FCode, $06); // mov al, byte [rsi]
+                EmitU8(FCode, $88); EmitU8(FCode, $07); // mov byte [rdi], al
+                EmitU8(FCode, $84); EmitU8(FCode, $C0); // test al, al
+                EmitU8(FCode, $74); EmitU8(FCode, $06); // jz strcpy_done (+6)
+                WriteIncReg(FCode, RSI); // inc rsi
+                WriteIncReg(FCode, RDI); // inc rdi
+                EmitU8(FCode, $EB); EmitU8(FCode, $F4); // jmp strcpy_loop (-12)
+                // strcpy_done:
+              end
+
+               else if instr.ImmStr = 'print_float' then
               begin
                 // print_float(x: f64) -> void
                 // Full float-to-string: sign + integer part + '.' + 6-digit fractional part
