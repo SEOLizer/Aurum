@@ -17,11 +17,11 @@ implementation
 procedure BuildDynamicElfHeader(elfHeader: TByteBuffer; entryVA: UInt64; phnum: Integer); forward;
 procedure BuildProgramHeaders(phdrs: TByteBuffer; codeOffset, codeSize, 
   dataOffset, dataSize, dynstrOffset: UInt64; const interpPath: string; 
-  dynamicOffset, dynamicSize: UInt64); forward;
+  dynamicOffset, dynamicSize: UInt64; totalLoadSize: UInt64); forward;
 procedure BuildDynstrSection(dynstrBuf: TByteBuffer; symNames, libNames: TStringList); forward;
 procedure BuildDynsymSection(dynsymBuf: TByteBuffer; symNames: TStringList); forward;
 procedure BuildDynamicSection(dynamicBuf: TByteBuffer; libNames: TStringList; 
-  dynstrOffset, dynsymOffset: UInt64); forward;
+  dynstrOffset, dynsymOffset, relapltOffset: UInt64); forward;
 procedure BuildGOTSection(gotBuf: TByteBuffer; symCount: Integer); forward;
 procedure BuildRelaPltSection(relapltBuf: TByteBuffer; symNames: TStringList; symCount: Integer); forward;
 
@@ -136,7 +136,7 @@ var
   // Layout offsets  
   codeOffset, dataOffset, dynstrOffset, dynsymOffset, hashOffset, 
   pltOffset, gotOffset, relapltOffset, dynamicOffset: UInt64;
-  codeSize, dataSize, interpSize: UInt64;
+  codeSize, dataSize, interpSize, totalLoadSize: UInt64;
   
   // ELF structures
   fileBuf: TFileStream;
@@ -183,7 +183,7 @@ begin
       BuildDynsymSection(dynsymBuf, symNames);
       BuildGOTSection(gotBuf, symCount);
       BuildRelaPltSection(relapltBuf, symNames, symCount);
-      BuildDynamicSection(dynamicBuf, libNames, 0, 0); // offsets will be patched later
+      BuildDynamicSection(dynamicBuf, libNames, 0, 0, 0); // offsets will be patched later
       
       // Calculate accurate layout with proper alignment
       codeOffset := AlignUp(64 + 3*56 + interpSize, pageSize); // Headers + interp, page aligned
@@ -200,12 +200,15 @@ begin
       
       // Rebuild dynamic section with correct virtual addresses
       dynamicBuf.Clear;
-      BuildDynamicSection(dynamicBuf, libNames, baseVA + dynstrOffset, baseVA + dynsymOffset);
+      BuildDynamicSection(dynamicBuf, libNames, baseVA + dynstrOffset, baseVA + dynsymOffset, baseVA + relapltOffset);
       
       // Build ELF header and program headers with correct info
       BuildDynamicElfHeader(elfHeader, entryVA, 3);
+      // Calculate total load size to include all dynamic sections
+      totalLoadSize := (dynamicOffset + dynamicBuf.Size) - codeOffset;
       BuildProgramHeaders(phdrs, codeOffset, codeSize, dataOffset, dataSize, 
-                         dynstrOffset, interpPath, dynamicOffset, dynamicBuf.Size);
+                         dynstrOffset, interpPath, dynamicOffset, dynamicBuf.Size, 
+                         totalLoadSize);
       
       // Write ELF file
       fileBuf := TFileStream.Create(filename, fmCreate);
@@ -304,7 +307,7 @@ end;
 
 procedure BuildProgramHeaders(phdrs: TByteBuffer; codeOffset, codeSize, 
   dataOffset, dataSize, dynstrOffset: UInt64; const interpPath: string; 
-  dynamicOffset, dynamicSize: UInt64);
+  dynamicOffset, dynamicSize: UInt64; totalLoadSize: UInt64);
 const
   baseVA: UInt64 = $400000;
   pageSize: UInt64 = 4096;
@@ -325,8 +328,8 @@ begin
   phdrs.WriteU64LE(codeOffset);
   phdrs.WriteU64LE(baseVA + codeOffset);
   phdrs.WriteU64LE(baseVA + codeOffset);
-  phdrs.WriteU64LE(AlignUp(codeSize + dataSize, pageSize));
-  phdrs.WriteU64LE(AlignUp(codeSize + dataSize, pageSize));
+  phdrs.WriteU64LE(totalLoadSize);
+  phdrs.WriteU64LE(totalLoadSize);
   phdrs.WriteU64LE(pageSize);
   
   // PT_DYNAMIC header
@@ -386,7 +389,7 @@ begin
 end;
 
 procedure BuildDynamicSection(dynamicBuf: TByteBuffer; libNames: TStringList; 
-  dynstrOffset, dynsymOffset: UInt64);
+  dynstrOffset, dynsymOffset, relapltOffset: UInt64);
 const
   baseVA: UInt64 = $400000;
 var
@@ -409,7 +412,7 @@ begin
   
   // DT_RELA (Relocation table address)
   dynamicBuf.WriteU64LE(7); // DT_RELA
-  dynamicBuf.WriteU64LE(baseVA + $2100); // rough rela offset estimate
+  dynamicBuf.WriteU64LE(relapltOffset); // correct rela offset
   
   // DT_RELASZ (Size of relocation table) 
   dynamicBuf.WriteU64LE(8); // DT_RELASZ

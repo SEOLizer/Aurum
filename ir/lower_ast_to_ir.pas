@@ -208,25 +208,32 @@ begin
     node := prog.Decls[i];
     if node is TAstFuncDecl then
     begin
-       fn := FModule.AddFunction(TAstFuncDecl(node).Name);
-       // Lower function body
-       FCurrentFunc := fn;
-       FLocalMap.Clear;
-       FTempCounter := 0;
-       fn.ParamCount := Length(TAstFuncDecl(node).Params);
-       fn.LocalCount := fn.ParamCount;
-       SetLength(FLocalTypes, fn.LocalCount);
-       SetLength(FLocalConst, fn.LocalCount);
-       for j := 0 to fn.ParamCount - 1 do
-       begin
-         FLocalMap.AddObject(TAstFuncDecl(node).Params[j].Name, IntToObj(j));
-         FLocalTypes[j] := TAstFuncDecl(node).Params[j].ParamType;
-         FLocalConst[j] := nil;
-       end;
+      // Skip extern functions entirely - don't add to IR module
+      if TAstFuncDecl(node).IsExtern then
+      begin
+        // extern functions are handled at call sites, not defined locally
+        Continue;
+      end;
+      
+      fn := FModule.AddFunction(TAstFuncDecl(node).Name);
+      // Lower function body
+      FCurrentFunc := fn;
+      FLocalMap.Clear;
+      FTempCounter := 0;
+      fn.ParamCount := Length(TAstFuncDecl(node).Params);
+      fn.LocalCount := fn.ParamCount;
+      SetLength(FLocalTypes, fn.LocalCount);
+      SetLength(FLocalConst, fn.LocalCount);
+      for j := 0 to fn.ParamCount - 1 do
+      begin
+        // Store parameter types for later use (debugging) 
+        FLocalTypes[j] := TAstFuncDecl(node).Params[j].ParamType;
+        FLocalConst[j] := nil;
+      end;
 
 
-      // lower statements sequentially (skip extern functions without body)
-      if not TAstFuncDecl(node).IsExtern and Assigned(TAstFuncDecl(node).Body) then
+      // lower function body (now guaranteed to have a body)
+      if Assigned(TAstFuncDecl(node).Body) then
       begin
         for j := 0 to High(TAstFuncDecl(node).Body.Stmts) do
         begin
