@@ -1,0 +1,25 @@
+// examples/test_println.lyx
+// Demonstriert die neuen println-Überladungen und printf
+
+import std.io;
+import std.string;
+
+fn main(): int64 {
+  // println für String
+  println("Hello World");
+
+  // println für int
+  println(42);
+
+  // println für float
+  println(3.1415 as f64);
+
+  // println für bool
+  println(true);
+  println(false);
+
+  // printf (extern) - erwartet libc printf verfügbar bei dynamischem ELF
+  printf("Formatted: %s = %d, pi=%.2f\n", "answer", 42, 3.1415);
+
+  return 0;
+}

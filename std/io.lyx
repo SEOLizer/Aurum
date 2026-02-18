@@ -10,9 +10,33 @@ pub fn println(s: pchar): void {
   print_str("\n");
 }
 
+// Überladene Varianten für println
+pub fn println(x: int64): void {
+  print_int(x);
+  print_str("\n");
+}
+
+pub fn println(x: f64): void {
+  print_float(x);
+  print_str("\n");
+}
+
+pub fn println(b: bool): void {
+  if (b) { print_str("true"); } else { print_str("false"); }
+  print_str("\n");
+}
+
 pub fn print_intln(x: int64): void {
   print_int(x);
   print_str("\n");
+}
+
+// Variadic printf: deklariert als extern; verfügbar über std/io so dass Nutzer es importieren können.
+extern fn printf(fmt: pchar, ...): int64;
+
+pub fn printf(fmt: pchar, ...): int64 {
+  // Einfacher Forwarder an die externe printf
+  return printf(fmt, ...);
 }
 
 pub fn exit_proc(code: int64): void {
