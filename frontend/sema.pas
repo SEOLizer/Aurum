@@ -38,9 +38,10 @@ type
     function ResolveTypeDecl(const name: string): TAstTypeDecl;
     procedure DeclareBuiltinFunctions;
     procedure CollectImportedSymbols(um: TUnitManager);
-    function TypeEqual(a, b: TLyxType): Boolean;
-    function CheckExpr(expr: TAstExpr): TLyxType;
-    procedure CheckStmt(stmt: TAstStmt);
+     function TypeEqual(a, b: TLyxType): Boolean;
+     function IsCastCompatible(fromType, toType: TLyxType): Boolean;
+     function CheckExpr(expr: TAstExpr): TLyxType;
+     procedure CheckStmt(stmt: TAstStmt);
   public
     constructor Create(d: TDiagnostics);
     destructor Destroy; override;
@@ -278,6 +279,28 @@ begin
   AddSymbolToCurrent(s, NullSpan);
 
   // ============================================================================
+  // STRING CONVERSION BUILTINS
+  // ============================================================================
+
+  // int_to_str(int64) -> pchar - Convert integer to string
+  s := TSymbol.Create('int_to_str');
+  s.Kind := symFunc;
+  s.DeclType := atPChar;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atInt64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // str_to_int(pchar) -> int64 - Convert string to integer
+  s := TSymbol.Create('str_to_int');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atPChar;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // ============================================================================
   // COMPREHENSIVE MATH BUILTINS (22 functions)
   // ============================================================================
 
@@ -491,6 +514,27 @@ begin
   Result := False;
 end;
 
+function TSema.IsCastCompatible(fromType, toType: TLyxType): Boolean;
+begin
+  // Identity cast is always allowed
+  if fromType = toType then Exit(True);
+  
+  // Integer to Integer casts (widening/narrowing)
+  if IsIntegerType(fromType) and IsIntegerType(toType) then Exit(True);
+  
+  // Float to Float casts  
+  if IsFloatType(fromType) and IsFloatType(toType) then Exit(True);
+  
+  // Integer to Float casts
+  if IsIntegerType(fromType) and IsFloatType(toType) then Exit(True);
+  
+  // Float to Integer casts (truncation)
+  if IsFloatType(fromType) and IsIntegerType(toType) then Exit(True);
+  
+  // No other casts supported for now (e.g., no pointer casts)
+  Result := False;
+end;
+
 function TSema.CheckExpr(expr: TAstExpr): TLyxType;
 var
   ident: TAstIdent;
@@ -501,6 +545,8 @@ var
   i, j: Integer;
   lt, rt, ot, atype: TLyxType;
   elementType: TLyxType;
+  castNode: TAstCast;
+  sourceType, targetType: TLyxType;
   st: TAstStructLit;
   td: TAstTypeDecl;
   fname: string;
@@ -797,11 +843,28 @@ begin
              end;
            end;
            Result := s.DeclType;
-         end;
+          end;
 
-      end;
-    else
-    begin
+       end;
+     nkCast:
+       begin
+         castNode := TAstCast(expr);
+         // Check that the source expression is valid
+         sourceType := CheckExpr(castNode.Expr);
+         targetType := castNode.TargetType;
+         
+         // Check cast compatibility
+         if IsCastCompatible(sourceType, targetType) then
+           Result := targetType
+         else
+         begin
+           FDiag.Error(Format('invalid cast from %s to %s', 
+             [LyxTypeToStr(sourceType), LyxTypeToStr(targetType)]), expr.Span);
+           Result := atUnresolved;
+         end;
+       end;
+     else
+     begin
       // Debug: report unsupported kind
       WriteLn('SEMA DEBUG: unsupported expr kind: ', NodeKindToStr(expr.Kind), ' at ', expr.Span.fileName, ':', expr.Span.line, ',', expr.Span.col);
       FDiag.Error('sema: unsupported expr kind', expr.Span);

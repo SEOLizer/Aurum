@@ -38,10 +38,10 @@ type
   { --- Knotenarten (für schnellen Typcheck ohne 'is') --- }
 
   TNodeKind = (
-    // Ausdrücke
-    nkIntLit, nkFloatLit, nkStrLit, nkCharLit, nkBoolLit, nkIdent,
-    nkBinOp, nkUnaryOp, nkCall, nkArrayLit, nkArrayIndex,
-    nkFieldAccess, nkIndexAccess, nkStructLit, nkFieldAssign,
+     // Ausdrücke
+     nkIntLit, nkFloatLit, nkStrLit, nkCharLit, nkBoolLit, nkIdent,
+     nkBinOp, nkUnaryOp, nkCall, nkArrayLit, nkArrayIndex,
+     nkFieldAccess, nkIndexAccess, nkStructLit, nkFieldAssign, nkCast,
     // Statements
     nkVarDecl, nkAssign, nkArrayAssign, nkIf, nkWhile, nkFor, nkRepeatUntil,
     nkReturn, nkBreak, nkSwitch,
@@ -177,10 +177,22 @@ type
     destructor Destroy; override;
     property Name: string read FName;
     property Args: TAstExprList read FArgs;
-  end;
+   end;
 
-  { Char-Literal: 'A' }
-  TAstCharLit = class(TAstExpr)
+   { Type-Cast: expr as Type }
+   TAstCast = class(TAstExpr)
+   private
+     FExpr: TAstExpr;
+     FTargetType: TLyxType;
+   public
+     constructor Create(aExpr: TAstExpr; aTargetType: TLyxType; aSpan: TSourceSpan);
+     destructor Destroy; override;
+     property Expr: TAstExpr read FExpr;
+     property TargetType: TLyxType read FTargetType;
+   end;
+
+   { Char-Literal: 'A' }
+   TAstCharLit = class(TAstExpr)
   private
     FValue: Char;
   public
@@ -648,8 +660,9 @@ begin
     nkIdent:       Result := 'Ident';
     nkBinOp:       Result := 'BinOp';
     nkUnaryOp:     Result := 'UnaryOp';
-    nkCall:        Result := 'Call';
-    nkArrayLit:    Result := 'ArrayLit';
+     nkCall:        Result := 'Call';
+     nkCast:        Result := 'Cast';
+     nkArrayLit:    Result := 'ArrayLit';
     nkArrayIndex:  Result := 'ArrayIndex';
     nkFieldAccess: Result := 'FieldAccess';
     nkIndexAccess: Result := 'IndexAccess';
@@ -818,6 +831,23 @@ begin
   for i := 0 to High(FArgs) do
     FArgs[i].Free;
   FArgs := nil;
+  inherited Destroy;
+end;
+
+// ================================================================
+// TAstCast
+// ================================================================
+
+constructor TAstCast.Create(aExpr: TAstExpr; aTargetType: TLyxType; aSpan: TSourceSpan);
+begin
+  inherited Create(nkCast, aSpan);
+  FExpr := aExpr;
+  FTargetType := aTargetType;
+end;
+
+destructor TAstCast.Destroy;
+begin
+  FExpr.Free;
   inherited Destroy;
 end;
 

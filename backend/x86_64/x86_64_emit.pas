@@ -4,7 +4,7 @@ unit x86_64_emit;
 interface
 
 uses
-  SysUtils, Classes, bytes, ir, backend_types;
+  SysUtils, Classes, bytes, ir, backend_types, ast;
 
 type
   TLabelPos = record
@@ -228,6 +228,12 @@ begin EmitU8(buf,$0F); EmitU8(buf,$8D); EmitU32(buf, rel32); end;
 
 procedure WriteJleRel32(buf: TByteBuffer; rel32: Cardinal);
 begin EmitU8(buf,$0F); EmitU8(buf,$8E); EmitU32(buf, rel32); end;
+
+procedure WriteJlRel32(buf: TByteBuffer; rel32: Cardinal);
+begin EmitU8(buf,$0F); EmitU8(buf,$8C); EmitU32(buf, rel32); end;
+
+procedure WriteJgRel32(buf: TByteBuffer; rel32: Cardinal);
+begin EmitU8(buf,$0F); EmitU8(buf,$8F); EmitU32(buf, rel32); end;
 
 procedure WriteJmpRel32(buf: TByteBuffer; rel32: Cardinal);
 begin EmitU8(buf,$E9); EmitU32(buf, rel32); end;
@@ -517,8 +523,10 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   envOffset: UInt64;
   envLeaPositions: array of Integer;
    len: Integer;
-    nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
-    strlenLoopPos, strlenDonePos: Integer;
+     nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
+     strlenLoopPos, strlenDonePos: Integer;
+     // for string conversions
+     parseDonePos, notNegPos, noNegPos, noSignPos: Integer;
    targetPos, jmpPos: Integer;
    jmpAfterPadPos: Integer;
   // for call/abi
@@ -929,6 +937,156 @@ begin
                 WriteIncReg(FCode, RDI); // inc rdi
                 EmitU8(FCode, $EB); EmitU8(FCode, $F4); // jmp strcpy_loop (-12)
                 // strcpy_done:
+              end
+
+              // ============================================================================
+              // STRING CONVERSION BUILTINS
+              // ============================================================================
+
+              else if instr.ImmStr = 'int_to_str' then
+              begin
+                // int_to_str(value: int64) -> pchar
+                // Simple initial implementation: allocate buffer and convert
+                if not bufferAdded then
+                begin
+                  bufferOffset := totalDataOffset;
+                  for k := 1 to 64 do FData.WriteU8(0);  // 64-byte buffer
+                  Inc(totalDataOffset, 64);
+                  bufferAdded := True;
+                end;
+
+                // Load input value into RAX
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+                
+                // Get buffer address in RSI
+                leaPos := FCode.Size;
+                EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);  // lea rsi, [buffer]
+                SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
+                bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
+
+                // Start from end of buffer (RSI + 63), work backwards
+                WriteMovRegReg(FCode, RDI, RSI);
+                WriteMovRegImm64(FCode, RDX, 63);
+                WriteAddRegReg(FCode, RDI, RDX);           // RDI = RSI + 63 (end of buffer)
+                WriteMovMemImm8(FCode, RDI, 0, 0);         // null terminator
+                WriteDecReg(FCode, RDI);                   // RDI-- (last digit position)
+
+                // Handle zero special case
+                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F8); EmitU8(FCode, 0);  // cmp rax, 0
+                nonZeroPos := FCode.Size;
+                WriteJneRel32(FCode, 0);                   // jne nonzero
+                WriteMovMemImm8(FCode, RDI, 0, Ord('0'));  // [RDI] = '0'
+                WriteMovRegReg(FCode, RAX, RDI);           // return pointer to '0'
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+                jmpDonePos := FCode.Size;
+                WriteJmpRel32(FCode, 0);                   // jmp done
+
+                // Handle negative numbers
+                k := FCode.Size;
+                FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+                WriteMovRegImm64(FCode, RCX, 0);           // negative flag = 0
+                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F8); EmitU8(FCode, 0);  // cmp rax, 0
+                jgePos := FCode.Size;
+                WriteJgeRel32(FCode, 0);                   // jge positive
+                EmitU8(FCode, $48); EmitU8(FCode, $F7); EmitU8(FCode, $D8);  // neg rax
+                WriteMovRegImm64(FCode, RCX, 1);           // negative flag = 1
+
+                // Digit extraction loop
+                k := FCode.Size;
+                FCode.PatchU32LE(jgePos + 2, Cardinal(k - jgePos - 6));
+                loopStartPos := FCode.Size;
+
+                WriteMovRegImm64(FCode, RBX, 10);                              // divisor = 10
+                EmitU8(FCode, $48); EmitU8(FCode, $31); EmitU8(FCode, $D2);    // xor rdx, rdx
+                EmitU8(FCode, $48); EmitU8(FCode, $F7); EmitU8(FCode, $F3);    // div rbx -> rax=quot, rdx=remainder
+                
+                // Store digit: remainder + '0'
+                WriteMovRegImm64(FCode, R8, Ord('0'));
+                WriteAddRegReg(FCode, RDX, R8);
+                EmitU8(FCode, $88); EmitU8(FCode, $17);                        // mov [rdi], dl
+                WriteDecReg(FCode, RDI);                                       // RDI--
+
+                // Continue if quotient != 0
+                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F8); EmitU8(FCode, 0);  // cmp rax, 0
+                WriteJneRel32(FCode, Cardinal(loopStartPos - FCode.Size - 6)); // jne loop_start
+
+                // Add minus sign if negative
+                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(FCode, 0);  // cmp rcx, 0
+                noSignPos := FCode.Size;
+                WriteJeRel32(FCode, 0);                                        // je no_sign
+                WriteMovMemImm8(FCode, RDI, 0, Ord('-'));                      // [RDI] = '-'
+                WriteDecReg(FCode, RDI);                                       // RDI--
+
+                // Return pointer to first character
+                k := FCode.Size;
+                FCode.PatchU32LE(noSignPos + 2, Cardinal(k - noSignPos - 6));
+                WriteIncReg(FCode, RDI);                                       // RDI++ (first char)
+                WriteMovRegReg(FCode, RAX, RDI);                               // return pointer
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+
+                // Done label
+                k := FCode.Size;
+                FCode.PatchU32LE(jmpDonePos + 1, Cardinal(k - jmpDonePos - 5));
+              end
+
+              else if instr.ImmStr = 'str_to_int' then
+              begin
+                // str_to_int(s: pchar) -> int64 
+                // Simple implementation: parse decimal digits
+                WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + instr.Src1));  // RSI = string pointer
+                
+                WriteMovRegImm64(FCode, RAX, 0);                               // result = 0
+                WriteMovRegImm64(FCode, RCX, 0);                               // negative flag = 0
+
+                // Check for minus sign
+                EmitU8(FCode, $8A); EmitU8(FCode, $06);                        // mov al, [rsi]  
+                EmitU8(FCode, $3C); EmitU8(FCode, Ord('-'));                   // cmp al, '-'
+                notNegPos := FCode.Size;
+                WriteJneRel32(FCode, 0);                                       // jne not_negative
+                WriteMovRegImm64(FCode, RCX, 1);                               // negative flag = 1
+                WriteIncReg(FCode, RSI);                                       // skip '-'
+
+                // Parse digits
+                k := FCode.Size;
+                FCode.PatchU32LE(notNegPos + 2, Cardinal(k - notNegPos - 6));
+                WriteMovRegImm64(FCode, RAX, 0);                               // result = 0
+
+                // Parse loop
+                loopStartPos := FCode.Size;
+                EmitU8(FCode, $8A); EmitU8(FCode, $16);                        // mov dl, [rsi]
+                EmitU8(FCode, $80); EmitU8(FCode, $FA); EmitU8(FCode, 0);      // cmp dl, 0
+                parseDonePos := FCode.Size;
+                WriteJeRel32(FCode, 0);                                        // je parse_done
+
+                // Check if digit (dl >= '0' && dl <= '9')
+                EmitU8(FCode, $80); EmitU8(FCode, $FA); EmitU8(FCode, Ord('0'));  // cmp dl, '0'
+                WriteJlRel32(FCode, Cardinal(parseDonePos - FCode.Size - 6)); // jl parse_done
+                EmitU8(FCode, $80); EmitU8(FCode, $FA); EmitU8(FCode, Ord('9'));  // cmp dl, '9'  
+                WriteJgRel32(FCode, Cardinal(parseDonePos - FCode.Size - 6)); // jg parse_done
+
+                // Convert digit: dl - '0'
+                EmitU8(FCode, $80); EmitU8(FCode, $EA); EmitU8(FCode, Ord('0'));  // sub dl, '0'
+                EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $B6); EmitU8(FCode, $FA);  // movzx rdi, dl
+
+                // result = result * 10 + digit
+                WriteMovRegImm64(FCode, RBX, 10);
+                EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $AF); EmitU8(FCode, $C3);  // imul rax, rbx
+                WriteAddRegReg(FCode, RAX, RDI);
+                WriteIncReg(FCode, RSI);                                       // next character
+                
+                WriteJmpRel32(FCode, Cardinal(loopStartPos - FCode.Size - 5)); // jmp loop_start
+
+                // Apply sign and store result
+                k := FCode.Size;
+                FCode.PatchU32LE(parseDonePos + 2, Cardinal(k - parseDonePos - 6));
+                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(FCode, 0);  // cmp rcx, 0
+                noNegPos := FCode.Size;
+                WriteJeRel32(FCode, 0);                                        // je no_negate
+                EmitU8(FCode, $48); EmitU8(FCode, $F7); EmitU8(FCode, $D8);    // neg rax
+
+                k := FCode.Size;
+                FCode.PatchU32LE(noNegPos + 2, Cardinal(k - noNegPos - 6));
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
               end
 
               // ============================================================================
@@ -1942,13 +2100,72 @@ begin
              WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
            end;
 
-        irStoreLocal:
-          begin
-            // Store temp into local variable: locals[dest] = src1
-            WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
-            WriteMovMemReg(FCode, RBP, SlotOffset(instr.Dest), RAX);
-          end;
-        irAdd:
+         irStoreLocal:
+           begin
+             // Store temp into local variable: locals[dest] = src1
+             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteMovMemReg(FCode, RBP, SlotOffset(instr.Dest), RAX);
+           end;
+         irCast:
+           begin
+             // Type cast: dest = cast(src1, fromType, toType)
+             case instr.CastFromType of
+               atInt64:
+                 case instr.CastToType of
+                   atInt64:
+                     begin
+                       // Identity cast: int64 -> int64
+                       WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+                       WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+                     end;
+                   atF64:
+                     begin
+                       // Integer to Float: int64 -> f64
+                       WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+                       // cvtsi2sd xmm0, rax - Convert signed integer to double
+                       EmitU8(FCode, $F2); EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $2A); EmitU8(FCode, $C0);
+                       // Store XMM0 to destination slot
+                       WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
+                     end;
+                   else
+                     begin
+                       // Unsupported cast - just copy for now
+                       WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+                       WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+                     end;
+                 end;
+               atF64:
+                 case instr.CastToType of
+                   atF64:
+                     begin
+                       // Identity cast: f64 -> f64
+                       WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+                       WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
+                     end;
+                   atInt64:
+                     begin
+                       // Float to Integer: f64 -> int64 (with truncation)
+                       WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+                       // cvttsd2si rax, xmm0 - Convert with truncation toward zero
+                       EmitU8(FCode, $F2); EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $2C); EmitU8(FCode, $C0);
+                       WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+                     end;
+                   else
+                     begin
+                       // Unsupported cast - copy as raw bytes
+                       WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+                       WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
+                     end;
+                 end;
+               else
+                 begin
+                   // Default: simple copy for other types
+                   WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+                   WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+                 end;
+             end;
+           end;
+         irAdd:
           begin
             // dest = src1 + src2
             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
@@ -2631,6 +2848,7 @@ begin
   if (name = 'print_str') or (name = 'print_int') or (name = 'exit') or (name = 'strlen') or
      (name = 'print_float') or (name = 'str_char_at') or (name = 'str_set_char') or
      (name = 'str_length') or (name = 'str_compare') or (name = 'str_copy_builtin') or
+     (name = 'int_to_str') or (name = 'str_to_int') or
      // Math builtins
      (name = 'abs') or (name = 'fabs') or (name = 'sin') or (name = 'cos') or 
      (name = 'sqrt') or (name = 'sqr') or (name = 'exp') or (name = 'ln') or

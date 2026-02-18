@@ -862,9 +862,16 @@ begin
     operand := ParsePrimary;
     Result := TAstUnaryOp.Create(op, operand, operand.Span);
     Exit;
-  end;
+   end;
 
-  Result := ParsePrimary;
+   Result := ParsePrimary;
+   
+   // Check for cast: expr as Type
+   if Check(tkAs) then
+   begin
+     Advance;  // consume 'as'
+     Result := TAstCast.Create(Result, ParseType, Result.Span);
+   end;
 end;
 
 function TParser.ParsePrimary: TAstExpr;

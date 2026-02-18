@@ -4,7 +4,7 @@ unit ir;
 interface
 
 uses
-  SysUtils, Classes;
+  SysUtils, Classes, ast; // für TLyxType
 
 type
   TIROpKind = (
@@ -24,9 +24,11 @@ type
     irSExt,    // sign-extend Src1 to ImmInt bits -> Dest
     irZExt,    // zero-extend Src1 to ImmInt bits -> Dest
     irTrunc,   // truncate Src1 to ImmInt bits -> Dest
-    // float conversion
-    irFToI,    // float to int conversion
-    irIToF,    // int to float conversion
+     // float conversion
+     irFToI,    // float to int conversion
+     irIToF,    // int to float conversion
+     // type casting
+     irCast,    // type cast: Dest = cast(Src1, CastFromType, CastToType)
      irCallBuiltin, irCall, irVarCall,
     irJmp, irBrTrue, irBrFalse,
     irLabel,
@@ -47,10 +49,13 @@ type
     Src1: Integer;
     Src2: Integer;
     Src3: Integer; // for 3-operand instructions like irStoreElemDyn
-    ImmInt: Int64; // usage depends on Op: e.g., const int or width bits for ext/trunc
-    ImmFloat: Double; // for irConstFloat - stores actual float value
-    ImmStr: string;
-    LabelName: string;
+     ImmInt: Int64; // usage depends on Op: e.g., const int or width bits for ext/trunc
+     ImmFloat: Double; // for irConstFloat - stores actual float value
+     ImmStr: string;
+     LabelName: string;
+     // Cast-specific fields
+     CastFromType: TLyxType;  // source type for cast operations
+     CastToType: TLyxType;    // target type for cast operations
   end;
 
   TIRInstructionList = array of TIRInstr;

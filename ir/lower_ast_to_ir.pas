@@ -344,9 +344,12 @@ var
   arraySize: Integer;
   i: Integer;
   elemTemp: Integer;
-  // array indexing variables
-  arrayIndex: TAstArrayIndex;
-  resultTemp: Integer;
+   // array indexing variables
+   arrayIndex: TAstArrayIndex;
+   resultTemp: Integer;
+   // cast variables
+   castExpr: TAstCast;
+   sourceTemp: Integer;
 begin
   instr := Default(TIRInstr);
   if expr is TAstIntLit then
@@ -748,6 +751,34 @@ begin
     end
 
     // ============================================================================
+    // STRING CONVERSION BUILTINS
+    // ============================================================================
+
+    else if TAstCall(expr).Name = 'int_to_str' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // int64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'int_to_str';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+
+    else if TAstCall(expr).Name = 'str_to_int' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // pchar string
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'str_to_int';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+
+    // ============================================================================
     // COMPREHENSIVE MATH BUILTINS (22 functions)
     // ============================================================================
 
@@ -984,12 +1015,27 @@ begin
       instr.Dest := NewTemp;
       Emit(instr);
       Exit(instr.Dest);
-    end;
-  end;
+     end;
+   end
+   else if expr is TAstCast then
+   begin
+     // Cast expression: expr as Type
+     castExpr := TAstCast(expr);
+     sourceTemp := LowerExpr(castExpr.Expr);
+     resultTemp := NewTemp;
+     
+     instr.Op := irCast;
+     instr.Src1 := sourceTemp;
+     instr.Dest := resultTemp;
+     instr.CastFromType := castExpr.Expr.ResolvedType;
+     instr.CastToType := castExpr.TargetType;
+     Emit(instr);
+     Exit(resultTemp);
+   end;
 
-  // fallback
-  FDiag.Error('lowering: unsupported expr', expr.Span);
-  Result := -1;
+   // fallback
+   FDiag.Error('lowering: unsupported expr', expr.Span);
+   Result := -1;
 end;
 
 function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
