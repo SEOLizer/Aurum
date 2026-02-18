@@ -1,0 +1,14 @@
+// Test only odd function
+fn main(): int64 {
+  print_str("Testing odd() only...\n");
+  
+  print_str("odd(42) = ");
+  if (odd(42)) { print_str("true"); } else { print_str("false"); }
+  print_str("\n");
+  
+  print_str("odd(37) = ");
+  if (odd(37)) { print_str("true"); } else { print_str("false"); }
+  print_str("\n");
+  
+  return 0;
+}

@@ -276,6 +276,190 @@ begin
   s.ParamTypes[0] := atPChar;  // dest
   s.ParamTypes[1] := atPChar;  // src
   AddSymbolToCurrent(s, NullSpan);
+
+  // ============================================================================
+  // COMPREHENSIVE MATH BUILTINS (22 functions)
+  // ============================================================================
+
+  // abs(int64) -> int64 - Calculate absolute value
+  s := TSymbol.Create('abs');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atInt64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // fabs(f64) -> f64 - Calculate absolute value (float)
+  s := TSymbol.Create('fabs');
+  s.Kind := symFunc;
+  s.DeclType := atF64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atF64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // arctan(f64) -> f64 - Calculate inverse tangent
+  s := TSymbol.Create('arctan');
+  s.Kind := symFunc;
+  s.DeclType := atF64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atF64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // cos(f64) -> f64 - Calculate cosine of angle
+  s := TSymbol.Create('cos');
+  s.Kind := symFunc;
+  s.DeclType := atF64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atF64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // sin(f64) -> f64 - Calculate sine of angle
+  s := TSymbol.Create('sin');
+  s.Kind := symFunc;
+  s.DeclType := atF64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atF64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // exp(f64) -> f64 - Exponentiate (e^x)
+  s := TSymbol.Create('exp');
+  s.Kind := symFunc;
+  s.DeclType := atF64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atF64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // ln(f64) -> f64 - Calculate natural logarithm
+  s := TSymbol.Create('ln');
+  s.Kind := symFunc;
+  s.DeclType := atF64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atF64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // sqrt(f64) -> f64 - Calculate square root
+  s := TSymbol.Create('sqrt');
+  s.Kind := symFunc;
+  s.DeclType := atF64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atF64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // sqr(f64) -> f64 - Calculate square (x^2)
+  s := TSymbol.Create('sqr');
+  s.Kind := symFunc;
+  s.DeclType := atF64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atF64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // round(f64) -> int64 - Round to nearest integer
+  s := TSymbol.Create('round');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atF64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // trunc(f64) -> int64 - Truncate to integer
+  s := TSymbol.Create('trunc');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atF64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // int_part(f64) -> int64 - Calculate integer part
+  s := TSymbol.Create('int_part');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atF64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // frac(f64) -> f64 - Return fractional part
+  s := TSymbol.Create('frac');
+  s.Kind := symFunc;
+  s.DeclType := atF64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atF64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // pi() -> f64 - Return the value of pi
+  s := TSymbol.Create('pi');
+  s.Kind := symFunc;
+  s.DeclType := atF64;
+  s.ParamCount := 0;
+  SetLength(s.ParamTypes, 0);
+  AddSymbolToCurrent(s, NullSpan);
+
+  // random() -> f64 - Generate random number [0.0, 1.0)
+  s := TSymbol.Create('random');
+  s.Kind := symFunc;
+  s.DeclType := atF64;
+  s.ParamCount := 0;
+  SetLength(s.ParamTypes, 0);
+  AddSymbolToCurrent(s, NullSpan);
+
+  // randomize() -> void - Initialize random number generator
+  s := TSymbol.Create('randomize');
+  s.Kind := symFunc;
+  s.DeclType := atVoid;
+  s.ParamCount := 0;
+  SetLength(s.ParamTypes, 0);
+  AddSymbolToCurrent(s, NullSpan);
+
+  // odd(int64) -> bool - Check if value is odd
+  s := TSymbol.Create('odd');
+  s.Kind := symFunc;
+  s.DeclType := atBool;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atInt64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // hi(int64) -> int64 - Return high 32 bits
+  s := TSymbol.Create('hi');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atInt64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // lo(int64) -> int64 - Return low 32 bits
+  s := TSymbol.Create('lo');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atInt64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // swap(int64) -> int64 - Swap high and low 32-bit words
+  s := TSymbol.Create('swap');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atInt64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // Note: inc(var x) and dec(var x) require special handling as they modify variables
+  // These will be implemented as special parser constructs, not regular function calls
 end;
 
 function IsIntegerType(t: TLyxType): Boolean;

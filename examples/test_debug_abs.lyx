@@ -1,0 +1,7 @@
+// Debug test - just call abs with a simple literal
+fn main(): int64 {
+  // Direct literal test
+  var result: int64 := abs(-5);
+  print_int(result);
+  return 0;
+}

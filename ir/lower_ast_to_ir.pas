@@ -746,121 +746,224 @@ begin
       Emit(instr);
       Exit(-1); // void
     end
-    else if TAstCall(expr).Name = 'print_int' then
-    begin
-      // constant-fold print_int(x) -> print_str("...") when x is literal
-      if (Length(TAstCall(expr).Args) >= 1) and (TAstCall(expr).Args[0] is TAstIntLit) then
-      begin
-        si := FModule.InternString(IntToStr(TAstIntLit(TAstCall(expr).Args[0]).Value));
-        t1 := NewTemp;
-        instr.Op := irConstStr;
-        instr.Dest := t1;
-        instr.ImmStr := IntToStr(si);
-        Emit(instr);
-        instr.Op := irCallBuiltin;
-        instr.ImmStr := 'print_str';
-        instr.Src1 := t1;
-        Emit(instr);
-        Exit(-1);
-      end;
 
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
-      instr.Op := irCallBuiltin;
-      instr.ImmStr := 'print_int';
-      instr.Src1 := t1;
-      Emit(instr);
-      Exit(-1);
-    end
-    else if TAstCall(expr).Name = 'exit' then
+    // ============================================================================
+    // COMPREHENSIVE MATH BUILTINS (22 functions)
+    // ============================================================================
+
+    else if TAstCall(expr).Name = 'abs' then
     begin
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
-      instr.Op := irCallBuiltin;
-      instr.ImmStr := 'exit';
-      instr.Src1 := t1;
-      Emit(instr);
-      Exit(-1);
-    end
-    else if TAstCall(expr).Name = 'print_float' then
-    begin
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
-      instr.Op := irCallBuiltin;
-      instr.ImmStr := 'print_float';
-      instr.Src1 := t1;
-      Emit(instr);
-      Exit(-1);
-    end
-    else if TAstCall(expr).Name = 'strlen' then
-    begin
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // int64 value
       resultTemp := NewTemp;
       instr.Op := irCallBuiltin;
-      instr.ImmStr := 'strlen';
+      instr.ImmStr := 'abs';
       instr.Src1 := t1;
-      instr.Dest := resultTemp;  // Return value destination
-      Emit(instr);
-      Exit(resultTemp);
-    end
-    else if TAstCall(expr).Name = 'str_char_at' then
-    begin
-      t1 := LowerExpr(TAstCall(expr).Args[0]);  // pchar
-      t2 := LowerExpr(TAstCall(expr).Args[1]);  // index
-      resultTemp := NewTemp;
-      instr.Op := irCallBuiltin;
-      instr.ImmStr := 'str_char_at';
-      instr.Src1 := t1;
-      instr.Src2 := t2;
       instr.Dest := resultTemp;
       Emit(instr);
       Exit(resultTemp);
     end
-    else if TAstCall(expr).Name = 'str_set_char' then
+    else if TAstCall(expr).Name = 'fabs' then
     begin
-      t1 := LowerExpr(TAstCall(expr).Args[0]);  // pchar
-      t2 := LowerExpr(TAstCall(expr).Args[1]);  // index
-      t3 := LowerExpr(TAstCall(expr).Args[2]);  // char value
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
       instr.Op := irCallBuiltin;
-      instr.ImmStr := 'str_set_char';
+      instr.ImmStr := 'fabs';
       instr.Src1 := t1;
-      instr.Src2 := t2;
-      instr.ImmInt := t3;  // third arg in ImmInt
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'sin' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 angle
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'sin';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'cos' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 angle
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'cos';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'sqrt' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'sqrt';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'sqr' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'sqr';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'exp' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'exp';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'ln' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'ln';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'arctan' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'arctan';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'round' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'round';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'trunc' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'trunc';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'int_part' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'int_part';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'frac' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'frac';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'pi' then
+    begin
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'pi';
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'random' then
+    begin
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'random';
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'randomize' then
+    begin
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'randomize';
       Emit(instr);
       Exit(-1); // void
     end
-    else if TAstCall(expr).Name = 'str_length' then
+    else if TAstCall(expr).Name = 'odd' then
     begin
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // int64 value
       resultTemp := NewTemp;
       instr.Op := irCallBuiltin;
-      instr.ImmStr := 'str_length';
+      instr.ImmStr := 'odd';
       instr.Src1 := t1;
       instr.Dest := resultTemp;
       Emit(instr);
       Exit(resultTemp);
     end
-    else if TAstCall(expr).Name = 'str_compare' then
+    else if TAstCall(expr).Name = 'hi' then
     begin
-      t1 := LowerExpr(TAstCall(expr).Args[0]);  // s1
-      t2 := LowerExpr(TAstCall(expr).Args[1]);  // s2
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // int64 value
       resultTemp := NewTemp;
       instr.Op := irCallBuiltin;
-      instr.ImmStr := 'str_compare';
+      instr.ImmStr := 'hi';
       instr.Src1 := t1;
-      instr.Src2 := t2;
       instr.Dest := resultTemp;
       Emit(instr);
       Exit(resultTemp);
     end
-    else if TAstCall(expr).Name = 'str_copy_builtin' then
+    else if TAstCall(expr).Name = 'lo' then
     begin
-      t1 := LowerExpr(TAstCall(expr).Args[0]);  // dest
-      t2 := LowerExpr(TAstCall(expr).Args[1]);  // src
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // int64 value
+      resultTemp := NewTemp;
       instr.Op := irCallBuiltin;
-      instr.ImmStr := 'str_copy_builtin';
+      instr.ImmStr := 'lo';
       instr.Src1 := t1;
-      instr.Src2 := t2;
+      instr.Dest := resultTemp;
       Emit(instr);
-      Exit(-1); // void
+      Exit(resultTemp);
     end
+    else if TAstCall(expr).Name = 'swap' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // int64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'swap';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+
     else
     begin
       // generic call
