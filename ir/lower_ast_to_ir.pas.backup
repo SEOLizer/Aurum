@@ -225,13 +225,10 @@ begin
        end;
 
 
-      // lower statements sequentially (skip extern functions without body)
-      if not TAstFuncDecl(node).IsExtern and Assigned(TAstFuncDecl(node).Body) then
+      // lower statements sequentially
+      for j := 0 to High(TAstFuncDecl(node).Body.Stmts) do
       begin
-        for j := 0 to High(TAstFuncDecl(node).Body.Stmts) do
-        begin
-          LowerStmt(TAstFuncDecl(node).Body.Stmts[j]);
-        end;
+        LowerStmt(TAstFuncDecl(node).Body.Stmts[j]);
       end;
       FCurrentFunc := nil;
     end

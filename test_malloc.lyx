@@ -1,0 +1,6 @@
+extern fn malloc(size: int64): pchar;
+
+fn main(): int64 {
+  let ptr: pchar := malloc(64);
+  return 0;
+}

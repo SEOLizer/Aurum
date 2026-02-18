@@ -1,0 +1,5 @@
+extern fn my_printf(fmt: pchar, ...): int64;
+extern fn simple_func(x: int64): int64;
+fn main(): int64 {
+  return 55;
+}

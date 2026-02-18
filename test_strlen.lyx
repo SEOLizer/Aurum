@@ -1,0 +1,6 @@
+extern fn strlen(s: pchar): int64;
+
+fn main(): int64 {
+  let len: int64 := strlen("Hello World");
+  return len;
+}

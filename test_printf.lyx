@@ -1,0 +1,6 @@
+extern fn printf(fmt: pchar, ...): int64;
+
+fn main(): int64 {
+  printf("Hello SO-Library World from Lyx!\n");
+  return 0;
+}

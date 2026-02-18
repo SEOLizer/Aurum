@@ -1,0 +1,6 @@
+extern fn exit(code: int64): void;
+
+fn main(): int64 {
+  exit(42);
+  return 0;
+}

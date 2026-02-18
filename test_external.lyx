@@ -1,0 +1,5 @@
+extern fn my_custom_func(x: int64): int64;
+
+fn main(): int64 {
+  return my_custom_func(42);
+}

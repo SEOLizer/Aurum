@@ -1,0 +1,5 @@
+extern fn simple_extern(x: int64): int64;
+
+fn main(): int64 {
+  return 42;
+}

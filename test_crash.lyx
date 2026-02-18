@@ -1,0 +1,1 @@
+extern fn my_func(x: int64): int64; fn main(): int64 { return 42; }

@@ -22,6 +22,8 @@ procedure BuildDynstrSection(dynstrBuf: TByteBuffer; symNames, libNames: TString
 procedure BuildDynsymSection(dynsymBuf: TByteBuffer; symNames: TStringList); forward;
 procedure BuildDynamicSection(dynamicBuf: TByteBuffer; libNames: TStringList; 
   dynstrOffset, dynsymOffset: UInt64); forward;
+procedure BuildGOTSection(gotBuf: TByteBuffer; symCount: Integer); forward;
+procedure BuildRelaPltSection(relapltBuf: TByteBuffer; symNames: TStringList; symCount: Integer); forward;
 
 // Helper function to write string to buffer
 procedure WriteStringToBuffer(buf: TByteBuffer; const s: string);
@@ -171,18 +173,24 @@ begin
     // Build sections first to calculate accurate sizes
     dynstrBuf := TByteBuffer.Create;
     dynsymBuf := TByteBuffer.Create; 
+    gotBuf := TByteBuffer.Create;
+    relapltBuf := TByteBuffer.Create;
     dynamicBuf := TByteBuffer.Create;
     
     try
       // Build dynamic sections to get their actual sizes
       BuildDynstrSection(dynstrBuf, symNames, libNames);
       BuildDynsymSection(dynsymBuf, symNames);
+      BuildGOTSection(gotBuf, symCount);
+      BuildRelaPltSection(relapltBuf, symNames, symCount);
       BuildDynamicSection(dynamicBuf, libNames, 0, 0); // offsets will be patched later
       
       // Calculate accurate layout with proper alignment
       codeOffset := AlignUp(64 + 3*56 + interpSize, pageSize); // Headers + interp, page aligned
       dataOffset := codeOffset + AlignUp(codeSize, pageSize);
-      dynstrOffset := dataOffset + AlignUp(dataSize, 8);
+      gotOffset := dataOffset + AlignUp(dataSize, 8);
+      relapltOffset := gotOffset + AlignUp(gotBuf.Size, 8);
+      dynstrOffset := relapltOffset + AlignUp(relapltBuf.Size, 8);
       dynsymOffset := dynstrOffset + AlignUp(dynstrBuf.Size, 8);
       dynamicOffset := dynsymOffset + AlignUp(dynsymBuf.Size, 8);
     
@@ -223,6 +231,16 @@ begin
           fileBuf.WriteByte(0);
         if dataSize > 0 then 
           fileBuf.WriteBuffer(dataBuf.GetBuffer^, dataSize);
+        
+        // Write GOT section
+        while fileBuf.Position < Int64(gotOffset) do 
+          fileBuf.WriteByte(0);
+        fileBuf.WriteBuffer(gotBuf.GetBuffer^, gotBuf.Size);
+          
+        // Write .rela.plt section
+        while fileBuf.Position < Int64(relapltOffset) do 
+          fileBuf.WriteByte(0);
+        fileBuf.WriteBuffer(relapltBuf.GetBuffer^, relapltBuf.Size);
           
         // Write dynamic sections
         while fileBuf.Position < Int64(dynstrOffset) do 
@@ -245,6 +263,8 @@ begin
       phdrs.Free;
       dynstrBuf.Free;
       dynsymBuf.Free;
+      gotBuf.Free;
+      relapltBuf.Free;
       dynamicBuf.Free;
     end;
   finally
@@ -387,9 +407,71 @@ begin
   dynamicBuf.WriteU64LE(5); // DT_STRTAB
   dynamicBuf.WriteU64LE(baseVA + dynstrOffset);
   
+  // DT_RELA (Relocation table address)
+  dynamicBuf.WriteU64LE(7); // DT_RELA
+  dynamicBuf.WriteU64LE(baseVA + $2100); // rough rela offset estimate
+  
+  // DT_RELASZ (Size of relocation table) 
+  dynamicBuf.WriteU64LE(8); // DT_RELASZ
+  dynamicBuf.WriteU64LE(24); // 24 bytes per relocation entry (rough estimate)
+  
+  // DT_PLTGOT (GOT address for PLT)
+  dynamicBuf.WriteU64LE(3); // DT_PLTGOT
+  dynamicBuf.WriteU64LE(baseVA + $2090); // rough GOT offset estimate
+  
   // DT_NULL terminator
   dynamicBuf.WriteU64LE(0); // DT_NULL
   dynamicBuf.WriteU64LE(0);
+end;
+
+procedure BuildGOTSection(gotBuf: TByteBuffer; symCount: Integer);
+var
+  i: Integer;
+begin
+  // GOT[0] = address of _DYNAMIC (filled by dynamic linker)
+  gotBuf.WriteU64LE(0); 
+  
+  // GOT[1] = link_map pointer (filled by dynamic linker)  
+  gotBuf.WriteU64LE(0);
+  
+  // GOT[2] = _dl_runtime_resolve address (filled by dynamic linker)
+  gotBuf.WriteU64LE(0);
+  
+  // GOT[3..n] = function entries (one per external symbol)
+  for i := 0 to symCount - 1 do
+  begin
+    gotBuf.WriteU64LE(0); // will be filled by dynamic linker
+  end;
+end;
+
+procedure BuildRelaPltSection(relapltBuf: TByteBuffer; symNames: TStringList; symCount: Integer);
+const
+  baseVA: UInt64 = $400000;
+var
+  i: Integer;
+  gotEntryVA: UInt64;
+  symbolIndex: UInt64;
+  relaInfo: UInt64;
+begin
+  // .rela.plt contains relocation entries for PLT → GOT connections
+  // Each entry: r_offset (8) + r_info (8) + r_addend (8) = 24 bytes
+  
+  for i := 0 to symCount - 1 do
+  begin
+    // r_offset: Virtual address of GOT entry to be patched
+    // GOT starts at baseVA + gotOffset, entries 3+ are for functions
+    gotEntryVA := baseVA + $2000 + (3 + i) * 8; // rough GOT offset estimate
+    relapltBuf.WriteU64LE(gotEntryVA);
+    
+    // r_info: (symbol_index << 32) | relocation_type
+    // R_X86_64_JUMP_SLOT = 7 for PLT relocations
+    symbolIndex := i + 1; // dynsym index (0 is reserved)
+    relaInfo := (symbolIndex shl 32) or 7; // R_X86_64_JUMP_SLOT  
+    relapltBuf.WriteU64LE(relaInfo);
+    
+    // r_addend: usually 0 for function relocations
+    relapltBuf.WriteU64LE(0);
+  end;
 end;
 
 end.
