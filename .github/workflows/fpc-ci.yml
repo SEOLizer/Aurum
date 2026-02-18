@@ -33,10 +33,7 @@ jobs:
           set -e
           fpc -O2 -Mobjfpc -Sh lyxc.lpr -olyxc
 
-      - name: Run example integration tests
+      - name: Run example integration tests (e2e)
         run: |
           set -e
-          ./lyxc examples/use_env.lyx -o /tmp/use_env
-          /tmp/use_env arg1 arg2
-          ./lyxc examples/use_math.lyx -o /tmp/use_math
-          /tmp/use_math
+          make e2e
