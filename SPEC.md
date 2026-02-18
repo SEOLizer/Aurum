@@ -177,12 +177,21 @@ Später kannst du das in zwei Segmente splitten (RX / RW).
 - `let`, `if`, `while`
 - Stackframe (RBP/RSP), einfache Registerstrategie
 
-### v0.1.3 (aktuell)
+### v0.1.3
 
 - ✅ Float-Literale (`f32`, `f64`)
 - ✅ Array-Literale: `[1, 2, 3]`
 - ✅ Array-Indexing: `arr[i]`
 - ✅ Array-Zuweisung: `arr[i] := value`
+
+### v0.1.4 (aktuell)
+
+- ✅ SO-Library Integration (dynamic ELF generation)
+- ✅ PLT/GOT Mechanik für externe Symbole
+- ✅ `extern fn` Deklarationen mit Varargs (`...`)
+- ✅ Dynamic Linker Support (`/lib64/ld-linux-x86-64.so.2`)
+- ✅ Relocation Tables (.rela.plt, R_X86_64_JUMP_SLOT)
+- ✅ Automatische Static/Dynamic ELF Auswahl
 
 ### v0.2
 
@@ -277,7 +286,7 @@ Minimal sinnvoll:
 - `bool`
 - `void`
 
-Implementiert in v0.1.3:
+Implementiert in v0.1.3-v0.1.4:
 
 - `f32`, `f64` (Floating-Point)
 - `array` (Stack-allokierte Arrays)
@@ -441,7 +450,7 @@ Wenn ich es brutal zusammenkoche, musst du für Lyx zuerst festlegen:
 6. Kontrollfluss (if/while/return)
 7. Ziel: Linux x86_64 ELF64
 
-# Lyx v0.1.3 – Keywords (aktualisiert)
+# Lyx v0.1.4 – Keywords (aktualisiert)
 
 ## Reservierte Keywords
 

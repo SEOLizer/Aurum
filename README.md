@@ -4,7 +4,7 @@
 Er erzeugt direkt ausführbare **Linux x86_64 ELF64-Binaries** — ohne libc, ohne Linker, rein über Syscalls.
 
 ```
-Lyx Compiler v0.1.3
+Lyx Compiler v0.1.4
 Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.
 ```
 
@@ -547,6 +547,7 @@ FloatLit    := [0-9]+ '.' [0-9]+ ;
 | **v0.0.2** | Integer-Ausdrücke, `print_int(expr)` |
 | **v0.1.2** | `var`, `let`, `co`, `con`, `if`, `while`, `return`, Funktionen, SysV ABI |
 | **v0.1.3** | ✅ Float-Literale (`f32`, `f64`), ✅ Arrays (Literale, Indexing, Zuweisung) |
+| **v0.1.4** | ✅ SO-Library Integration, ✅ Dynamic ELF, ✅ PLT/GOT, ✅ Extern Functions, ✅ Varargs |
 | **v0.2** | Erweiterte Funktionen, bessere Diagnostik |
 | **v1** | Module/Imports, Objectfiles, Linker-Ansteuerung |
 

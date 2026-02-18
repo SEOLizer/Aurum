@@ -1,4 +1,4 @@
-# Lyx v0.1.3 – Mini-Spezifikation
+# Lyx v0.1.4 – Mini-Spezifikation
 
 Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar durch saubere Trennung von Frontend/IR/Backend.
 
@@ -62,7 +62,7 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 * Unsigned Integers verwenden das Präfix `uin` (nicht `u`).
 * `int64` bleibt der primäre Standard-Integer der Sprache.
 
-### Typregeln (v0.1.3)
+### Typregeln (v0.1.4)
 
 * `if`/`while` Bedingungen müssen **bool** sein.
 * Vergleichsoperatoren liefern **bool**.
@@ -91,7 +91,7 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 
 ---
 
-## 4) Builtins (v0.1.3)
+## 4) Builtins (v0.1.4)
 
 Builtins werden vom Compiler als Spezialfälle behandelt (kein normales Linking nötig):
 

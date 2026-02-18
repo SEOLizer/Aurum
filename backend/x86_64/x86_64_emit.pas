@@ -2056,14 +2056,6 @@ begin
             begin
               AddExternalSymbol(instr.ImmStr, GetLibraryForSymbol(instr.ImmStr));
             end;
-            
-            // TEMPORARY TEST: Force external symbol recognition for testing
-            if (instr.ImmStr = 'very_unique_external_func_name_12345') or 
-               (instr.ImmStr = 'malloc') or
-               (instr.ImmStr = 'my_custom_func') then
-            begin
-              AddExternalSymbol(instr.ImmStr, 'libc.so.6');
-            end;
 
             // emit call and patch later
             SetLength(FJumpPatches, Length(FJumpPatches) + 1);
