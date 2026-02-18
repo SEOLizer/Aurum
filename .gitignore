@@ -63,3 +63,7 @@ tests/ppas.sh
 # Local editor/workspace
 .vscode/
 
+# Scratch/temporary test directory (except README)
+tests/scratch/*
+!tests/scratch/README.md
+
