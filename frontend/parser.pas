@@ -495,6 +495,11 @@ var
   elseStmt: TAstStmt;
   bodyStmt: TAstStmt;
   vExpr: TAstExpr;
+  tryBlock: TAstBlock;
+  catchVarName: string;
+  catchTypeName: string;
+  catchType: TLyxType;
+  catchBlock: TAstBlock;
   cases: TAstCaseList;
   defaultBody: TAstStmt;
   caseObj: TAstCase;
@@ -594,6 +599,39 @@ begin
   if Check(tkRepeat) then
     Exit(ParseRepeatUntilStmt);
 
+  if Check(tkTry) then
+  begin
+    // try { ... } catch (e: Type) { ... }
+    Advance; // consume 'try'
+    tryBlock := ParseBlock;
+    catchVarName := '';
+    catchTypeName := '';
+    catchType := atUnresolved;
+    catchBlock := nil;
+    if Accept(tkCatch) then
+    begin
+      Expect(tkLParen);
+      if Check(tkIdent) then
+      begin
+        catchVarName := FCurTok.Value; Advance;
+      end
+      else
+      begin
+        FDiag.Error('expected identifier in catch', FCurTok.Span);
+      end;
+      Expect(tkColon);
+      catchType := ParseType;
+      // If type was identifier, capture its name
+      if FCurTok.Kind <> tkError then
+        catchTypeName := '';
+      Expect(tkRParen);
+      catchBlock := ParseBlock;
+    end
+    else
+      FDiag.Error('expected catch after try', FCurTok.Span);
+    Exit(TAstTry.Create(tryBlock, catchVarName, catchType, catchTypeName, catchBlock, tryBlock.Span));
+  end;
+
   if Check(tkBreak) then
   begin
     Advance;
@@ -615,6 +653,16 @@ begin
       Expect(tkSemicolon);
       Exit(TAstReturn.Create(vExpr, vExpr.Span));
     end;
+    end;
+
+  if Check(tkThrow) then
+  begin
+    Advance; // 'throw'
+    Expect(tkLParen);
+    vExpr := ParseExpr;
+    Expect(tkRParen);
+    Expect(tkSemicolon);
+    Exit(TAstThrow.Create(vExpr, vExpr.Span));
   end;
 
   if Check(tkLBrace) then

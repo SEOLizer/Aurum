@@ -49,7 +49,7 @@ type
      nkFieldAccess, nkIndexAccess, nkStructLit, nkFieldAssign, nkCast,
     // Statements
     nkVarDecl, nkAssign, nkArrayAssign, nkIf, nkWhile, nkFor, nkRepeatUntil,
-    nkReturn, nkBreak, nkSwitch,
+    nkReturn, nkBreak, nkSwitch, nkTry, nkThrow,
     nkBlock, nkExprStmt,
     // Top-Level
     nkFuncDecl, nkConDecl, nkTypeDecl,
@@ -450,6 +450,34 @@ type
     constructor Create(const aStmts: TAstStmtList; aSpan: TSourceSpan);
     destructor Destroy; override;
     property Stmts: TAstStmtList read FStmts;
+  end;
+
+  { Try/Catch: try { ... } catch (e: Type) { ... } }
+  TAstTry = class(TAstStmt)
+  private
+    FTryBlock: TAstBlock;
+    FCatchVarName: string;
+    FCatchType: TLyxType;
+    FCatchTypeName: string;
+    FCatchBlock: TAstBlock;
+  public
+    constructor Create(aTryBlock: TAstBlock; const aCatchVar: string; aCatchType: TLyxType; const aCatchTypeName: string; aCatchBlock: TAstBlock; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property TryBlock: TAstBlock read FTryBlock;
+    property CatchVarName: string read FCatchVarName;
+    property CatchType: TLyxType read FCatchType;
+    property CatchTypeName: string read FCatchTypeName;
+    property CatchBlock: TAstBlock read FCatchBlock;
+  end;
+
+  { Throw statement: throw(expr); }
+  TAstThrow = class(TAstStmt)
+  private
+    FExpr: TAstExpr;
+  public
+    constructor Create(aExpr: TAstExpr; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property Expr: TAstExpr read FExpr;
   end;
 
   { Expression-Statement: expr; }
@@ -998,6 +1026,52 @@ end;
 
 // ================================================================
 // TAstWhile
+// ================================================================
+
+// ================================================================
+// TAstReturn
+// ================================================================
+
+// TAstTry
+// ================================================================
+
+constructor TAstTry.Create(aTryBlock: TAstBlock; const aCatchVar: string; aCatchType: TLyxType; const aCatchTypeName: string; aCatchBlock: TAstBlock; aSpan: TSourceSpan);
+begin
+  inherited Create(nkTry, aSpan);
+  FTryBlock := aTryBlock;
+  FCatchVarName := aCatchVar;
+  FCatchType := aCatchType;
+  FCatchTypeName := aCatchTypeName;
+  FCatchBlock := aCatchBlock;
+end;
+
+
+destructor TAstTry.Destroy;
+begin
+  FTryBlock.Free;
+  FCatchBlock.Free;
+  inherited Destroy;
+end;
+
+// ================================================================
+// TAstThrow
+// ================================================================
+
+constructor TAstThrow.Create(aExpr: TAstExpr; aSpan: TSourceSpan);
+begin
+  inherited Create(nkThrow, aSpan);
+  FExpr := aExpr;
+end;
+
+
+destructor TAstThrow.Destroy;
+begin
+  FExpr.Free;
+  inherited Destroy;
+end;
+
+// ================================================================
+// TAstReturn
 // ================================================================
 
 constructor TAstWhile.Create(aCond: TAstExpr; aBody: TAstStmt;

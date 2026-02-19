@@ -17,6 +17,7 @@ type
     tkTrue, tkFalse, tkExtern, tkCase, tkSwitch, tkBreak, tkDefault,
     tkUnit, tkImport, tkPub, tkAs, tkType, tkStruct, tkArray,
     tkFor, tkTo, tkDownto, tkDo, tkRepeat, tkUntil,
+    tkTry, tkCatch, tkThrow, tkFinally,
     // Operatoren
     tkPlus, tkMinus, tkStar, tkSlash, tkPercent,
     tkAssign,
@@ -112,6 +113,10 @@ begin
     tkDo:        Result := 'do';
     tkRepeat:     Result := 'repeat';
     tkUntil:      Result := 'until';
+    tkTry:        Result := 'try';
+    tkCatch:      Result := 'catch';
+    tkThrow:      Result := 'throw';
+    tkFinally:    Result := 'finally';
     tkPlus:       Result := '+';
     tkMinus:     Result := '-';
     tkStar:      Result := '*';
@@ -432,6 +437,10 @@ begin
     'do':      Result := tkDo;
     'repeat':     Result := tkRepeat;
     'until':      Result := tkUntil;
+    'try':        Result := tkTry;
+    'catch':      Result := tkCatch;
+    'throw':      Result := tkThrow;
+    'finally':    Result := tkFinally;
   else
     Result := tkIdent;
   end;
