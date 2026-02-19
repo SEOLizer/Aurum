@@ -37,10 +37,11 @@ jobs:
           if [ ! -f lyxc.lpr ]; then echo "ERROR: lyxc.lpr not found in workspace" && ls -la && exit 1; fi
           echo "Make dry-run (show commands):" && make -n build || true
 
-      - name: Build compiler (lyxc)
+      - name: Build compiler (lyxc) — explicit fpc invocation
         run: |
           set -x
-          make build
+          # Direct FPC invocation to avoid make pattern/empty-variable issues
+          fpc -Mobjfpc -Sh -FUlib/ -Fuutil/ -Fufrontend/ -Fuir/ -Fubackend/ -Fubackend/x86_64/ -Fubackend/elf/ -O2 lyxc.lpr -olyxc
 
       - name: Run unit tests
         run: make test
