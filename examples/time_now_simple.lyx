@@ -1,0 +1,30 @@
+// examples/time_now_simple.lyx
+// Einfache Demonstration der now() Funktion ohne std/io
+
+import std.time;
+
+fn main(): int64 {
+  // Aktuelle Zeit holen
+  var current: datetime := now();
+  
+  // In Jahr/Monat/Tag umwandeln (Cast zu int64 für Arithmetik)
+  var current_int: int64 := current;
+  var days: int64 := current_int / 86400;
+  var today: date := days;
+  var year: int64 := year_from_date(today);
+  
+  // Zeit-Komponente
+  var sec_of_day: int64 := current_int % 86400;
+  var current_time: time := sec_of_day;
+  var hour: int64 := hour_from_time(current_time);
+  
+  // Millisekunden
+  var ms: int64 := now_ms();
+  
+  // Wir können keine printf verwenden (std/io Bug), 
+  // aber wir können den exit code für Tests nutzen
+  if (year >= 2024) {
+    return 0;  // Erfolg - wir sind im 21. Jahrhundert
+  }
+  return 1;  // Fehler
+}

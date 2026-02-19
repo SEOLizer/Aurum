@@ -597,6 +597,26 @@ begin
   s.ParamTypes[0] := atInt64;
   AddSymbolToCurrent(s, NullSpan);
 
+  // ============================================================================
+  // TIME BUILTINS
+  // ============================================================================
+
+  // now_unix() -> int64 - Get current Unix timestamp (seconds since epoch)
+  s := TSymbol.Create('now_unix');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 0;
+  SetLength(s.ParamTypes, 0);
+  AddSymbolToCurrent(s, NullSpan);
+
+  // now_unix_ms() -> int64 - Get current Unix timestamp in milliseconds
+  s := TSymbol.Create('now_unix_ms');
+  s.Kind := symFunc;
+  s.DeclType := atInt64;
+  s.ParamCount := 0;
+  SetLength(s.ParamTypes, 0);
+  AddSymbolToCurrent(s, NullSpan);
+
   // Note: inc(var x) and dec(var x) require special handling as they modify variables
   // These will be implemented as special parser constructs, not regular function calls
 end;

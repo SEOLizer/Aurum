@@ -143,4 +143,26 @@ pub fn unix_seconds_from_timestamp(ts: timestamp): int64 {
   return ts / 1000000;
 }
 
+// --- Aktuelle Systemzeit ---
+
+// Externe Builtins für Systemzeit (werden vom Compiler bereitgestellt)
+extern fn now_unix(): int64;
+extern fn now_unix_ms(): int64;
+
+// Aktuelle Zeit als datetime (Sekunden seit Epoch)
+pub fn now(): datetime {
+  return now_unix();
+}
+
+// Aktuelle Zeit als timestamp (Mikrosekunden seit Epoch)
+pub fn now_us(): timestamp {
+  var sec: int64 := now_unix();
+  return sec * 1000000;
+}
+
+// Aktuelle Zeit als Millisekunden seit Epoch
+pub fn now_ms(): int64 {
+  return now_unix_ms();
+}
+
 // Ende von std/time.lyx

@@ -1,0 +1,48 @@
+// examples/time_now.lyx
+// Demonstration der now() Funktion fuer aktuelle Systemzeit
+
+// import std.io;  // Temporär deaktiviert wegen break-Statement Bug
+import std.time;
+
+fn main(): int64 {
+  print("=== Systemzeit Demo ===\n\n");
+  
+  // Aktuelle Zeit holen
+  var current: datetime := now();
+  printf("Aktuelle Unix-Zeit: %d Sekunden seit Epoch\n", current);
+  
+  // In date umwandeln (Tage seit Epoch)
+  var days: int64 := current / 86400;
+  var today: date := days;
+  printf("Heute ist Tag %d seit 1970-01-01\n", today);
+  printf("Das entspricht dem Jahr: %d\n", year_from_date(today));
+  
+  // Zeitkomponente extrahieren (Sekunden seit Mitternacht UTC)
+  var sec_of_day: int64 := current % 86400;
+  var current_time: time := sec_of_day;
+  printf("\nAktuelle Uhrzeit (UTC):\n");
+  printf("  Stunde: %d\n", hour_from_time(current_time));
+  printf("  Minute: %d\n", minute_from_time(current_time));
+  printf("  Sekunde: %d\n", second_from_time(current_time));
+  
+  // Millisekunden-Präzision
+  var ms: int64 := now_ms();
+  printf("\nAktuelle Zeit in Millisekunden: %d\n", ms);
+  
+  // Zeitmessung
+  print("\nZeitmessung:\n");
+  var start: int64 := now_ms();
+  
+  // Einfache Schleife als "Arbeit"
+  var i: int64 := 0;
+  while (i < 1000000) {
+    i := i + 1;
+  }
+  
+  var ende: int64 := now_ms();
+  var dauer: int64 := ende - start;
+  printf("Schleife dauerte: %d ms\n", dauer);
+  
+  print("\n=== Demo beendet ===\n");
+  return 0;
+}
