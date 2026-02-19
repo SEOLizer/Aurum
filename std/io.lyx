@@ -87,8 +87,8 @@ pub fn printf_core(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: pchar): int6
     if (c == 37) { // '%'
       // next char
       i := i + 1;
-      if (i >= n) { break; }
-      var spec: int64 := str_char_at(fmt, i);
+      if (i < n) {
+        var spec: int64 := str_char_at(fmt, i);
       if (spec == 37) { // '%%' -> '%'
         str_set_char(chbuf, 0, 37);
         print_str(chbuf);
@@ -133,6 +133,7 @@ pub fn printf_core(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: pchar): int6
         print_str(chbuf);
         printed := printed + 2;
       }
+      } // Ende von if (i < n)
     } else {
       str_set_char(chbuf, 0, c);
       print_str(chbuf);

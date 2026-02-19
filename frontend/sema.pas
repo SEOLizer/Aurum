@@ -944,40 +944,56 @@ begin
         rt := CheckExpr(bin.Right);
         case bin.Op of
            tkPlus, tkMinus, tkStar, tkSlash, tkPercent:
-              begin
-                // Allow both integer and float arithmetic
-                if IsIntegerType(lt) and IsIntegerType(rt) then
-                begin
-                  // Integer arithmetic - promote to 64-bit for now
-                  Result := atInt64;
-                end
-                else if IsFloatType(lt) and IsFloatType(rt) then
-                begin
-                  // Float arithmetic - result is f64
-                  Result := atF64;
-                end
-                else
-                begin
-                  FDiag.Error('type error: arithmetic requires integer or float operands', bin.Span);
-                  Result := atInt64;
-                end;
-              end;
-           tkEq, tkNeq, tkLt, tkLe, tkGt, tkGe:
-              begin
-                if (IsIntegerType(lt) and IsIntegerType(rt)) then
-                begin
-                  Result := atBool;
-                end
-                else if (IsFloatType(lt) and IsFloatType(rt)) then
-                begin
-                  // Float comparison
-                  Result := atBool;
-                end
-                else if (TypeEqual(lt, atPChar) and TypeEqual(rt, atPChar)) then
-                begin
-                  // pointer/string comparison
-                  Result := atBool;
-                end
+               begin
+                 // Allow both integer and float arithmetic
+                 if IsIntegerType(lt) and IsIntegerType(rt) then
+                 begin
+                   // Integer arithmetic - promote to 64-bit for now
+                   Result := atInt64;
+                 end
+                 else if IsFloatType(lt) and IsFloatType(rt) then
+                 begin
+                   // Float arithmetic - result is f64
+                   Result := atF64;
+                 end
+                 else if (IsTimeType(lt) or IsIntegerType(lt)) and (IsTimeType(rt) or IsIntegerType(rt)) then
+                 begin
+                   // Time arithmetic: time +/- int, int + time, etc.
+                   // Result is the "more specific" type or int64
+                   if IsTimeType(lt) then
+                     Result := lt
+                   else if IsTimeType(rt) then
+                     Result := rt
+                   else
+                     Result := atInt64;
+                 end
+                 else
+                 begin
+                   FDiag.Error('type error: arithmetic requires integer or float operands', bin.Span);
+                   Result := atInt64;
+                 end;
+               end;
+            tkEq, tkNeq, tkLt, tkLe, tkGt, tkGe:
+               begin
+                 if (IsIntegerType(lt) and IsIntegerType(rt)) then
+                 begin
+                   Result := atBool;
+                 end
+                 else if (IsFloatType(lt) and IsFloatType(rt)) then
+                 begin
+                   // Float comparison
+                   Result := atBool;
+                 end
+                 else if (TypeEqual(lt, atPChar) and TypeEqual(rt, atPChar)) then
+                 begin
+                   // pointer/string comparison
+                   Result := atBool;
+                 end
+                 else if (IsTimeType(lt) or IsIntegerType(lt)) and (IsTimeType(rt) or IsIntegerType(rt)) then
+                 begin
+                   // Time comparison: time vs time, time vs int, etc.
+                   Result := atBool;
+                 end
                 else
                 begin
                   FDiag.Error('type error: comparison requires integer, float, or pchar operands', bin.Span);
