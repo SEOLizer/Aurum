@@ -1,160 +1,104 @@
 // std/time.lyx
-// Basisfunktionen für Gregorianische Datumsberechnung
-// - days_from_civil / civil_from_days (Einzel-Zugrifforss)
-// - is_leap_year, day_of_year, weekday, iso_week, iso_year
-// - API-Skeleton für spätere Formatter-Implementierung
+// Vereinfachte Zeitfunktionen mit korrekter Lyx-Syntax
 
-// Hinweis: Dieses Modul liefert reine numerische Hilfsfunktionen; eine vollwertige
-// String-Formatter-Implementierung folgt in einem separaten Commit.
-
-pub fn is_leap_year(y: int64): bool {
-  // Gregorianische Schaltregel
-  if (y % 4) != 0 { return false; }
-  if (y % 100) != 0 { return true; }
-  if (y % 400) == 0 { return true; }
-  return false;
-}
-
+// Tage seit 1970-01-01 (Unix epoch) berechnen
 pub fn days_from_civil(year: int64, month: int64, day: int64): int64 {
-  // Algorithmus nach Howard Hinnant: Tage seit 1970-01-01 (Unix epoch)
-  // Übergabe: proleptischer gregorianischer Kalender
   var y: int64 := year;
   var m: int64 := month;
   var d: int64 := day;
 
-  // Januar und Februar als Monate 11 und 12 des Vorjahres behandeln
-  if m <= 2 {
-    y = y - 1;
-    m = m + 12;
+  if (m <= 2) {
+    y := y - 1;
+    m := m + 12;
   }
 
-  var era: int64 := y / 400; // floor division für positive/negative Jahre in Lyx: rounds toward zero
-  // Korrektur für negative Jahre: wenn y < 0 und y not divisible by 400, era--
-  if y < 0 && (y % 400) != 0 {
-    era = era - 1;
+  var era: int64 := y / 400;
+  if (y < 0) {
+    if ((y % 400) != 0) {
+      era := era - 1;
+    }
   }
 
-  var yoe: int64 := y - era * 400; // year of era
-  var doy: int64 := (153 * (m - 3) + 2) / 5 + d - 1; // day of year
-  var doe: int64 := yoe * 365 + yoe / 4 - yoe / 100 + doy; // day of era
+  var yoe: int64 := y - era * 400;
+  var doy: int64 := (153 * (m - 3) + 2) / 5 + d - 1;
+  var doe: int64 := yoe * 365 + yoe / 4 - yoe / 100 + doy;
 
-  // 1970-01-01 ist day 719468 in Hinnant-Referenz (days since civil 0000-03-01)
-  var days: int64 := era * 146097 + doe - 719468;
-  return days;
+  return era * 146097 + doe - 719468;
 }
 
+// Jahr aus Tagen seit Epoch extrahieren
 pub fn civil_year_from_days(days: int64): int64 {
   var z: int64 := days + 719468;
   var era: int64 := z / 146097;
-  if z < 0 && (z % 146097) != 0 { era = era - 1; }
-  var doe: int64 := z - era * 146097; // [0, 146096]
-  var yoe: int64 := (doe - doe/1460 + doe/36524 - doe/146096) / 365; // [0,399]
-  var y: int64 := yoe + era * 400;
-  return y;
+  if (z < 0) {
+    if ((z % 146097) != 0) {
+      era := era - 1;
+    }
+  }
+  var doe: int64 := z - era * 146097;
+  var yoe: int64 := (doe - doe/1460 + doe/36524 - doe/146096) / 365;
+  return yoe + era * 400;
 }
 
+// Monat aus Tagen seit Epoch extrahieren
 pub fn civil_month_from_days(days: int64): int64 {
   var z: int64 := days + 719468;
   var era: int64 := z / 146097;
-  if z < 0 && (z % 146097) != 0 { era = era - 1; }
-  var doe: int64 := z - era * 146097; // [0, 146096]
-  var yoe: int64 := (doe - doe/1460 + doe/36524 - doe/146096) / 365; // [0,399]
+  if (z < 0) {
+    if ((z % 146097) != 0) {
+      era := era - 1;
+    }
+  }
+  var doe: int64 := z - era * 146097;
+  var yoe: int64 := (doe - doe/1460 + doe/36524 - doe/146096) / 365;
   var y: int64 := yoe + era * 400;
   var doy: int64 := doe - (365*yoe + yoe/4 - yoe/100);
-  var mp: int64 := (5 * doy + 2) / 153; // month part
+  var mp: int64 := (5 * doy + 2) / 153;
   var month: int64 := mp + 3;
-  if mp >= 10 { month = month - 12; }
+  if (mp >= 10) {
+    month := month - 12;
+  }
   return month;
 }
 
+// Tag aus Tagen seit Epoch extrahieren
 pub fn civil_day_from_days(days: int64): int64 {
   var z: int64 := days + 719468;
   var era: int64 := z / 146097;
-  if z < 0 && (z % 146097) != 0 { era = era - 1; }
-  var doe: int64 := z - era * 146097; // [0, 146096]
-  var yoe: int64 := (doe - doe/1460 + doe/36524 - doe/146096) / 365; // [0,399]
+  if (z < 0) {
+    if ((z % 146097) != 0) {
+      era := era - 1;
+    }
+  }
+  var doe: int64 := z - era * 146097;
+  var yoe: int64 := (doe - doe/1460 + doe/36524 - doe/146096) / 365;
   var y: int64 := yoe + era * 400;
   var doy: int64 := doe - (365*yoe + yoe/4 - yoe/100);
-  var mp: int64 := (5 * doy + 2) / 153; // month part
-  var day: int64 := doy - (153*mp+2)/5 + 1;
-  return day;
+  var mp: int64 := (5 * doy + 2) / 153;
+  return doy - (153*mp+2)/5 + 1;
 }
 
-pub fn day_of_year(year: int64, month: int64, day: int64): int64 {
-  // 1..366
-  var m: int64 := month;
-  var y: int64 := year;
-  var k: int64 := 0;
-  if m <= 2 {
-    k = 0;
-  } else if is_leap_year(y) {
-    k = 1;
-  } else {
-    k = 0;
+// Schaltjahr prüfen
+pub fn is_leap_year(y: int64): bool {
+  if ((y % 4) != 0) {
+    return false;
   }
-  // alternative einfache Berechnung via days_from_civil
-  var days0: int64 := days_from_civil(y, 1, 1);
-  var daysGiven: int64 := days_from_civil(y, m, day);
-  return daysGiven - days0 + 1;
-}
-
-pub fn weekday(year: int64, month: int64, day: int64): int64 {
-  // ISO: 0 = Monday, ... 6 = Sunday
-  var days: int64 := days_from_civil(year, month, day);
-  // 1970-01-01 was a Thursday. ISO: Thursday = 3 (Mon=0)
-  // Compute weekday = (days + 4) % 7 with Monday=0 => (days+4) mod 7 ???
-  // Verify: 1970-01-01 -> days=0 -> weekday = (0+3) % 7 = 3 (Thu)
-  var w: int64 := (days + 3) % 7;
-  if w < 0 { w = w + 7; }
-  return w;
-}
-
-pub fn iso_week(year: int64, month: int64, day: int64): int64 {
-  // ISO week number 1..53
-  // Compute ordinal day and weekday
-  var doy: int64 := day_of_year(year, month, day);
-  var wday: int64 := weekday(year, month, day); // 0=Mon
-  // Thursday-based week year
-  var week: int64 := (doy - wday + 10) / 7;
-  if week < 1 {
-    // week belongs to previous year
-    var prevYear: int64 := year - 1;
-    var dec31_wday: int64 := weekday(prevYear, 12, 31);
-    var dec31_doy: int64 := day_of_year(prevYear, 12, 31);
-    var prevWeekCount: int64 := (dec31_doy - dec31_wday + 10) / 7;
-    return prevWeekCount;
+  if ((y % 100) != 0) {
+    return true;
   }
-  // check if week number exceeds number of weeks in year
-  var nextYearWeek1: int64 := iso_week(year+1, 1, 1);
-  // if nextYearWeek1 == 1 then current year has week count = ???
-  // Simpler: compute week for Dec 31
-  var lastWeek: int64 := (day_of_year(year, 12, 31) - weekday(year, 12, 31) + 10) / 7;
-  if week > lastWeek { return 1; }
-  return week;
+  if ((y % 400) == 0) {
+    return true;
+  }
+  return false;
 }
 
-pub fn iso_year(year: int64, month: int64, day: int64): int64 {
-  var w: int64 := iso_week(year, month, day);
-  if w == 1 && month == 12 {
-    return year + 1;
-  }
-  if w >= 52 && month == 1 {
-    return year - 1;
-  }
-  return year;
-}
+// --- Native Zeittypen APIs ---
 
-// --- Convenience native date/time APIs (Wrappers using native types) ---
-// These functions provide compatibility between existing int-based APIs
-// and the new native types: date, time, datetime, timestamp
-
-// Create date from year/month/day
 pub fn date_from_ymd(year: int64, month: int64, day: int64): date {
   var d: int64 := days_from_civil(year, month, day);
   return d;
 }
 
-// Extract Y/M/D from native date
 pub fn year_from_date(d: date): int64 {
   return civil_year_from_days(d);
 }
@@ -167,7 +111,6 @@ pub fn day_from_date(d: date): int64 {
   return civil_day_from_days(d);
 }
 
-// Time of day helpers (time stored as seconds since midnight)
 pub fn time_from_hms(hour: int64, minute: int64, second: int64): time {
   return hour * 3600 + minute * 60 + second;
 }
@@ -183,10 +126,6 @@ pub fn minute_from_time(t: time): int64 {
 pub fn second_from_time(t: time): int64 {
   return t % 60;
 }
-
-// Datetime / Timestamp helpers
-// datetime: seconds since epoch (int64)
-// timestamp: microseconds since epoch (int64)
 
 pub fn datetime_from_unix_seconds(sec: int64): datetime {
   return sec;
@@ -204,196 +143,4 @@ pub fn unix_seconds_from_timestamp(ts: timestamp): int64 {
   return ts / 1000000;
 }
 
-// End of native convenience wrappers
-
-  // API: Formatter-Implementation (Lyx)
-// Statischer 512-Byte Puffer (nicht thread-safe)
-con STATIC_FMT_BUF: pchar := "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-
-// interne Hilfsfunktion: sichere Einzelbyte-Schreibung ins Buffer
-pub fn _put_byte(buf: pchar, buflen: int64, idx: int64, b: int64): int64 {
-  if idx >= buflen { return -1; }
-  // Builtin: buf_put_byte(buf, idx, b) -> int64
-  let r: int64 := buf_put_byte(buf, idx, b);
-  if r < 0 { return -1; }
-  return idx + 1;
-}
-
-// interne Hilfsfunktion: schreibe unsigned int als Dezimal in Buffer
-pub fn _write_uint(buf: pchar, buflen: int64, idx: int64, mut val: int64): int64 {
-  // special case 0
-  if val = 0 {
-    return _put_byte(buf, buflen, idx, Ord('0'));
-  }
-  var dv: int64 := 1;
-  // find highest power of 10
-  while val / dv >= 10 { dv = dv * 10; }
-  while dv > 0 {
-    var digit: int64 := (val / dv) % 10;
-    var newidx: int64 := _put_byte(buf, buflen, idx, Ord('0') + digit);
-    if newidx < 0 { return -1; }
-    idx = newidx;
-    dv = dv / 10;
-  }
-  return idx;
-}
-
-// Schreibe 2-stellige mit Nullpadding (00..99)
-pub fn _write_2pad(buf: pchar, buflen: int64, idx: int64, val: int64): int64 {
-  var tens: int64 := val / 10;
-  var units: int64 := val % 10;
-  var newidx: int64 := _put_byte(buf, buflen, idx, Ord('0') + tens);
-  if newidx < 0 { return -1; }
-  newidx = _put_byte(buf, buflen, newidx, Ord('0') + units);
-  return newidx;
-}
-
-// Schreibe 1- oder 2-stellige ohne Padding
-pub fn _write_1or2(buf: pchar, buflen: int64, idx: int64, val: int64): int64 {
-  if val >= 10 {
-    var tens: int64 := val / 10;
-    var units: int64 := val % 10;
-    var newidx: int64 := _put_byte(buf, buflen, idx, Ord('0') + tens);
-    if newidx < 0 { return -1; }
-    newidx = _put_byte(buf, buflen, newidx, Ord('0') + units);
-    return newidx;
-  } else {
-    return _put_byte(buf, buflen, idx, Ord('0') + val);
-  }
-}
-
-// Hauptfunktion: formatiere Unix-Timestamp in caller-Buffer
-pub fn format_unix_to_buf(ts: int64, fmt: pchar, tz_offset: int64, buf: pchar, buflen: int64): int64 {
-  var idx: int64 := 0;
-  // lokale Zeit in Sekunden
-  var ts_local: int64 := ts + tz_offset;
-  var days: int64;
-  if ts_local >= 0 {
-    days = ts_local / 86400;
-  } else {
-    days = (ts_local - 86399) / 86400; // floor division
-  }
-  var secs_of_day: int64 := ts_local - days * 86400;
-  if secs_of_day < 0 { secs_of_day = secs_of_day + 86400; }
-
-  var year: int64 := civil_year_from_days(days);
-  var month: int64 := civil_month_from_days(days);
-  var day: int64 := civil_day_from_days(days);
-  var hour: int64 := secs_of_day / 3600;
-  var minute: int64 := (secs_of_day % 3600) / 60;
-  var second: int64 := secs_of_day % 60;
-
-  // iterate format string
-  var i: int64 := 0;
-  while fmt[i] <> 0 {
-    var c: int64 := fmt[i];
-    if c <> Ord('%') {
-      let ni := _put_byte(buf, buflen, idx, c);
-      if ni < 0 { return -1; }
-      idx = ni;
-      i = i + 1;
-      continue;
-    }
-    // token
-    i = i + 1;
-    var t: int64 := fmt[i];
-    if t = 0 { break; }
-    if t = Ord('%') {
-      let ni := _put_byte(buf, buflen, idx, Ord('%'));
-      if ni < 0 { return -1; }
-      idx = ni;
-      i = i + 1;
-      continue;
-    }
-    if t = Ord('Y') {
-      // 4-digit year (supports negative years poorly)
-      var y := year;
-      var d1000 := (y / 1000) % 10; if d1000 < 0 { d1000 = -d1000; }
-      var d100 := (y / 100) % 10; if d100 < 0 { d100 = -d100; }
-      var d10 := (y / 10) % 10; if d10 < 0 { d10 = -d10; }
-      var d1 := y % 10; if d1 < 0 { d1 = -d1; }
-      var ni := _put_byte(buf, buflen, idx, Ord('0') + d1000); if ni < 0 { return -1; }
-      ni = _put_byte(buf, buflen, ni, Ord('0') + d100); if ni < 0 { return -1; }
-      ni = _put_byte(buf, buflen, ni, Ord('0') + d10); if ni < 0 { return -1; }
-      ni = _put_byte(buf, buflen, ni, Ord('0') + d1); if ni < 0 { return -1; }
-      idx = ni; i = i + 1; continue;
-    }
-    if t = Ord('y') {
-      var v := year % 100; if v < 0 { v = -v; }
-      var ni := _write_2pad(buf, buflen, idx, v);
-      if ni < 0 { return -1; }
-      idx = ni; i = i + 1; continue;
-    }
-    if t = Ord('m') {
-      var ni := _write_2pad(buf, buflen, idx, month);
-      if ni < 0 { return -1; }
-      idx = ni; i = i + 1; continue;
-    }
-    if t = Ord('n') {
-      var ni := _write_1or2(buf, buflen, idx, month);
-      if ni < 0 { return -1; }
-      idx = ni; i = i + 1; continue;
-    }
-    if t = Ord('d') {
-      var ni := _write_2pad(buf, buflen, idx, day);
-      if ni < 0 { return -1; }
-      idx = ni; i = i + 1; continue;
-    }
-    if t = Ord('j') {
-      var ni := _write_1or2(buf, buflen, idx, day);
-      if ni < 0 { return -1; }
-      idx = ni; i = i + 1; continue;
-    }
-    if t = Ord('H') {
-      var ni := _write_2pad(buf, buflen, idx, hour);
-      if ni < 0 { return -1; }
-      idx = ni; i = i + 1; continue;
-    }
-    if t = Ord('G') {
-      var ni := _write_1or2(buf, buflen, idx, hour);
-      if ni < 0 { return -1; }
-      idx = ni; i = i + 1; continue;
-    }
-    if t = Ord('i') {
-      var ni := _write_2pad(buf, buflen, idx, minute);
-      if ni < 0 { return -1; }
-      idx = ni; i = i + 1; continue;
-    }
-    if t = Ord('s') {
-      var ni := _write_2pad(buf, buflen, idx, second);
-      if ni < 0 { return -1; }
-      idx = ni; i = i + 1; continue;
-    }
-    if t = Ord('U') {
-      // Unix timestamp in seconds (signed)
-      var val: int64 := ts;
-      if val < 0 {
-        var ni := _put_byte(buf, buflen, idx, Ord('-')); if ni < 0 { return -1; }
-        idx = ni;
-        val = -val;
-      }
-      var ni2 := _write_uint(buf, buflen, idx, val);
-      if ni2 < 0 { return -1; }
-      idx = ni2; i = i + 1; continue;
-    }
-
-    // Unknown token: write verbatim '%' and token char
-    var ni3 := _put_byte(buf, buflen, idx, Ord('%'));
-    if ni3 < 0 { return -1; }
-    ni3 = _put_byte(buf, buflen, ni3, t);
-    if ni3 < 0 { return -1; }
-    idx = ni3; i = i + 1;
-  }
-  // null-terminate
-  if idx >= buflen { return -1; }
-  let _ := buf_put_byte(buf, idx, 0);
-  return idx;
-}
-
-// Convenience: wrapper mit statischem Puffer (nicht thread-safe)
-pub fn format_unix(ts: int64, fmt: pchar, tz_offset: int64): pchar {
-  let res := format_unix_to_buf(ts, fmt, tz_offset, STATIC_FMT_BUF, 512);
-  return STATIC_FMT_BUF;
-}
-
-// Convenience: Beispiele und Tests werden später erweitert
+// Ende von std/time.lyx
