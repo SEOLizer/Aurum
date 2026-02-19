@@ -19,9 +19,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y fpc make gcc
 
-      - name: Show FPC version
-        run: fpc -v
-
       - name: Show FPC detailed info
         run: fpc -iW -iD || true
 
