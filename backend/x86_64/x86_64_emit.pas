@@ -734,17 +734,93 @@ begin
             end
             else if instr.ImmStr = 'print_int' then
             begin
-              // DEBUG: Write a debug string to stderr
-              WriteMovRegImm64(FCode, RAX, 1); // write
-              WriteMovRegImm64(FCode, RDI, 2); // stderr
-              WriteMovRegImm64(FCode, RSI, 999); // FAKE POINTER (will crash if executed)
-              WriteMovRegImm64(FCode, RDX, 1); // 1 byte
+              if not bufferAdded then
+              begin
+                bufferOffset := totalDataOffset;
+                for k := 1 to 64 do FData.WriteU8(0);
+                Inc(totalDataOffset, 64);
+                bufferAdded := True;
+              end;
+
+              // load value into RAX
+              WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+              // lea rsi, buffer
+              leaPos := FCode.Size;
+              EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+              SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
+              bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
+
+              // rdi = rsi + 64
+              WriteMovRegReg(FCode, RDI, RSI);
+              WriteMovRegImm64(FCode, RDX, 64);
+              WriteAddRegReg(FCode, RDI, RDX);
+
+              // cmp rax,0 ; jne nonzero
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F8); EmitU8(FCode, 0);
+              nonZeroPos := FCode.Size;
+              WriteJneRel32(FCode, 0);
+
+              // zero path
+              WriteMovMemImm8(FCode, RSI, 0, Ord('0'));
+              WriteMovRegImm64(FCode, RDX, 1);
+              WriteMovRegImm64(FCode, RAX, 1);
+              WriteMovRegImm64(FCode, RDI, 1);
+              WriteSyscall(FCode);
+              jmpDonePos := FCode.Size;
+              WriteJmpRel32(FCode, 0);
+
+              // non-zero label
+              k := FCode.Size;
+              FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+
+              // sign flag in rbx
+              WriteMovRegImm64(FCode, RBX, 0);
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F8); EmitU8(FCode, 0);
+              jgePos := FCode.Size;
+              WriteJgeRel32(FCode, 0);
+              EmitU8(FCode, $48); EmitU8(FCode, $F7); EmitU8(FCode, $D8); // neg rax
+              WriteMovRegImm64(FCode, RBX, 1);
+              k := FCode.Size;
+              FCode.PatchU32LE(jgePos + 2, Cardinal(k - jgePos - 6));
+
+              // loop over digits
+              loopStartPos := FCode.Size;
+              WriteCqo(FCode);
+              WriteMovRegImm64(FCode, RCX, 10);
+              WriteIdivReg(FCode, RCX);
+              EmitU8(FCode, $80); EmitU8(FCode, $C2); EmitU8(FCode, Byte(Ord('0')));
+              WriteDecReg(FCode, RDI);
+              EmitU8(FCode, $88); EmitU8(FCode, $17);
+              WriteTestRaxRax(FCode);
+              jneLoopPos := FCode.Size;
+              WriteJneRel32(FCode, 0);
+
+              // add sign if needed
+              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $FB); EmitU8(FCode, 0);
+              jeSignPos := FCode.Size;
+              WriteJeRel32(FCode, 0);
+              WriteDecReg(FCode, RDI);
+              WriteMovMemImm8(FCode, RDI, 0, Ord('-'));
+              k := FCode.Size;
+              FCode.PatchU32LE(jeSignPos + 2, Cardinal(k - jeSignPos - 6));
+
+              // compute length = (buffer_end) - rdi
+              EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $8E); EmitU32(FCode, 64);
+              WriteSubRegReg(FCode, RCX, RDI);
+              WriteMovRegReg(FCode, RDX, RCX);
+
+              // syscall write(1, rdi, rdx)
+              WriteMovRegImm64(FCode, RAX, 1);
+              WriteMovRegReg(FCode, RSI, RDI);
+              WriteMovRegImm64(FCode, RDI, 1);
               WriteSyscall(FCode);
 
-              // REAL: use the integer as exit code
-              WriteMovRegMem(FCode, RDI, RBP, SlotOffset(localCnt + instr.Src1));
-              WriteMovRegImm64(FCode, RAX, 60); // exit
-              WriteSyscall(FCode);
+              // patch loop jump
+              k := FCode.Size;
+              FCode.PatchU32LE(jneLoopPos + 2, Cardinal(loopStartPos - jneLoopPos - 6));
+
+               // patch done jump
+               FCode.PatchU32LE(jmpDonePos + 1, Cardinal(k - jmpDonePos - 5));
             end
             else if instr.ImmStr = 'env_init' then
             begin
@@ -946,13 +1022,13 @@ begin
               WriteSyscall(FCode);
             end;
           end;
-          irConstInt:
-            begin
-              // Load immediate integer into temp slot
-              slotIdx := localCnt + instr.Dest;
-              WriteMovRegImm64(FCode, RAX, UInt64(instr.ImmInt));
-              WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
-            end;
+        irConstInt:
+           begin
+             // constant immediate -> load into slot
+             slotIdx := localCnt + instr.Dest;
+             WriteMovRegImm64(FCode, RAX, instr.ImmInt);
+             WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
+           end;
           irConstFloat:
             begin
               // Load float constant as IEEE 754 double bits into stack slot
