@@ -42,9 +42,17 @@ jobs:
           set -x
           # Ensure build directories exist (Makefile used to create lib/)
           mkdir -p lib
-          ls -la lib || true
+          echo "pwd:" && pwd
+          echo "ls -la top:" && ls -la
+          echo "ls -la lib:" && ls -la lib || true
+          echo "stat lib:" && stat lib || true
+          echo "whoami & id:" && whoami && id || true
+          echo "Try to create a test file in lib:" && (touch lib/ci_test || true) && echo "touch exit:$?" || true
+          echo "ls -la lib after touch:" && ls -la lib || true
           # Direct FPC invocation to avoid make pattern/empty-variable issues
           fpc -Mobjfpc -Sh -FUlib/ -Fuutil/ -Fufrontend/ -Fuir/ -Fubackend/ -Fubackend/x86_64/ -Fubackend/elf/ -O2 lyxc.lpr -olyxc
+          # cleanup
+          rm -f lib/ci_test || true
 
       - name: Run unit tests
         run: make test
