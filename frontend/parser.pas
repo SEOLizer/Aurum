@@ -888,51 +888,68 @@ var
   operand: TAstExpr;
   span: TSourceSpan;
   value: Int64;
+  s: string;
+  b: Boolean;
 begin
-  // Simple, non-recursive approach for debugging
+  // Support nested/unlimited prefix operators by recursion.
+  // Handle unary '-' and '!' with constant folding when possible.
   if Check(tkMinus) then
   begin
     span := FCurTok.Span;
-    Advance;
-    if Check(tkIntLit) then
+    Advance; // consume '-'
+    operand := ParseUnaryExpr; // allow nested prefixes
+    // constant folding for integers
+    if operand is TAstIntLit then
     begin
-      // fold unary minus applied directly to integer literal
-      value := -StrToInt64Def(FCurTok.Value, 0);
-      span := FCurTok.Span;
-      Advance;
+      value := -TAstIntLit(operand).Value;
+      operand.Free;
       Exit(TAstIntLit.Create(value, span));
-    end;
-    if Check(tkFloatLit) then
+    end
+    else if operand is TAstFloatLit then
     begin
-      // fold unary minus applied directly to float literal
-      Result := TAstFloatLit.Create('-' + FCurTok.Value, FCurTok.Span);
-      Advance;
+      s := TAstFloatLit(operand).Value;
+      operand.Free;
+      if (Length(s) > 0) and (s[1] = '-') then
+        s := Copy(s, 2, MaxInt)
+      else
+        s := '-' + s;
+      Exit(TAstFloatLit.Create(s, span));
+    end
+    else
+    begin
+      Result := TAstUnaryOp.Create(tkMinus, operand, span);
       Exit;
     end;
-    // For variables and other expressions, use ParsePrimary directly
-    operand := ParsePrimary;
-    Result := TAstUnaryOp.Create(tkMinus, operand, span);
-    Exit;
   end;
 
   if Check(tkNot) then
   begin
     op := FCurTok.Kind;
-    Advance;
-    // For variables and other expressions, use ParsePrimary directly
-    operand := ParsePrimary;
-    Result := TAstUnaryOp.Create(op, operand, operand.Span);
-    Exit;
-   end;
+    Advance; // consume '!'
+    operand := ParseUnaryExpr;
+    if operand is TAstBoolLit then
+    begin
+      b := TAstBoolLit(operand).Value;
+      span := operand.Span;
+      operand.Free;
+      Exit(TAstBoolLit.Create(not b, span));
+    end
+    else
+    begin
+      Result := TAstUnaryOp.Create(op, operand, operand.Span);
+      Exit;
+    end;
+  end;
 
-   Result := ParsePrimary;
-   
-   // Check for cast: expr as Type
-   if Check(tkAs) then
-   begin
-     Advance;  // consume 'as'
-     Result := TAstCast.Create(Result, ParseType, Result.Span);
-   end;
+  // fallback: primary expression
+  Result := ParsePrimary;
+
+  // Check for cast: expr as Type
+  if Check(tkAs) then
+  begin
+    Advance;  // consume 'as'
+    Result := TAstCast.Create(Result, ParseType, Result.Span);
+  end;
 end;
 
 function TParser.ParsePrimary: TAstExpr;
