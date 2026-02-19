@@ -26,7 +26,16 @@ jobs:
         run: |
           echo "Workspace:" && pwd
           echo "Listing top-level files:" && ls -la
+          echo "Show examples dir:" && ls -la examples || true
+          echo "OS & Arch:" && uname -a && arch
+          echo "OS release:" && cat /etc/os-release || true
+          echo "PATH: $PATH"
+          echo "Which fpc / ppcx64:" && which fpc || true && which ppcx64 || true
+          echo "FPC version:" && fpc -v || true
+          echo "File type of ppcx64:" && if which ppcx64 >/dev/null 2>&1; then file $(which ppcx64) || true; fi
+          echo "dpkg list for fpc (if installed):" && dpkg -L fpc || true
           if [ ! -f lyxc.lpr ]; then echo "ERROR: lyxc.lpr not found in workspace" && ls -la && exit 1; fi
+          echo "Make dry-run (show commands):" && make -n build || true
 
       - name: Build compiler (lyxc)
         run: |
