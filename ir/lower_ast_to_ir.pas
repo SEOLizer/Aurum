@@ -1348,6 +1348,9 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     // Catch label
     instr.Op := irLabel; instr.LabelName := catchLabel; Emit(instr);
 
+    // Pop handler (we no longer consider it the head)
+    instr.Op := irPopHandler; instr.Src1 := handlerTemp; Emit(instr);
+
     // Load exception into tmpExn
     tmpExn := NewTemp;
     instr.Op := irLoadHandlerExn; instr.Dest := tmpExn; instr.Src1 := handlerTemp; Emit(instr);
@@ -1402,6 +1405,15 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
   if stmt is TAstExprStmt then
   begin
     LowerExpr(TAstExprStmt(stmt).Expr);
+    Exit(True);
+  end;
+
+  if stmt is TAstThrow then
+  begin
+    tmp := LowerExpr(TAstThrow(stmt).Expr);
+    instr.Op := irThrow;
+    instr.Src1 := tmp;
+    Emit(instr);
     Exit(True);
   end;
 
