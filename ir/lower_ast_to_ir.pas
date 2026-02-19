@@ -1090,6 +1090,12 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     startTmp, endTmp, iTmp, incTmp, cmpTmp: Integer;
     forLoc: Integer;
     endSlot: Integer;
+    // try/catch vars
+    handlerTemp: Integer;
+    catchLoc: Integer;
+    tmpExn: Integer;
+    tryNode: TAstTry;
+    catchLabel: string;
   begin
   instr := Default(TIRInstr);
   Result := True;
@@ -1309,7 +1315,66 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     Exit(True);
   end;
 
-  if stmt is TAstArrayAssign then
+  if stmt is TAstTry then
+  begin
+    // Lower try/catch
+    tryNode := TAstTry(stmt);
+    // Allocate handler frame on stack (5 qwords = 40 bytes)
+    handlerTemp := NewTemp;
+    instr.Op := irStackAlloc; instr.Dest := handlerTemp; instr.ImmInt := 40; Emit(instr);
+
+    // Create labels
+    catchLabel := NewLabel('Lcatch');
+    endLabel := NewLabel('Ltry_end');
+
+    // Push handler (Emitter will record placeholder for catchLabel)
+    instr.Op := irPushHandler; instr.Src1 := handlerTemp; instr.LabelName := catchLabel; Emit(instr);
+
+    // Lower try block
+    if Assigned(tryNode.TryBlock) then
+    begin
+      for i := 0 to High(tryNode.TryBlock.Stmts) do
+        LowerStmt(tryNode.TryBlock.Stmts[i]);
+    end
+    else
+      FDiag.Error('empty try block', stmt.Span);
+
+    // Pop handler (normal exit)
+    instr.Op := irPopHandler; instr.Src1 := handlerTemp; Emit(instr);
+
+    // Jump over catch
+    instr.Op := irJmp; instr.LabelName := endLabel; Emit(instr);
+
+    // Catch label
+    instr.Op := irLabel; instr.LabelName := catchLabel; Emit(instr);
+
+    // Load exception into tmpExn
+    tmpExn := NewTemp;
+    instr.Op := irLoadHandlerExn; instr.Dest := tmpExn; instr.Src1 := handlerTemp; Emit(instr);
+
+    // Allocate catch variable local if present
+    catchLoc := -1;
+    if tryNode.CatchVarName <> '' then
+    begin
+      catchLoc := AllocLocal(tryNode.CatchVarName, tryNode.CatchType);
+      // store exception value into local
+      instr.Op := irStoreLocal; instr.Dest := catchLoc; instr.Src1 := tmpExn; Emit(instr);
+    end;
+
+    // Lower catch body
+    if Assigned(tryNode.CatchBlock) then
+    begin
+      for i := 0 to High(tryNode.CatchBlock.Stmts) do
+        LowerStmt(tryNode.CatchBlock.Stmts[i]);
+    end;
+
+    // End label
+    instr.Op := irLabel; instr.LabelName := endLabel; Emit(instr);
+
+    Exit(True);
+  end
+
+  else if stmt is TAstArrayAssign then
   begin
     // Array assignment: arr[index] := value
     arrayAssignStmt := TAstArrayAssign(stmt);

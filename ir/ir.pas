@@ -40,8 +40,13 @@ type
      irStoreElemDyn,// store element at array[index] (dynamic index, uses 3 sources)
      // struct field operations
      irLoadField,   // load field: Dest = *(Src1 + fieldOffset)
-     irStoreField   // store field: *(Src1 + fieldOffset) = Src2
-  );
+    irStoreField,   // store field: *(Src1 + fieldOffset) = Src2
+    // exception handler ops
+    irPushHandler,  // push handler frame: Src1 = handler_addr, LabelName = catch_label
+    irPopHandler,   // pop handler frame: Src1 = handler_addr
+    irLoadHandlerExn, // load exception value from handler into Dest: Src1=handler_addr
+    irThrow         // perform throw: Src1 = exception temp
+   );
 
   TIRInstr = record
     Op: TIROpKind;
