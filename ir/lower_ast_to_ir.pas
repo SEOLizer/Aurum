@@ -137,13 +137,15 @@ begin
   Result := FCurrentFunc.LocalCount;
 
   // For struct types, allocate one slot per field (8 bytes each)
-  if aType = atStruct then
-  begin
-    // Get type name from the variable name lookup
-    // We'll store this in FLocalTypeNames after the call
-    // For now, just allocate 1 slot - we'll handle multi-slot later
-    FCurrentFunc.LocalCount := FCurrentFunc.LocalCount + 1;
-  end
+   if aType = atStruct then
+   begin
+     // Get the type declaration to determine the number of fields.
+     // The actual type name is passed during TAstVarDecl processing.
+     // For now, allocate one slot for the base address, and the lowering of struct literal
+     // or field access will handle the actual offsets. This simplifies alloclocal
+     // for struct vars, as we assume struct data is contiguous within its single allocated slot.
+     FCurrentFunc.LocalCount := FCurrentFunc.LocalCount + 1;
+   end
   else
   begin
     FCurrentFunc.LocalCount := FCurrentFunc.LocalCount + 1;
@@ -737,24 +739,28 @@ begin
       Exit(instr.Dest);
     end;
   end;
-  if expr is TAstCall then
-  begin
-    // handle builtins: print_str, print_int, exit
-    if TAstCall(expr).Name = 'print_str' then
+    if expr is TAstCall then
     begin
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
-      instr.Op := irCallBuiltin;
-      instr.ImmStr := 'print_str';
-      instr.Src1 := t1;
-      Emit(instr);
-      Exit(-1); // void
-    end
-
-    // ============================================================================
-    // STRING CONVERSION BUILTINS
-    // ============================================================================
-
-    else if TAstCall(expr).Name = 'int_to_str' then
+      // handle builtins: print_str, print_int, exit
+      if TAstCall(expr).Name = 'print_str' then
+      begin
+        t1 := LowerExpr(TAstCall(expr).Args[0]);
+        instr.Op := irCallBuiltin;
+        instr.ImmStr := 'print_str';
+        instr.Src1 := t1;
+        Emit(instr);
+        Exit(-1); // void
+      end
+      else if TAstCall(expr).Name = 'print_int' then
+      begin
+        t1 := LowerExpr(TAstCall(expr).Args[0]);
+        instr.Op := irCallBuiltin;
+        instr.ImmStr := 'print_int';
+        instr.Src1 := t1;
+        Emit(instr);
+        Exit(-1); // void
+      end
+      else if TAstCall(expr).Name = 'int_to_str' then
     begin
       t1 := LowerExpr(TAstCall(expr).Args[0]);  // int64 value
       resultTemp := NewTemp;

@@ -303,6 +303,15 @@ begin
   s.ParamTypes[0] := atInt64;
   AddSymbolToCurrent(s, NullSpan);
 
+  // print_int(int64) -> void
+  s := TSymbol.Create('print_int');
+  s.Kind := symFunc;
+  s.DeclType := atVoid;
+  s.ParamCount := 1;
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atInt64;
+  AddSymbolToCurrent(s, NullSpan);
+
   // len(array) -> int64
   s := TSymbol.Create('len');
   s.Kind := symFunc;
