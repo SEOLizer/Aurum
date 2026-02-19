@@ -163,7 +163,7 @@ begin
   try
     d.Error('type mismatch', MakeSpan(10, 7, 4, 'main.lyx'));
     s := d.FormatEntry(0);
-    AssertEquals('main.au:10:7: error: type mismatch', s);
+    AssertEquals('main.lyx:10:7: error: type mismatch', s);
   finally
     d.Free;
   end;
@@ -192,7 +192,7 @@ begin
   AssertEquals(42, sp.Line);
   AssertEquals(13, sp.Col);
   AssertEquals(7, sp.Len);
-  AssertEquals('hello.au', sp.FileName);
+  AssertEquals('hello.lyx', sp.FileName);
 end;
 
 procedure TDiagnosticsTest.TestNullSpan;
