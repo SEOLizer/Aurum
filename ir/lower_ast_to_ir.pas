@@ -29,6 +29,7 @@ type
     FDiag: TDiagnostics;
     FTempCounter: Integer;
     FLabelCounter: Integer;
+    FHandlerCounter: Integer;
     FLocalMap: TStringList; // name -> local index (as object integer)
     FLocalTypes: array of TLyxType; // index -> declared local type
     FConstMap: TStringList; // name -> TConstValue (compile-time constants)
@@ -79,6 +80,7 @@ constructor TIRLowering.Create(modul: TIRModule; diag: TDiagnostics);
     FDiag := diag;
     FTempCounter := 0;
     FLabelCounter := 0;
+    FHandlerCounter := 0;
     FLocalMap := TStringList.Create;
     FLocalMap.Sorted := False;
     FConstMap := TStringList.Create;
@@ -1096,6 +1098,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     tmpExn: Integer;
     tryNode: TAstTry;
     catchLabel: string;
+    handlerId: Integer;
   begin
   instr := Default(TIRInstr);
   Result := True;
@@ -1319,16 +1322,16 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
   begin
     // Lower try/catch
     tryNode := TAstTry(stmt);
-    // Allocate handler frame on stack (5 qwords = 40 bytes)
-    handlerTemp := NewTemp;
-    instr.Op := irStackAlloc; instr.Dest := handlerTemp; instr.ImmInt := 40; Emit(instr);
-
     // Create labels
     catchLabel := NewLabel('Lcatch');
     endLabel := NewLabel('Ltry_end');
 
-    // Push handler (Emitter will record placeholder for catchLabel)
-    instr.Op := irPushHandler; instr.Src1 := handlerTemp; instr.LabelName := catchLabel; Emit(instr);
+    // Assign handler id
+    handlerId := FHandlerCounter;
+    Inc(FHandlerCounter);
+
+    // Push handler (Emitter will record labelName and handlerId)
+    instr.Op := irPushHandler; instr.ImmInt := handlerId; instr.LabelName := catchLabel; Emit(instr);
 
     // Lower try block
     if Assigned(tryNode.TryBlock) then
@@ -1340,7 +1343,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
       FDiag.Error('empty try block', stmt.Span);
 
     // Pop handler (normal exit)
-    instr.Op := irPopHandler; instr.Src1 := handlerTemp; Emit(instr);
+    instr.Op := irPopHandler; instr.ImmInt := handlerId; Emit(instr);
 
     // Jump over catch
     instr.Op := irJmp; instr.LabelName := endLabel; Emit(instr);
@@ -1349,11 +1352,11 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     instr.Op := irLabel; instr.LabelName := catchLabel; Emit(instr);
 
     // Pop handler (we no longer consider it the head)
-    instr.Op := irPopHandler; instr.Src1 := handlerTemp; Emit(instr);
+    instr.Op := irPopHandler; instr.ImmInt := handlerId; Emit(instr);
 
     // Load exception into tmpExn
     tmpExn := NewTemp;
-    instr.Op := irLoadHandlerExn; instr.Dest := tmpExn; instr.Src1 := handlerTemp; Emit(instr);
+    instr.Op := irLoadHandlerExn; instr.Dest := tmpExn; instr.ImmInt := handlerId; Emit(instr);
 
     // Allocate catch variable local if present
     catchLoc := -1;

@@ -1752,12 +1752,6 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
              // je uncaught
              uncaughtPos := FCode.Size;
              WriteJeRel32(FCode, 0);
-             // restore RSP = [rcx+8]
-             WriteMovRegMem(FCode, RDX, RCX, 8);
-             WriteMovRegReg(FCode, RSP, RDX);
-             // restore RBP = [rcx+16]
-             WriteMovRegMem(FCode, RDX, RCX, 16);
-             WriteMovRegReg(FCode, RBP, RDX);
              // store exception into [rcx+32]
              WriteMovMemReg(FCode, RCX, 32, RAX);
              // load handlerId = [rcx+24]
@@ -1767,13 +1761,15 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
              EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
              SetLength(FHandlerTableLeaPositions, Length(FHandlerTableLeaPositions) + 1);
              FHandlerTableLeaPositions[High(FHandlerTableLeaPositions)] := leaPos;
-              // rax = rdx << 3
+              // rdx = rdx << 3
               EmitU8(FCode, $48); EmitU8(FCode, $C1); EmitU8(FCode, $E2); EmitU8(FCode, $03);
+              // mov rax, rdx
+              WriteMovRegReg(FCode, RAX, RDX);
+              // add rax, rsi
+              WriteAddRegReg(FCode, RAX, RSI);
+              // load target = [rax]
+              WriteMovRegMem(FCode, RDX, RAX, 0);
 
-             // add rax, rsi
-             EmitU8(FCode, $48); EmitU8(FCode, $01); EmitU8(FCode, $C6);
-             // load target = [rax]
-             WriteMovRegMem(FCode, RDX, RAX, 0);
              // jmp rdx
              EmitU8(FCode, $FF); EmitU8(FCode, $E2);
              // uncaught: patch here
