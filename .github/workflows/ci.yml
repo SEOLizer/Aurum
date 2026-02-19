@@ -40,6 +40,9 @@ jobs:
       - name: Build compiler (lyxc) — explicit fpc invocation
         run: |
           set -x
+          # Ensure build directories exist (Makefile used to create lib/)
+          mkdir -p lib
+          ls -la lib || true
           # Direct FPC invocation to avoid make pattern/empty-variable issues
           fpc -Mobjfpc -Sh -FUlib/ -Fuutil/ -Fufrontend/ -Fuir/ -Fubackend/ -Fubackend/x86_64/ -Fubackend/elf/ -O2 lyxc.lpr -olyxc
 
