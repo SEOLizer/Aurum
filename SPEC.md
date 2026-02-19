@@ -199,12 +199,22 @@ Später kannst du das in zwei Segmente splitten (RX / RW).
 **Status**: Compiler ist vollständig produktiv für Multi-Module Projekte
 **Bekanntes Issue**: Cross-Unit Function Call Backend-Bug (Linking OK, Execution NOK)
 
-### v0.1.5 (nächste Ziele)
+### v0.1.5 (Status: größtenteils abgeschlossen)
 
-- 🔧 **Cross-Unit Function Call Bug**: Backend IsExternalSymbol() Fix für importierte Funktionen
-- 🔧 **For-Loop IR Lowering**: for i := 1 to 5 do (Parser vorhanden, IR fehlt)  
-- 🔧 **Integer Width Backend**: int8/uint32 etc. statt nur int64
-- 🔧 **Verschachtelte Unary-Ops**: --x, !!y Parser-Unterstützung
+- ✅ **Cross-Unit Function Call Bug**: Backend IsExternalSymbol() Überprüfung und PLT/GOT‑Erfassung für fehlende Symbole implementiert (Emitter sammelt externe Symbole via AddExternalSymbol). Empfehlung: Integrationstest für PLT‑Stuberzeugung (geschrieben/auszuführen).
+- ✅ **For-Loop IR Lowering**: IR‑Lowering für `for i := A to B do` / `downto` implementiert (Labels, Vergleich, Inkrement/Decrement, Break/Continue‑Support). Parser‑Support war bereits vorhanden.
+- ✅ **Integer Width Backend**: Unterstützung für Narrow/Wide Integer (int8/int16/uint32 etc.) in IR und Emit‑Pfad; Trunc/SExt/ZExt‑Emissionen vorhanden. Empfehlung: umfangreiche Matrixtests (sign/unsigned, passing via regs/stack).
+- ✅ **Verschachtelte Unary‑Ops**: Parser und konstante Faltung für verschachtelte Präfix‑Operatoren (`--x`, `!!y`, `!-x`) implementiert; Unit‑Tests ergänzt.
+- ✅ **Emitter: Handler‑Patching (RIP‑rel LEA)**: Exception‑Handler‑Patching über `lea reg, [rip+disp32]` statt movabs implementiert. Patch‑Passage berechnet disp32 = dataVA - instrVA und benutzt PatchU32LE — behebt Relocation/ASLR/Relok‑Probleme. (Commit referenziert in Git-History.)
+
+Anmerkungen / offene Feinheiten:
+- Diagnostics: Test‑Suite auf aktuelle Dateiendung `.lyx` aktualisiert.
+- Tests: Parser‑ und Unit‑Tests für die oben genannten Features sind hinzugefügt; `make test` läuft lokal (kleine Heaptrace‑Hinweise in einigen Tests, nicht kritisch für Funktionalität).
+- Empfehlung: Zwei abschließende Aufgaben vor Release‑Tagging v0.1.5:
+  1) CI‑Integration prüfen (GitHub Actions): vollständige Testmatrix ausführen und PLT/Runtime E2E‑Builds verifizieren.
+  2) Ergänzende Integrationstests: Cross‑Unit Call → generiertes ELF ausführen, PLT‑Stub tatsächlich springen lassen (End‑to‑End Laufzeitprüfung).
+
+Kurz: v0.1.5 ist inhaltlich implementiert; verbleiben Test‑Härtung und CI‑Verifikation, danach Release‑Tag möglich.
 
 ### v0.2
 
