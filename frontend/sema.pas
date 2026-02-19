@@ -1122,7 +1122,7 @@ begin
 end;
 
 procedure TSema.CheckStmt(stmt: TAstStmt);
-var
+  var
   vd: TAstVarDecl;
   asg: TAstAssign;
   arrayAssign: TAstArrayAssign;
@@ -1139,6 +1139,7 @@ var
   sw: TAstSwitch;
   caseVal: TAstExpr;
   cvtype: TLyxType;
+  tn: TAstTry;
 begin
   if stmt = nil then Exit;
 
@@ -1307,6 +1308,41 @@ begin
       begin
         // break allowed in switch/while; semantic check for presence of enclosing loop/switch omitted for simplicity
         Exit;
+      end;
+    nkTry:
+      begin
+        // Try/Catch: check try block and catch block
+        tn := TAstTry(stmt);
+        // Check try block
+        PushScope;
+        CheckStmt(tn.TryBlock);
+        PopScope;
+        // Prepare catch variable symbol
+        if tn.CatchVarName <> '' then
+        begin
+          PushScope;
+          sym := TSymbol.Create(tn.CatchVarName);
+          sym.Kind := symVar;
+          sym.DeclType := tn.CatchType;
+          sym.DeclTypeName := tn.CatchTypeName;
+          AddSymbolToCurrent(sym, tn.Span);
+          // Check catch block
+          CheckStmt(tn.CatchBlock);
+          PopScope;
+        end
+        else
+        begin
+          // No catch var? still check block
+          PushScope;
+          CheckStmt(tn.CatchBlock);
+          PopScope;
+        end;
+      end;
+    nkThrow:
+      begin
+        // throw(expr): ensure expression type is acceptable
+        vtype := CheckExpr(TAstThrow(stmt).Expr);
+        // no stricter checks here; matching against catch will be performed by the programmer
       end;
     nkSwitch:
       begin

@@ -1326,12 +1326,12 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     catchLabel := NewLabel('Lcatch');
     endLabel := NewLabel('Ltry_end');
 
-    // Assign handler id
-    handlerId := FHandlerCounter;
-    Inc(FHandlerCounter);
+    // Allocate handler frame on stack (5 qwords = 40 bytes)
+    handlerTemp := NewTemp;
+    instr.Op := irStackAlloc; instr.Dest := handlerTemp; instr.ImmInt := 40; Emit(instr);
 
-    // Push handler (Emitter will record labelName and handlerId)
-    instr.Op := irPushHandler; instr.ImmInt := handlerId; instr.LabelName := catchLabel; Emit(instr);
+    // Push handler (Emitter will record placeholder for catchLabel)
+    instr.Op := irPushHandler; instr.Src1 := handlerTemp; instr.LabelName := catchLabel; Emit(instr);
 
     // Lower try block
     if Assigned(tryNode.TryBlock) then
@@ -1343,7 +1343,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
       FDiag.Error('empty try block', stmt.Span);
 
     // Pop handler (normal exit)
-    instr.Op := irPopHandler; instr.ImmInt := handlerId; Emit(instr);
+    instr.Op := irPopHandler; instr.Src1 := handlerTemp; Emit(instr);
 
     // Jump over catch
     instr.Op := irJmp; instr.LabelName := endLabel; Emit(instr);
@@ -1352,11 +1352,11 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     instr.Op := irLabel; instr.LabelName := catchLabel; Emit(instr);
 
     // Pop handler (we no longer consider it the head)
-    instr.Op := irPopHandler; instr.ImmInt := handlerId; Emit(instr);
+    instr.Op := irPopHandler; instr.Src1 := handlerTemp; Emit(instr);
 
     // Load exception into tmpExn
     tmpExn := NewTemp;
-    instr.Op := irLoadHandlerExn; instr.Dest := tmpExn; instr.ImmInt := handlerId; Emit(instr);
+    instr.Op := irLoadHandlerExn; instr.Dest := tmpExn; instr.Src1 := handlerTemp; Emit(instr);
 
     // Allocate catch variable local if present
     catchLoc := -1;
