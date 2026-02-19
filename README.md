@@ -4,7 +4,7 @@
 Er erzeugt direkt ausführbare **Linux x86_64 ELF64-Binaries** — ohne libc, ohne Linker, rein über Syscalls.
 
 ```
-Lyx Compiler v0.1.4
+Lyx Compiler v0.1.5
 Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.
 
 ✅ Vollständiges Module System mit Import/Export
@@ -437,7 +437,7 @@ fn main(): int64 {
 | `pi()`            | `void -> f64`          | π-Konstante                         |
 | `sin(x)`, `cos(x)`, `exp(x)`, `ln(x)`, `arctan(x)` | `f64 -> f64` | Transzendente Funktionen (Placeholder) |
 
-### Externe Funktionen (v0.1.4+)
+### Externe Funktionen (v0.1.5+)
 
 Der Lyx-Compiler unterstützt jetzt Deklarationen externer Funktionen aus System-Libraries:
 
@@ -645,7 +645,7 @@ fn  var  let  co  con  if  else  while  switch  case  break  default  return  tr
 
 ---
 
-## Praktische SO-Library Beispiele (v0.1.4)
+## Praktische SO-Library Beispiele (v0.1.5)
 
 ### Memory Management mit malloc/free
 
@@ -953,6 +953,7 @@ FloatLit    := [0-9]+ '.' [0-9]+ ;
 | **v0.1.2** | `var`, `let`, `co`, `con`, `if`, `while`, `return`, Funktionen, SysV ABI |
 | **v0.1.3** | ✅ Float-Literale (`f32`, `f64`), ✅ Arrays (Literale, Indexing, Zuweisung) |
 | **v0.1.4** | ✅ SO-Library Integration, ✅ Dynamic ELF, ✅ PLT/GOT, ✅ Extern Functions, ✅ Varargs, ✅ Module System |
+| **v0.1.5** | ✅ String-Library (20+ Funktionen), ✅ Math-Builtins (22 Funktionen), ✅ Type-Casting (`as`), ✅ String-Konvertierung |
 | **v0.1.5** | ✅ String-Library (20+ Funktionen), ✅ Math-Builtins (22 Funktionen), ✅ Type-Casting (`as`), ✅ String-Konvertierung |
 | **v0.2** | Erweiterte Funktionen, bessere Diagnostik |
 | **v1** | Objektdateien, Multi-Unit Linking, Package Manager |

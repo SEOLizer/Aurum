@@ -56,7 +56,7 @@ end;
 begin
   if ParamCount < 1 then
   begin
-    WriteLn(StdErr, 'Lyx Compiler v0.1.4');
+    WriteLn(StdErr, 'Lyx Compiler v0.1.5');
     WriteLn(StdErr, 'Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.');
     WriteLn(StdErr);
     WriteLn(StdErr, 'Verwendung: aurumc <datei.lyx> [-o <output>]');
@@ -69,7 +69,7 @@ begin
   if (ParamCount >= 3) and (ParamStr(2) = '-o') then
     outputFile := ParamStr(3);
 
-  WriteLn('Lyx Compiler v0.1.4');
+  WriteLn('Lyx Compiler v0.1.5');
   WriteLn('Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.');
   WriteLn;
   WriteLn('Eingabe:  ', inputFile);

@@ -184,7 +184,7 @@ Später kannst du das in zwei Segmente splitten (RX / RW).
 - ✅ Array-Indexing: `arr[i]`
 - ✅ Array-Zuweisung: `arr[i] := value`
 
-### v0.1.4 (aktuell) ✅ ABGESCHLOSSEN
+### v0.1.4 ✅ ABGESCHLOSSEN
 
 - ✅ **Module System**: Vollständige Import/Export Funktionalität
 - ✅ **Cross-Unit Symbol Resolution**: TSema.AnalyzeWithUnits() Integration
