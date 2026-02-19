@@ -147,6 +147,7 @@ fn main(): int64 {
 | `pchar`   | Pointer auf nullterminierte Bytes     |
 | `string`  | Alias für `pchar` (nullterminierte Bytes)
 | `array`   | Array-Typ (Stack-allokiert)           |
+| `struct`  | Benutzerdefinierter Record-Typ        |
 
 Hinweis: `int` und `string` sind derzeit Alias-Typen (bzw. Abkürzungen) — `int` wird intern als `int64` behandelt, `string` wird als `pchar` gemappt. Keine impliziten Casts — alle Typen müssen explizit übereinstimmen.
 
@@ -190,6 +191,48 @@ fn main(): int64 {
 ```
 
 Alle Elemente eines Arrays müssen denselben Typ haben (derzeit `int64`).
+
+### Structs (Records)
+
+Structs werden mit `type Name := struct { ... };` definiert und mit `TypeName { field: value, ... }` instanziiert:
+
+```lyx
+type Point := struct {
+  x: int64;
+  y: int64;
+};
+
+type Rect := struct {
+  left: int64;
+  top: int64;
+  right: int64;
+  bottom: int64;
+};
+
+fn main(): int64 {
+  // Struct-Literal mit Feldinitialisierung
+  var p: Point := Point { x: 10, y: 20 };
+
+  // Feldzugriff mit Punkt-Notation
+  print_int(p.x);        // 10
+  print_int(p.y);        // 20
+
+  // Feldzuweisung
+  p.x := 42;
+  print_int(p.x);        // 42
+
+  // Structs in Ausdrücken
+  var sum: int64 := p.x + p.y;  // 62
+
+  // Größere Structs
+  var r: Rect := Rect { left: 0, top: 0, right: 100, bottom: 50 };
+  var width: int64 := r.right - r.left;   // 100
+
+  return 0;
+}
+```
+
+Structs werden auf dem Stack allokiert (8 Bytes pro Feld). Der Zugriff erfolgt direkt über Offset-Berechnung.
 
 ### Operatoren
 
@@ -592,12 +635,13 @@ fn main(): int64 {
 ### Reservierte Keywords
 
 ```
-fn  var  let  co  con  if  else  while  switch  case  break  default  return  true  false  extern  array  as  import  pub  unit
+fn  var  let  co  con  if  else  while  switch  case  break  default  return  true  false  extern  array  as  import  pub  unit  type  struct
 ```
 
 - `extern` wird für externe Funktionsdeklarationen verwendet
-- `as` wird für Type-Casting verwendet  
+- `as` wird für Type-Casting verwendet
 - `import`, `pub`, `unit` werden für das Module-System verwendet
+- `type`, `struct` werden für benutzerdefinierte Typen verwendet
 
 ---
 
@@ -872,7 +916,10 @@ Die vollständige formale Grammatik befindet sich in [`ebnf.md`](ebnf.md).
 
 ```ebnf
 Program     := { TopDecl } ;
-TopDecl     := FuncDecl | ConDecl ;
+TopDecl     := FuncDecl | ConDecl | TypeDecl ;
+TypeDecl    := 'type' Ident ':=' ( StructType | Type ) ';' ;
+StructType  := 'struct' '{' { FieldDecl } '}' ;
+FieldDecl   := Ident ':' Type ';' ;
 ConDecl     := 'con' Ident ':' Type ':=' ConstExpr ';' ;
 FuncDecl    := 'fn' Ident '(' [ ParamList ] ')' [ ':' RetType ] Block ;
 Block       := '{' { Stmt } '}' ;
@@ -885,9 +932,12 @@ CmpExpr     := AddExpr [ CmpOp AddExpr ] ;
 AddExpr     := MulExpr { ( '+' | '-' ) MulExpr } ;
 MulExpr     := UnaryExpr { ( '*' | '/' | '%' ) UnaryExpr } ;
 UnaryExpr   := ( '!' | '-' ) UnaryExpr | Primary ;
-Primary     := IntLit | FloatLit | BoolLit | StringLit | ArrayLit
-             | Ident | Call | IndexAccess | '(' Expr ')' ;
+Primary     := IntLit | FloatLit | BoolLit | StringLit | ArrayLit | StructLit
+             | Ident | Call | IndexAccess | FieldAccess | '(' Expr ')' ;
 ArrayLit    := '[' [ Expr { ',' Expr } ] ']' ;
+StructLit   := Ident '{' [ FieldInit { ',' FieldInit } ] '}' ;
+FieldInit   := Ident ':' Expr ;
+FieldAccess := Primary '.' Ident ;
 IndexAccess := Primary '[' Expr ']' ;
 FloatLit    := [0-9]+ '.' [0-9]+ ;
 ```

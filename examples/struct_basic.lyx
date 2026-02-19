@@ -1,0 +1,36 @@
+// examples/struct_basic.lyx - Basic struct usage example
+// Demonstrates struct definition, literals, field access and assignment
+
+type Point := struct {
+  x: int64;
+  y: int64;
+};
+
+type Rect := struct {
+  left: int64;
+  top: int64;
+  right: int64;
+  bottom: int64;
+};
+
+fn main(): int64 {
+  // Test 1: Basic struct literal and field access
+  var p: Point := Point { x: 10, y: 20 };
+  print_int(p.x);  // Expected: 10
+  print_int(p.y);  // Expected: 20
+
+  // Test 2: Field assignment
+  p.x := 42;
+  print_int(p.x);  // Expected: 42
+
+  // Test 3: Using struct fields in expressions
+  var sum: int64 := p.x + p.y;
+  print_int(sum);  // Expected: 62 (42 + 20)
+
+  // Test 4: Larger struct with more fields
+  var r: Rect := Rect { left: 0, top: 0, right: 100, bottom: 50 };
+  print_int(r.right - r.left);   // Expected: 100
+  print_int(r.bottom - r.top);   // Expected: 50
+
+  return 0;
+}
