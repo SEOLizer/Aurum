@@ -22,10 +22,15 @@ jobs:
       - name: Show FPC version
         run: fpc -v
 
+      - name: Preliminary checks
+        run: |
+          echo "Workspace:" && pwd
+          echo "Listing top-level files:" && ls -la
+          if [ ! -f lyxc.lpr ]; then echo "ERROR: lyxc.lpr not found in workspace" && ls -la && exit 1; fi
+
       - name: Build compiler (lyxc)
         run: |
-          pwd
-          ls -la
+          set -x
           make build
 
       - name: Run unit tests
