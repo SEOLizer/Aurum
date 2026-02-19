@@ -27,6 +27,9 @@ type
     procedure TestParseIndexAccess;
     procedure TestParseExternDecl; // new
     procedure TestParseVarargsDecl; // varargs support
+    // Unary operator tests
+    procedure TestParseNestedUnary_LiteralFolding;
+    procedure TestParseNestedUnary_NonLiteral;
   end;
 
 function TParserTest.ParseProgramFromSource(const src: string): TAstProgram;
@@ -387,6 +390,61 @@ begin
     // Check that it has at least one parameter (fmt)
     AssertTrue('Should have at least one parameter', Length(f.Params) >= 1);
     AssertEquals('First parameter should be fmt', 'fmt', f.Params[0].Name);
+  finally
+    prog.Free;
+  end;
+end;
+
+// --- New unary operator tests ---
+
+procedure TParserTest.TestParseNestedUnary_LiteralFolding;
+var
+  prog: TAstProgram;
+  f: TAstFuncDecl;
+  blk: TAstBlock;
+begin
+  prog := ParseProgramFromSource('fn main(): int64 { return --5; }');
+  try
+    f := TAstFuncDecl(prog.Decls[0]);
+    blk := f.Body;
+    AssertTrue(blk.Stmts[0] is TAstReturn);
+    AssertTrue(TAstReturn(blk.Stmts[0]).Value is TAstIntLit);
+    AssertEquals(5, TAstIntLit(TAstReturn(blk.Stmts[0]).Value).Value);
+  finally
+    prog.Free;
+  end;
+
+  prog := ParseProgramFromSource('fn main(): int64 { return !!true; }');
+  try
+    f := TAstFuncDecl(prog.Decls[0]);
+    blk := f.Body;
+    AssertTrue(blk.Stmts[0] is TAstReturn);
+    AssertTrue(TAstReturn(blk.Stmts[0]).Value is TAstBoolLit);
+    AssertEquals(True, TAstBoolLit(TAstReturn(blk.Stmts[0]).Value).Value);
+  finally
+    prog.Free;
+  end;
+end;
+
+procedure TParserTest.TestParseNestedUnary_NonLiteral;
+var
+  prog: TAstProgram;
+  f: TAstFuncDecl;
+  blk: TAstBlock;
+  retExpr: TAstExpr;
+begin
+  prog := ParseProgramFromSource('fn main(): int64 { var x: int64 := 1; return --x; }');
+  try
+    f := TAstFuncDecl(prog.Decls[0]);
+    blk := f.Body;
+    AssertTrue(blk.Stmts[0] is TAstVarDecl);
+    AssertTrue(blk.Stmts[1] is TAstReturn);
+    retExpr := TAstReturn(blk.Stmts[1]).Value;
+    AssertTrue(retExpr is TAstUnaryOp);
+    AssertTrue(TAstUnaryOp(retExpr).Operand is TAstUnaryOp);
+    AssertTrue(TAstUnaryOp(retExpr).Op = tkMinus);
+    AssertTrue(TAstUnaryOp(TAstUnaryOp(retExpr).Operand).Op = tkMinus);
+    AssertTrue(TAstUnaryOp(TAstUnaryOp(retExpr).Operand).Operand is TAstIdent);
   finally
     prog.Free;
   end;
