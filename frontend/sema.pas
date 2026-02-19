@@ -702,6 +702,11 @@ begin
   Result := False;
 end;
 
+function IsTimeType(t: TLyxType): Boolean;
+begin
+  Result := (t = atDate) or (t = atTime) or (t = atDateTime) or (t = atTimestamp);
+end;
+
 function TSema.IsCastCompatible(fromType, toType: TLyxType): Boolean;
 begin
   // Identity cast is always allowed
@@ -718,6 +723,13 @@ begin
   
   // Float to Integer casts (truncation)
   if IsFloatType(fromType) and IsIntegerType(toType) then Exit(True);
+  
+  // Integer to/from Time types (time is stored as integer internally)
+  if IsIntegerType(fromType) and IsTimeType(toType) then Exit(True);
+  if IsTimeType(fromType) and IsIntegerType(toType) then Exit(True);
+  
+  // Time type to/from other time types
+  if IsTimeType(fromType) and IsTimeType(toType) then Exit(True);
   
   // No other casts supported for now (e.g., no pointer casts)
   Result := False;
@@ -1091,8 +1103,8 @@ begin
         vd := TAstVarDecl(stmt);
         // check init expr type
         vtype := CheckExpr(vd.InitExpr);
-        if (vd.DeclType <> atUnresolved) and (not TypeEqual(vtype, vd.DeclType)) then
-          FDiag.Error(Format('type mismatch in declaration of %s: expected %s but got %s', [vd.Name, LyxTypeToStr(vd.DeclType), LyxTypeToStr(vtype)]), vd.Span);
+         if (vd.DeclType <> atUnresolved) and (not TypeEqual(vtype, vd.DeclType)) and (not IsCastCompatible(vtype, vd.DeclType)) then
+           FDiag.Error(Format('type mismatch in declaration of %s: expected %s but got %s', [vd.Name, LyxTypeToStr(vd.DeclType), LyxTypeToStr(vtype)]), vd.Span);
         sym := TSymbol.Create(vd.Name);
         case vd.Storage of
           skVar: sym.Kind := symVar;
@@ -1124,7 +1136,7 @@ begin
           FDiag.Error('assignment to immutable variable: ' + asg.Name, stmt.Span);
         end;
         vtype := CheckExpr(asg.Value);
-        if not TypeEqual(vtype, s.DeclType) then
+        if (not TypeEqual(vtype, s.DeclType)) and (not IsCastCompatible(vtype, s.DeclType)) then
           FDiag.Error(Format('assignment type mismatch: %s := %s', [LyxTypeToStr(s.DeclType), LyxTypeToStr(vtype)]), stmt.Span);
       end;
      nkArrayAssign:

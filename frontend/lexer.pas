@@ -110,9 +110,9 @@ begin
     tkTo:        Result := 'to';
     tkDownto:    Result := 'downto';
     tkDo:        Result := 'do';
-    tkRepeat:    Result := 'repeat';
-    tkUntil:     Result := 'until';
-    tkPlus:      Result := '+';
+    tkRepeat:     Result := 'repeat';
+    tkUntil:      Result := 'until';
+    tkPlus:       Result := '+';
     tkMinus:     Result := '-';
     tkStar:      Result := '*';
     tkSlash:     Result := '/';
@@ -430,8 +430,8 @@ begin
     'to':      Result := tkTo;
     'downto':  Result := tkDownto;
     'do':      Result := tkDo;
-    'repeat':  Result := tkRepeat;
-    'until':   Result := tkUntil;
+    'repeat':     Result := tkRepeat;
+    'until':      Result := tkUntil;
   else
     Result := tkIdent;
   end;

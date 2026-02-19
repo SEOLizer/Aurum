@@ -25,6 +25,11 @@ type
     atBool,
     atVoid,
     atPChar,
+    // date/time types
+    atDate,      // days since epoch (int32)
+    atTime,      // seconds since midnight (int32)
+    atDateTime,  // seconds since epoch (int64)
+    atTimestamp, // microseconds since epoch (int64)
     // array types (placeholder)
     atArray,
     // struct type (user-defined)
@@ -606,6 +611,10 @@ begin
     atBool:       Result := 'bool';
     atVoid:       Result := 'void';
     atPChar:      Result := 'pchar';
+    atDate:       Result := 'date';
+    atTime:       Result := 'time';
+    atDateTime:   Result := 'datetime';
+    atTimestamp:  Result := 'timestamp';
     atArray:      Result := 'array';
   else
     Result := '<unknown>';
@@ -631,9 +640,13 @@ begin
     'f64':    Result := atF64;
     'bool':   Result := atBool;
     'void':   Result := atVoid;
-    'pchar':  Result := atPChar;
-    'string': Result := atPChar; // map string to pchar for now
-    'array': Result := atArray;
+    'pchar':      Result := atPChar;
+    'string':     Result := atPChar; // map string to pchar for now
+    'date':       Result := atDate;
+    'time':       Result := atTime;
+    'datetime':   Result := atDateTime;
+    'timestamp':  Result := atTimestamp;
+    'array':      Result := atArray;
   else
     Result := atUnresolved;
   end;

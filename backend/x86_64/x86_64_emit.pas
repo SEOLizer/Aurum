@@ -2110,53 +2110,80 @@ begin
            begin
              // Type cast: dest = cast(src1, fromType, toType)
              case instr.CastFromType of
-               atInt64:
-                 case instr.CastToType of
-                   atInt64:
-                     begin
-                       // Identity cast: int64 -> int64
-                       WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
-                       WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
-                     end;
-                   atF64:
-                     begin
-                       // Integer to Float: int64 -> f64
-                       WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
-                       // cvtsi2sd xmm0, rax - Convert signed integer to double
-                       EmitU8(FCode, $F2); EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $2A); EmitU8(FCode, $C0);
-                       // Store XMM0 to destination slot
-                       WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
-                     end;
-                   else
-                     begin
-                       // Unsupported cast - just copy for now
-                       WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
-                       WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
-                     end;
-                 end;
-               atF64:
-                 case instr.CastToType of
-                   atF64:
-                     begin
-                       // Identity cast: f64 -> f64
-                       WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
-                       WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
-                     end;
-                   atInt64:
-                     begin
-                       // Float to Integer: f64 -> int64 (with truncation)
-                       WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
-                       // cvttsd2si rax, xmm0 - Convert with truncation toward zero
-                       EmitU8(FCode, $F2); EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $2C); EmitU8(FCode, $C0);
-                       WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
-                     end;
-                   else
-                     begin
-                       // Unsupported cast - copy as raw bytes
-                       WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
-                       WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
-                     end;
-                 end;
+                atInt64:
+                  case instr.CastToType of
+                    atInt64:
+                      begin
+                        // Identity cast: int64 -> int64
+                        WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+                        WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+                      end;
+                    atF64:
+                      begin
+                        // Integer to Float: int64 -> f64
+                        WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+                        // cvtsi2sd xmm0, rax - Convert signed integer to double
+                        EmitU8(FCode, $F2); EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $2A); EmitU8(FCode, $C0);
+                        // Store XMM0 to destination slot
+                        WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
+                      end;
+                    atDate, atTime, atDateTime, atTimestamp:
+                      begin
+                        // int64 -> time type: just copy (time types stored as int64)
+                        WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+                        WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+                      end;
+                    else
+                      begin
+                        // Unsupported cast - just copy for now
+                        WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+                        WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+                      end;
+                  end;
+                atF64:
+                  case instr.CastToType of
+                    atF64:
+                      begin
+                        // Identity cast: f64 -> f64
+                        WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+                        WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
+                      end;
+                    atInt64:
+                      begin
+                        // Float to Integer: f64 -> int64 (with truncation)
+                        WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+                        // cvttsd2si rax, xmm0 - Convert with truncation toward zero
+                        EmitU8(FCode, $F2); EmitU8(FCode, $48); EmitU8(FCode, $0F); EmitU8(FCode, $2C); EmitU8(FCode, $C0);
+                        WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+                      end;
+                    else
+                      begin
+                        // Unsupported cast - copy as raw bytes
+                        WriteMovsdXmmMem(FCode, 0, RBP, SlotOffset(localCnt + instr.Src1));
+                        WriteMovsdMemXmm(FCode, RBP, SlotOffset(localCnt + instr.Dest), 0);
+                      end;
+                  end;
+                atDate, atTime, atDateTime, atTimestamp:
+                  case instr.CastToType of
+                    atInt64:
+                      begin
+                        // time type -> int64: just copy
+                        WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+                        WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+                      end;
+                    atDate, atTime, atDateTime, atTimestamp:
+                      begin
+                        // time type -> time type: just copy (all stored as int64)
+                        WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+                        WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+                      end;
+                    else
+                      begin
+                        // Unsupported cast - copy as raw bytes
+                        WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+                        WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+                      end;
+                  end;
                else
                  begin
                    // Default: simple copy for other types

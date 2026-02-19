@@ -144,7 +144,69 @@ pub fn iso_year(year: int64, month: int64, day: int64): int64 {
   return year;
 }
 
- // API: Formatter-Implementation (Lyx)
+// --- Convenience native date/time APIs (Wrappers using native types) ---
+// These functions provide compatibility between existing int-based APIs
+// and the new native types: date, time, datetime, timestamp
+
+// Create date from year/month/day
+pub fn date_from_ymd(year: int64, month: int64, day: int64): date {
+  var d: int64 := days_from_civil(year, month, day);
+  return d;
+}
+
+// Extract Y/M/D from native date
+pub fn year_from_date(d: date): int64 {
+  return civil_year_from_days(d);
+}
+
+pub fn month_from_date(d: date): int64 {
+  return civil_month_from_days(d);
+}
+
+pub fn day_from_date(d: date): int64 {
+  return civil_day_from_days(d);
+}
+
+// Time of day helpers (time stored as seconds since midnight)
+pub fn time_from_hms(hour: int64, minute: int64, second: int64): time {
+  return hour * 3600 + minute * 60 + second;
+}
+
+pub fn hour_from_time(t: time): int64 {
+  return t / 3600;
+}
+
+pub fn minute_from_time(t: time): int64 {
+  return (t % 3600) / 60;
+}
+
+pub fn second_from_time(t: time): int64 {
+  return t % 60;
+}
+
+// Datetime / Timestamp helpers
+// datetime: seconds since epoch (int64)
+// timestamp: microseconds since epoch (int64)
+
+pub fn datetime_from_unix_seconds(sec: int64): datetime {
+  return sec;
+}
+
+pub fn datetime_to_unix_seconds(dt: datetime): int64 {
+  return dt;
+}
+
+pub fn timestamp_from_unix_seconds(sec: int64): timestamp {
+  return sec * 1000000;
+}
+
+pub fn unix_seconds_from_timestamp(ts: timestamp): int64 {
+  return ts / 1000000;
+}
+
+// End of native convenience wrappers
+
+  // API: Formatter-Implementation (Lyx)
 // Statischer 512-Byte Puffer (nicht thread-safe)
 con STATIC_FMT_BUF: pchar := "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 
