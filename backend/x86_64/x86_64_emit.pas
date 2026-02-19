@@ -30,7 +30,12 @@ type
     FExternalSymbols: array of TExternalSymbol;
     FPLTStubs: array of TLabelPos; // PLT stub positions for external symbols
     FPLTGOTPatches: array of TPLTGOTPatch; // PLT → GOT patches
-    
+    // Handler exception tables
+    FHandlerLabels: array of string; // label names for each handler id
+    FHandlerTableLeaPositions: array of Integer; // positions of lea to handler table (patch later)
+    FHandlerHeadLoadPositions: array of Integer; // positions where we read HandlerHead (patch disp)
+    FHandlerHeadStorePositions: array of Integer; // positions where we write HandlerHead (patch disp)
+
     procedure AddExternalSymbol(const name, libName: string);
     function IsExternalSymbol(const name: string): Boolean;
     procedure GeneratePLTStubs;
@@ -534,51 +539,52 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   argTemps: array of Integer;
   sParse: string;
   ppos, ai: Integer;
-  // for call extra
-  extraCount: Integer;
-  // function context
-  isEntryFunction: Boolean;
-  frameBytes: Integer;
-  framePad: Integer;
-  callPad: Integer;
-  // array operations
-  allocSize: Integer;
-  elemIndex: Integer;
-  elemOffset: Integer;
-  pushBytes: Integer;
-  restoreBytes: Integer;
-  // integer width helpers
-  mask64: UInt64;
-  sh: Integer;
-   argTemp3: Integer;
-   argTemp4: Integer;
-   argTemp5: Integer;
-   argTemp6: Integer;
-begin
+   // for call extra
+   extraCount: Integer;
+   // function context
+   isEntryFunction: Boolean;
+   frameBytes: Integer;
+   framePad: Integer;
+   callPad: Integer;
+   // array operations
+   allocSize: Integer;
+   elemIndex: Integer;
+   elemOffset: Integer;
+   pushBytes: Integer;
+   restoreBytes: Integer;
+   // exception helpers
+   handlerId: Integer;
+   storePos: Integer;
+   uncaughtPos: Integer;
+   // handler table offsets
+   handlerHeadOffset: UInt64;
+   handlerTableDataPos: Integer;
+   handlerTableOffset: UInt64;
+   // integer width helpers
+   mask64: UInt64;
+   sh: Integer;
+    argTemp3: Integer;
+    argTemp4: Integer;
+    argTemp5: Integer;
+    argTemp6: Integer;
+ begin
   // reset patch arrays
   SetLength(FLeaPositions, 0);
   SetLength(FLeaStrIndex, 0);
   SetLength(FLabelPositions, 0);
   SetLength(FJumpPatches, 0);
-
-  // write interned strings
-  SetLength(FStringOffsets, module.Strings.Count);
-  totalDataOffset := 0;
-  for i := 0 to module.Strings.Count - 1 do
-  begin
-    FStringOffsets[i] := totalDataOffset;
-    for j := 1 to Length(module.Strings[i]) do
-      FData.WriteU8(Byte(module.Strings[i][j]));
-    FData.WriteU8(0);
-    Inc(totalDataOffset, Length(module.Strings[i]) + 1);
-  end;
-
-  bufferAdded := False;
-  bufferOffset := 0;
+  SetLength(FExternalSymbols, 0);
+  SetLength(FPLTStubs, 0);
+  SetLength(FPLTGOTPatches, 0);
+  SetLength(FStringOffsets, 0);
+  SetLength(FLeaPositions, 0);
   SetLength(bufferLeaPositions, 0);
-  envAdded := False;
-  envOffset := 0;
   SetLength(envLeaPositions, 0);
+  // handler tables
+  SetLength(FHandlerLabels, 0);
+  SetLength(FHandlerTableLeaPositions, 0);
+  SetLength(FHandlerHeadLoadPositions, 0);
+  SetLength(FHandlerHeadStorePositions, 0);
 
   // Emit program entry (_start): automatically initialize env data (argc/argv) and call main
   begin
@@ -815,13 +821,15 @@ begin
               WriteMovRegImm64(FCode, RDI, 1);
               WriteSyscall(FCode);
 
-              // patch loop jump
-              k := FCode.Size;
-              FCode.PatchU32LE(jneLoopPos + 2, Cardinal(loopStartPos - jneLoopPos - 6));
+               // patch loop jump
+               k := FCode.Size;
+               FCode.PatchU32LE(jneLoopPos + 2, Cardinal(loopStartPos - jneLoopPos - 6));
 
-               // patch done jump
-               FCode.PatchU32LE(jmpDonePos + 1, Cardinal(k - jmpDonePos - 5));
-            end
+                // patch done jump
+                FCode.PatchU32LE(jmpDonePos + 1, Cardinal(k - jmpDonePos - 5));
+             end
+
+             else if instr.ImmStr = 'env_init' then
             else if instr.ImmStr = 'env_init' then
             begin
               // env_init(argc, argv): store argc (qword) and argv pointer (qword) into data
@@ -1651,29 +1659,131 @@ begin
             if instr.Dest >= 0 then
               WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
           end;
-        irStackAlloc:
-          begin
-            // Allocate stack space for array: alloc_size = ImmInt bytes
-            allocSize := instr.ImmInt;
-            // Align to 8-byte boundary
-            allocSize := (allocSize + 7) and not 7;
-            
-            // Move current RSP down by allocSize bytes: sub rsp, allocSize  
-            if allocSize <= 127 then
-            begin
-              EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $EC); EmitU8(FCode, Byte(allocSize));
-            end
-            else
-            begin
-              EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $EC);
-              EmitU32(FCode, Cardinal(allocSize));
-            end;
-            
-            // Store current RSP as array base address in temp slot
-            slotIdx := localCnt + instr.Dest;
-            WriteMovRegReg(FCode, RAX, RSP); // mov rax, rsp
-            WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
-          end;
+         irStackAlloc:
+           begin
+             // Allocate stack space for array: alloc_size = ImmInt bytes
+             allocSize := instr.ImmInt;
+             // Align to 8-byte boundary
+             allocSize := (allocSize + 7) and not 7;
+             
+             // Move current RSP down by allocSize bytes: sub rsp, allocSize  
+             if allocSize <= 127 then
+             begin
+               EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $EC); EmitU8(FCode, Byte(allocSize));
+             end
+             else
+             begin
+               EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $EC);
+               EmitU32(FCode, Cardinal(allocSize));
+             end;
+             
+             // Store current RSP as array base address in temp slot
+             slotIdx := localCnt + instr.Dest;
+             WriteMovRegReg(FCode, RAX, RSP); // mov rax, rsp
+             WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RAX);
+           end;
+
+         // Exception handler operations
+         irPushHandler:
+           begin
+             // handlerAddr = [rbp + SlotOffset(localCnt + instr.Src1)]
+             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+             // Load current HandlerHead into RCX: mov rcx, [rip + disp32] (patch later)
+             leaPos := FCode.Size;
+             EmitU8(FCode, $48); EmitU8(FCode, $8B); EmitU8(FCode, $05); EmitU32(FCode, 0);
+             SetLength(FHandlerHeadLoadPositions, Length(FHandlerHeadLoadPositions) + 1);
+             FHandlerHeadLoadPositions[High(FHandlerHeadLoadPositions)] := leaPos;
+             // Store prev at [rax + 0]
+             WriteMovMemReg(FCode, RAX, 0, RCX);
+             // Save RSP and RBP into handler frame
+             WriteMovMemReg(FCode, RAX, 8, RSP);
+             WriteMovMemReg(FCode, RAX, 16, RBP);
+             // Register handler id
+             handlerId := Length(FHandlerLabels);
+             SetLength(FHandlerLabels, handlerId + 1);
+             FHandlerLabels[handlerId] := instr.LabelName;
+             // mov rdx, handlerId
+             WriteMovRegImm64(FCode, RDX, handlerId);
+             // mov [rax + 24], rdx
+             WriteMovMemReg(FCode, RAX, 24, RDX);
+             // Update global HandlerHead = handlerAddr: mov [rip+disp], rax (patch later)
+             storePos := FCode.Size;
+             EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $05); EmitU32(FCode, 0);
+             SetLength(FHandlerHeadStorePositions, Length(FHandlerHeadStorePositions) + 1);
+             FHandlerHeadStorePositions[High(FHandlerHeadStorePositions)] := storePos;
+           end;
+
+         irPopHandler:
+           begin
+             // handlerAddr = [rbp + SlotOffset(localCnt + instr.Src1)]
+             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+             // Load prev = [rax + 0]
+             WriteMovRegMem(FCode, RDX, RAX, 0);
+             // Store prev into global HandlerHead: mov [rip+disp], rdx (patch later)
+             storePos := FCode.Size;
+             EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $05); EmitU32(FCode, 0);
+             SetLength(FHandlerHeadStorePositions, Length(FHandlerHeadStorePositions) + 1);
+             FHandlerHeadStorePositions[High(FHandlerHeadStorePositions)] := storePos;
+           end;
+
+         irLoadHandlerExn:
+           begin
+             // handlerAddr = [rbp + SlotOffset(localCnt + instr.Src1)]
+             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+             // Load exn value at [rax + 32]
+             WriteMovRegMem(FCode, RDX, RAX, 32);
+             // Store into dest local slot
+             slotIdx := localCnt + instr.Dest;
+             WriteMovMemReg(FCode, RBP, SlotOffset(slotIdx), RDX);
+           end;
+
+         irThrow:
+           begin
+             // Load exception value from local temp
+             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+             // Load HandlerHead into RCX: mov rcx, [rip+disp]
+             leaPos := FCode.Size;
+             EmitU8(FCode, $48); EmitU8(FCode, $8B); EmitU8(FCode, $05); EmitU32(FCode, 0);
+             SetLength(FHandlerHeadLoadPositions, Length(FHandlerHeadLoadPositions) + 1);
+             FHandlerHeadLoadPositions[High(FHandlerHeadLoadPositions)] := leaPos;
+             // test rcx, rcx
+             EmitU8(FCode, $48); EmitU8(FCode, $85); EmitU8(FCode, $C9);
+             // if zero -> exit(1)
+             // je uncaught
+             uncaughtPos := FCode.Size;
+             WriteJeRel32(FCode, 0);
+             // restore RSP = [rcx+8]
+             WriteMovRegMem(FCode, RDX, RCX, 8);
+             WriteMovRegReg(FCode, RSP, RDX);
+             // restore RBP = [rcx+16]
+             WriteMovRegMem(FCode, RDX, RCX, 16);
+             WriteMovRegReg(FCode, RBP, RDX);
+             // store exception into [rcx+32]
+             WriteMovMemReg(FCode, RCX, 32, RAX);
+             // load handlerId = [rcx+24]
+             WriteMovRegMem(FCode, RDX, RCX, 24);
+             // compute table base: lea rsi, [rip+disp] (patch later)
+             leaPos := FCode.Size;
+             EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+             SetLength(FHandlerTableLeaPositions, Length(FHandlerTableLeaPositions) + 1);
+             FHandlerTableLeaPositions[High(FHandlerTableLeaPositions)] := leaPos;
+              // rax = rdx << 3
+              EmitU8(FCode, $48); EmitU8(FCode, $C1); EmitU8(FCode, $E2); EmitU8(FCode, $03);
+
+             // add rax, rsi
+             EmitU8(FCode, $48); EmitU8(FCode, $01); EmitU8(FCode, $C6);
+             // load target = [rax]
+             WriteMovRegMem(FCode, RDX, RAX, 0);
+             // jmp rdx
+             EmitU8(FCode, $FF); EmitU8(FCode, $E2);
+             // uncaught: patch here
+             k := FCode.Size;
+             FCode.PatchU32LE(uncaughtPos + 2, Cardinal(k - uncaughtPos - 6));
+             // uncaught: exit(1)
+             WriteMovRegImm64(FCode, RDI, 1);
+             WriteMovRegImm64(FCode, RAX, 60);
+             WriteSyscall(FCode);
+           end;
         irStoreElem:
           begin
             // Store element: array[index] = value
@@ -1759,33 +1869,107 @@ begin
      end;
   end;
 
-  // patch buffer LEAs for print_int
-  if bufferAdded then
-  begin
-    for i := 0 to High(bufferLeaPositions) do
-    begin
-      leaPos := bufferLeaPositions[i];
-      codeVA := $400000 + 4096;
-      instrVA := codeVA + leaPos + 7;
-      dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + bufferOffset;
-      disp32 := Int64(dataVA) - Int64(instrVA);
-      FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
-    end;
-  end;
+   // patch buffer LEAs for print_int
+   if bufferAdded then
+   begin
+     for i := 0 to High(bufferLeaPositions) do
+     begin
+       leaPos := bufferLeaPositions[i];
+       codeVA := $400000 + 4096;
+       instrVA := codeVA + leaPos + 7;
+       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + bufferOffset;
+       disp32 := Int64(dataVA) - Int64(instrVA);
+       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
+     end;
+   end;
 
-  // patch env LEAs
-  if envAdded then
-  begin
-    for i := 0 to High(envLeaPositions) do
-    begin
-      leaPos := envLeaPositions[i];
-      codeVA := $400000 + 4096;
-      instrVA := codeVA + leaPos + 7;
-      dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + envOffset;
-      disp32 := Int64(dataVA) - Int64(instrVA);
-      FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
-    end;
-  end;
+   // patch env LEAs
+   if envAdded then
+   begin
+     for i := 0 to High(envLeaPositions) do
+     begin
+       leaPos := envLeaPositions[i];
+       codeVA := $400000 + 4096;
+       instrVA := codeVA + leaPos + 7;
+       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + envOffset;
+       disp32 := Int64(dataVA) - Int64(instrVA);
+       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
+     end;
+   end;
+
+   // patch handler head LEAs
+   if Length(FHandlerHeadLoadPositions) > 0 then
+   begin
+     // HandlerHead data offset within data section
+     handlerHeadOffset := totalDataOffset;
+     // Reserve 8 bytes for HandlerHead
+     FData.WriteU64LE(0);
+     Inc(totalDataOffset, 8);
+     // Patch all load positions (mov reg, [rip+disp])
+     for i := 0 to High(FHandlerHeadLoadPositions) do
+     begin
+       leaPos := FHandlerHeadLoadPositions[i];
+       codeVA := $400000 + 4096;
+       instrVA := codeVA + leaPos + 7;
+       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + handlerHeadOffset;
+       disp32 := Int64(dataVA) - Int64(instrVA);
+       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
+     end;
+     // Patch all store positions (mov [rip+disp], reg) - same disp location
+     for i := 0 to High(FHandlerHeadStorePositions) do
+     begin
+       leaPos := FHandlerHeadStorePositions[i];
+       codeVA := $400000 + 4096;
+       instrVA := codeVA + leaPos + 3; // store opcode uses different offset for disp
+       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + handlerHeadOffset;
+       disp32 := Int64(dataVA) - Int64(instrVA);
+       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
+     end;
+   end;
+
+   // build handler table in data and patch lea positions to it
+   if Length(FHandlerLabels) > 0 then
+   begin
+     handlerTableDataPos := FData.Size;
+     handlerTableOffset := totalDataOffset;
+     // reserve table entries (8 bytes each)
+     for i := 0 to High(FHandlerLabels) do
+     begin
+       FData.WriteU64LE(0);
+       Inc(totalDataOffset, 8);
+     end;
+     // Now patch each table entry with the label address
+     codeVA := $400000 + 4096;
+     for i := 0 to High(FHandlerLabels) do
+     begin
+       // find label position
+       targetPos := -1;
+       for j := 0 to High(FLabelPositions) do
+       begin
+         if FLabelPositions[j].Name = FHandlerLabels[i] then
+         begin
+           targetPos := FLabelPositions[j].Pos;
+           Break;
+         end;
+       end;
+       if targetPos < 0 then
+         Raise Exception.CreateFmt('Undefined handler label: %s', [FHandlerLabels[i]]);
+       // label virtual address
+       dataVA := codeVA + targetPos;
+       // patch data at handlerTableDataPos + i*8
+       FData.PatchU64LE(handlerTableDataPos + i*8, dataVA);
+     end;
+     // Patch any lea positions that reference the table base
+     for i := 0 to High(FHandlerTableLeaPositions) do
+     begin
+       leaPos := FHandlerTableLeaPositions[i];
+       codeVA := $400000 + 4096;
+       instrVA := codeVA + leaPos + 7;
+       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + handlerTableOffset;
+       disp32 := Int64(dataVA) - Int64(instrVA);
+       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
+     end;
+   end;
 
   // patch jumps to labels
   for i := 0 to High(FJumpPatches) do
