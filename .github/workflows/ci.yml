@@ -22,6 +22,9 @@ jobs:
       - name: Show FPC version
         run: fpc -v
 
+      - name: Show FPC detailed info
+        run: fpc -iW -iD || true
+
       - name: Preliminary checks
         run: |
           echo "Workspace:" && pwd
