@@ -1005,21 +1005,31 @@ begin
 
     else
     begin
-      // generic call
+      // generic call - unified call lowering for v0.2.0
       SetLength(argTemps, Length(TAstCall(expr).Args));
       for ai := 0 to High(argTemps) do
         argTemps[ai] := LowerExpr(TAstCall(expr).Args[ai]);
+
       instr.Op := irCall;
       instr.ImmStr := TAstCall(expr).Name;
       instr.ImmInt := Length(argTemps);
+
+      // Store argument temps in dedicated array (replaces CSV in LabelName hack)
+      SetLength(instr.ArgTemps, Length(argTemps));
+      for ai := 0 to High(argTemps) do
+        instr.ArgTemps[ai] := argTemps[ai];
+
+      // Set up to 2 args in Src1/Src2 for backward compatibility with simple backends
       if instr.ImmInt > 0 then instr.Src1 := argTemps[0] else instr.Src1 := -1;
       if instr.ImmInt > 1 then instr.Src2 := argTemps[1] else instr.Src2 := -1;
+
+      // TODO: Determine call mode from symbol table (unit_manager)
+      // For now, default to internal - will be resolved in later pass
+      instr.CallMode := cmInternal;
+
+      // Clear LabelName - no longer used for arg passing
       instr.LabelName := '';
-      for ai := 2 to High(argTemps) do
-      begin
-        if instr.LabelName <> '' then instr.LabelName := instr.LabelName + ',';
-        instr.LabelName := instr.LabelName + IntToStr(argTemps[ai]);
-      end;
+
       instr.Dest := NewTemp;
       Emit(instr);
       Exit(instr.Dest);

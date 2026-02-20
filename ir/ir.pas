@@ -7,6 +7,12 @@ uses
   SysUtils, Classes, ast; // für TLyxType
 
 type
+  TIRCallMode = (
+    cmInternal,   // Call to function defined in current module
+    cmImported,   // Call to function imported from another unit
+    cmExternal    // Call to external library (libc, etc.)
+  );
+
   TIROpKind = (
     irInvalid,
     irConstInt,
@@ -61,9 +67,12 @@ type
      // Cast-specific fields
      CastFromType: TLyxType;  // source type for cast operations
      CastToType: TLyxType;    // target type for cast operations
+     // Call-specific fields
+     CallMode: TIRCallMode;   // mode for irCall/irVarCall
+     ArgTemps: array of Integer; // argument temp indices for calls (replaces CSV in LabelName)
   end;
 
-  TIRInstructionList = array of TIRInstr;
+   TIRInstructionList = array of TIRInstr;
 
   TIRFunction = class
   public
@@ -160,6 +169,29 @@ begin
   if Result >= 0 then Exit;
   Strings.Add(s);
   Result := Strings.Count - 1;
+end;
+
+{ Initialize a TIRInstr with safe default values }
+procedure InitInstr(out instr: TIRInstr);
+begin
+  instr.Op := irInvalid;
+  instr.Dest := -1;
+  instr.Src1 := -1;
+  instr.Src2 := -1;
+  instr.Src3 := -1;
+  instr.ImmInt := 0;
+  instr.ImmFloat := 0.0;
+  instr.ImmStr := '';
+  instr.LabelName := '';
+  instr.CastFromType := atVoid;
+  instr.CastToType := atVoid;
+  instr.CallMode := cmInternal;
+  SetLength(instr.ArgTemps, 0);
+end;
+
+function EmptyInstr: TIRInstr;
+begin
+  InitInstr(Result);
 end;
 
 end.
