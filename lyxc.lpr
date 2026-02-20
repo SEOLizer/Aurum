@@ -147,7 +147,7 @@ begin
               // Build unique library list
               neededLibs := CollectLibraries(externSymbols);
               WriteLn('Generating dynamic ELF with ', Length(externSymbols), ' external symbols');
-              WriteDynamicElf64(outputFile, codeBuf, dataBuf, entryVA, externSymbols, neededLibs);
+              WriteDynamicElf64WithPatches(outputFile, codeBuf, dataBuf, entryVA, externSymbols, neededLibs, emit.GetPLTGOTPatches);
             end
             else
             begin

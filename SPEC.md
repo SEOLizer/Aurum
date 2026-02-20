@@ -216,18 +216,186 @@ Anmerkungen / offene Feinheiten:
 
 Kurz: v0.1.5 ist inhaltlich implementiert; verbleiben Test‑Härtung und CI‑Verifikation, danach Release‑Tag möglich.
 
-### v0.2
+0.2.0 — “Stabilisierung: Calls, Imports, Relocs”
 
-- **Advanced Module Features**: Selective Imports, Namespaces, Private Symbols
-- **Erweiterte Standard Library**: std.io, std.string, std.mem Module  
-- **Funktionen + SysV ABI**: Vollständige Linux x86_64 Calling Convention
+Ziel: euer aktuelles Known Issue wird endgültig erschlagen, und ihr könnt extern+cross-unit vertrauen.
 
-### v1
+Deliverables
 
-- Module/Imports
-- bessere Diagnostics
-- Optional: Objectfiles + Linker-Ansteuerung (dann wird's "richtig erwachsen")
+✅ Fix: Cross-Unit Function Call Bug (IsExternalSymbol / Call-Mode / Reloc)
 
+✅ Einheitlicher “Call Lowering”-Pfad:
+
+call internal
+
+call imported
+
+call extern (libc)
+
+✅ ABI-Testkatalog (klein, aber hart):
+
+6+ Argumente (Register + Stack)
+
+callee-saved Register-Test
+
+Stack alignment Test (z.B. printf/SSE-sensitive call)
+
+✅ Tooling: optional --emit-asm / --dump-relocs (Debuggability)
+
+Nicht reinpacken
+
+for-loops, neue Typen, OOP. Erst Fundament.
+
+0.2.1 — “Integer Widths & Sign/Zero-Extend”
+
+Ziel: int8/uint32/... ohne Backend-Zufall.
+
+Deliverables
+
+✅ IR-Typen für Integerbreiten
+
+✅ Codegen-Regeln:
+
+sign/zero extend an klaren Stellen (load, arithmetic, call args, returns)
+
+✅ Minimale Standard-Builtins/Intrinsics:
+
+as/casts explizit (keine implizite Magie am Anfang)
+
+0.2.2 — “Control Flow Vollständigkeit: for + Lowering”
+
+Ziel: for als reines Sugar über while im IR (kein Extra-Backend).
+
+Deliverables
+
+✅ for i := a to b do → IR: init; cond; body; inc; jmp
+
+✅ Break/continue (optional, wenn ihr eh CFG macht)
+
+✅ Parser-Fixes (Unary nesting --x, !!y) hier ok, weil kaum Backend-Risiko
+
+I/O und Filesystem systematisch (ohne Runtime-Explosion)
+0.3.0 — “std.io (Syscalls): fd-basierte I/O”
+
+Ziel: echte Dateiarbeit, aber ohne libc-Abhängigkeit, solange ihr euch das noch nicht 100% traut.
+
+API-Minimum
+
+type fd: int32 (oder int64, aber fd ist logisch int32)
+
+fn open(path: pchar, flags: int32, mode: int32): fd
+
+fn read(fd, buf: *u8, len: int64): int64
+
+fn write(fd, buf: *u8, len: int64): int64
+
+fn close(fd): int32
+
+Fehler: erstmal “negativer Rückgabewert = -errno” oder Result-ähnlich, aber konsistent.
+
+Deliverables
+
+✅ syscall-wrapper layer im Backend/stdlib
+
+✅ print_str implementiert über write(1,...) (kein Spezialfall mehr)
+
+0.3.1 — “std.fs Basis: stat, mkdir, unlink, rename”
+
+Ziel: nützliche FS-Operationen, noch ohne Directory Iteration.
+
+stat(path) → Größe/Mode/Type
+
+mkdir, unlink, rename
+
+cwd / chdir optional
+
+0.3.2 — “Directories: dir listing (Linux-first)”
+
+Zwei Wege — ihr wählt einen, aber ich setze Linux-first als robusten Schritt:
+
+Option A (Linux-spezifisch, syscall-only):
+
+getdents64 wrapper
+
+DirIter als low-level iterator (Record + Buffer)
+
+Option B (libc):
+
+opendir/readdir/closedir
+
+nur wenn Gate B wirklich bombenfest ist
+
+Ich würde A zuerst bauen, B später als “portabler layer”.
+
+“OOP” sinnvoll schneiden (erst Wert, dann Kosten)
+0.4.0 — “Structs + Methoden (OOP-light, kein virtual)”
+
+Ziel: 80% Strukturgewinn ohne Runtime/Dispatch-Komplexität.
+
+Features
+
+struct / record types (layout-stabil, klarer ABI)
+
+Methoden als Sugar:
+
+fn Vec2.len(self: Vec2): f64
+
+oder self: *Vec2 für mutierende Methoden
+
+Namespacing/impl blocks (Syntaxfrage), aber keine Vererbung
+
+Deliverables
+
+✅ Layout/Alignment Regeln dokumentiert
+
+✅ Field access + address-of + passing by value/ref
+
+✅ Keine Heap-Pflicht
+
+0.4.1 — “Strings & Slices als Standarddatenmodell”
+
+Damit std.io/std.fs nicht ewig “pchar-only” bleibt:
+
+type slice_u8 = {*u8, len:int64}
+
+type string = {pchar, len} (oder alias auf slice_u8)
+
+Basisfunktionen: concat/splice später; erstmal: length, compare, to_cstr (wenn nötig)
+
+v1.0: “Stabile Systemsprache”
+1.0.0 — “Stabil, testbar, nutzbar”
+
+Definition von v1
+
+Module/Imports stabil (habt ihr)
+
+SysV ABI stabil (ab 0.2.x)
+
+std.io + std.fs Minimum (ab 0.3.x)
+
+Structs + Methoden (ab 0.4.0)
+
+Diagnostics ordentlich (Spans, gute Errors)
+
+Build-Tooling: reproduzierbare Builds, Test-Suite
+
+Wichtig: v1 ist ohne klassische OOP (kein inheritance/virtual), aber “OOP-light” reicht für sehr viel.
+
+v1.x / v2: “Klassische OOP” nur wenn wirklich gewollt
+
+Hier wird’s teuer. Deshalb bewusst als eigener Block:
+
+1.1.0 — “Interfaces / dynamic dispatch (optional)”
+
+interface/trait-artiges Konzept
+
+vtable/itable oder fat pointers
+
+klare ABI-Regeln für dispatch
+
+2.0.0 — “Klassen, Vererbung, Konstruktoren (wenn ihr es wollt)”
+
+Nur falls ihr wirklich “Java/Delphi-like” wollt. Sonst lasst es. Vererbung ist selten die Rendite, die sie verspricht.
 ---
 
 ## Beispiel: Arrays und Float-Literale (v0.1.3)
