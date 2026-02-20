@@ -707,6 +707,8 @@ begin
         tkGe: instr.Op := irCmpGe;
         tkAnd: instr.Op := irAnd;
         tkOr: instr.Op := irOr;
+        tkNor: instr.Op := irNor;
+        tkXor: instr.Op := irXor;
       else
         instr.Op := irInvalid;
       end;

@@ -23,7 +23,7 @@ type
     tkAssign,
     tkEq, tkNeq,
     tkLt, tkLe, tkGt, tkGe,
-    tkAnd, tkOr, tkNot,
+    tkAnd, tkOr, tkNot, tkNor, tkXor,
     // Trennzeichen
     tkLParen, tkRParen, tkLBrace, tkRBrace,
     tkLBracket, tkRBracket,
@@ -132,6 +132,8 @@ begin
     tkAnd:       Result := '&&';
     tkOr:        Result := '||';
     tkNot:       Result := '!';
+    tkNor:       Result := '~|';
+    tkXor:       Result := '^';
     tkLParen:    Result := '(';
     tkRParen:    Result := ')';
     tkLBrace:    Result := '{';
@@ -644,12 +646,37 @@ begin
         Advance;
         Result := MakeToken(tkOr, '||', startLine, startCol, 2);
       end
+      else if (not IsAtEnd) and (CurrentChar = '~') then
+      begin
+        Advance;
+        Result := MakeToken(tkNor, '|~', startLine, startCol, 2);
+      end
       else
       begin
-        FDiag.Error('unexpected ''|'', did you mean ''||''?',
+        FDiag.Error('unexpected ''|'', did you mean ''||'' or ''|~''?',
           MakeSpan(startLine, startCol, 1, FFileName));
         Result := MakeToken(tkError, '|', startLine, startCol, 1);
       end;
+    end;
+
+    '~': begin
+      Advance;
+      if (not IsAtEnd) and (CurrentChar = '|') then
+      begin
+        Advance;
+        Result := MakeToken(tkNor, '~|', startLine, startCol, 2);
+      end
+      else
+      begin
+        FDiag.Error('unexpected ''~'', did you mean ''~|''?',
+          MakeSpan(startLine, startCol, 1, FFileName));
+        Result := MakeToken(tkError, '~', startLine, startCol, 1);
+      end;
+    end;
+
+    '^': begin
+      Advance;
+      Result := MakeToken(tkXor, '^', startLine, startCol, 1);
     end;
 
   else

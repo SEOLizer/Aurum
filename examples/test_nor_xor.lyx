@@ -1,0 +1,40 @@
+// test_nor_xor.lyx - Test für NOR und XOR Operatoren
+
+fn main(): int64 {
+  var a: bool := true;
+  var b: bool := false;
+
+  // Test XOR: true ^ false = true
+  var xor1: bool := a ^ b;
+  if (not xor1) {
+    return 1;  // Fehler: XOR sollte true sein
+  }
+
+  // Test XOR: true ^ true = false
+  var xor2: bool := a ^ a;
+  if (xor2) {
+    return 2;  // Fehler: XOR sollte false sein
+  }
+
+  // Test NOR: ~(true | false) = false
+  var nor1: bool := a ~| b;
+  if (nor1) {
+    return 3;  // Fehler: NOR sollte false sein
+  }
+
+  // Test NOR: ~(false | false) = true
+  var c: bool := false;
+  var d: bool := false;
+  var nor2: bool := c ~| d;
+  if (not nor2) {
+    return 4;  // Fehler: NOR sollte true sein
+  }
+
+  // Alternative NOR-Syntax: |~
+  var nor3: bool := c |~ d;
+  if (not nor3) {
+    return 5;  // Fehler: NOR (|~) sollte true sein
+  }
+
+  return 0;  // Alle Tests bestanden
+}

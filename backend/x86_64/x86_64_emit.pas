@@ -1388,6 +1388,23 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
              EmitU8(FCode, $48); EmitU8(FCode, $09); EmitU8(FCode, $C8); // or rax, rcx
              WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
            end;
+         irNor:
+           begin
+             // dest = ~(src1 | src2) (bitwise NOR)
+             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteMovRegMem(FCode, RCX, RBP, SlotOffset(localCnt + instr.Src2));
+             EmitU8(FCode, $48); EmitU8(FCode, $09); EmitU8(FCode, $C8); // or rax, rcx
+             EmitU8(FCode, $48); EmitU8(FCode, $F7); EmitU8(FCode, $D0); // not rax
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+           end;
+         irXor:
+           begin
+             // dest = src1 ^ src2 (bitwise XOR)
+             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+             WriteMovRegMem(FCode, RCX, RBP, SlotOffset(localCnt + instr.Src2));
+             EmitU8(FCode, $48); EmitU8(FCode, $31); EmitU8(FCode, $C8); // xor rax, rcx
+             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+           end;
          { Float arithmetic using SSE2 }
          irFAdd:
            begin

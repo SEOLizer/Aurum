@@ -1,0 +1,11 @@
+// simple_xor.lyx - Einfacher XOR Test
+
+fn main(): int64 {
+  var a: bool := true;
+  var b: bool := false;
+  var c: bool := a ^ b;
+  if (c) {
+    return 0;
+  }
+  return 1;
+}

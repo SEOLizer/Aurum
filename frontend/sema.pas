@@ -1010,7 +1010,7 @@ begin
                 end;
               end;
 
-          tkAnd, tkOr:
+          tkAnd, tkOr, tkNor, tkXor:
             begin
               if not TypeEqual(lt, atBool) or not TypeEqual(rt, atBool) then
                 FDiag.Error('type error: logical operators require bool operands', bin.Span);

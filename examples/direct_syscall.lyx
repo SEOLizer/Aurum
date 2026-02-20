@@ -1,0 +1,11 @@
+// direct_syscall.lyx - Direkter Syscall ohne libc
+
+fn main(): int64 {
+  // sys_exit(42) - direkter Syscall
+  asm
+    "mov rax, 60",    // SYS_exit
+    "mov rdi, 42",    // exit code
+    "syscall"
+  end;
+  return 0;
+}

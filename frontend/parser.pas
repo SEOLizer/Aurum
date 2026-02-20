@@ -36,8 +36,10 @@ type
     function ParseRepeatUntilStmt: TAstRepeatUntil;
     function ParseAssignStmtOrExprStmt: TAstStmt;
 
-    // Expressions (Präzedenz): Or -> And -> Cmp -> Add -> Mul -> Unary -> Primary -> Postfix
+    // Expressions (Präzedenz): Nor -> Xor -> Or -> And -> Cmp -> Add -> Mul -> Unary -> Primary -> Postfix
     function ParseExpr: TAstExpr;
+    function ParseNorExpr: TAstExpr;
+    function ParseXorExpr: TAstExpr;
     function ParseOrExpr: TAstExpr;
     function ParseAndExpr: TAstExpr;
     function ParseCmpExpr: TAstExpr;
@@ -813,7 +815,31 @@ end;
 
 function TParser.ParseExpr: TAstExpr;
 begin
+  Result := ParseNorExpr;
+end;
+
+function TParser.ParseNorExpr: TAstExpr;
+var
+  rhs: TAstExpr;
+begin
+  Result := ParseXorExpr;
+  while Accept(tkNor) do
+  begin
+    rhs := ParseXorExpr;
+    Result := TAstBinOp.Create(tkNor, Result, rhs, Result.Span);
+  end;
+end;
+
+function TParser.ParseXorExpr: TAstExpr;
+var
+  rhs: TAstExpr;
+begin
   Result := ParseOrExpr;
+  while Accept(tkXor) do
+  begin
+    rhs := ParseOrExpr;
+    Result := TAstBinOp.Create(tkXor, Result, rhs, Result.Span);
+  end;
 end;
 
 function TParser.ParseOrExpr: TAstExpr;
