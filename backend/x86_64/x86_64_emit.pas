@@ -57,12 +57,21 @@ uses
 
 function GetLibraryForSymbol(const symbolName: string): string;
 begin
-  // Simple heuristic mapping of common symbols to libraries
+  // v0.3.0: Filesystem and libc symbols
   if (symbolName = 'printf') or (symbolName = 'malloc') or (symbolName = 'free') or
      (symbolName = 'strlen') or (symbolName = 'strcmp') or (symbolName = 'exit') or
-     (symbolName = 'puts') then
+     (symbolName = 'puts') or
+     // Filesystem functions (v0.3.0)
+     (symbolName = 'open') or (symbolName = 'read') or (symbolName = 'write') or
+     (symbolName = 'close') or (symbolName = 'unlink') or (symbolName = 'rename') or
+     (symbolName = 'lseek') or (symbolName = 'fcntl') or (symbolName = 'access') or
+     (symbolName = 'chmod') or (symbolName = 'chown') or (symbolName = 'stat') or
+     (symbolName = 'fstat') or (symbolName = 'mkdir') or (symbolName = 'rmdir') or
+     (symbolName = 'getcwd') or (symbolName = 'chdir') then
     Result := 'libc.so.6'
-  else if (symbolName = 'sin') or (symbolName = 'cos') or (symbolName = 'sqrt') then
+  else if (symbolName = 'sin') or (symbolName = 'cos') or (symbolName = 'sqrt') or
+          (symbolName = 'exp') or (symbolName = 'log') or (symbolName = 'pow') or
+          (symbolName = 'floor') or (symbolName = 'ceil') or (symbolName = 'fabs') then
     Result := 'libm.so.6'
   else
     Result := 'libc.so.6'; // Default fallback
@@ -549,11 +558,15 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
      parseDonePos, notNegPos, noNegPos, noSignPos: Integer;
    targetPos, jmpPos: Integer;
    jmpAfterPadPos: Integer;
-  // for call/abi
-  argCount: Integer;
-  argTemps: array of Integer;
-  sParse: string;
-  ppos, ai: Integer;
+   // for call/abi (v0.2.0)
+   argCount: Integer;
+   argTemps: array of Integer;
+   sParse: string;
+   ppos, ai: Integer;
+   // for jump patching
+   labelName: string;
+   isPLTCall: Boolean;
+   pltBaseName: string;
    // for call extra
    extraCount: Integer;
    // function context
@@ -1587,46 +1600,55 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
             FJumpPatches[High(FJumpPatches)].JmpSize := 6; // je rel32
             WriteJeRel32(FCode, 0); // placeholder
           end;
-        irCall:
-          begin
-            // Call user-defined function (simple SysV-ish implementation)
-            // Args info: instr.ImmInt = argCount, instr.Src1/Src2 first two temp indices,
-            // remaining temps serialized in instr.LabelName as CSV starting from index 2.
-            argCount := instr.ImmInt;
-            SetLength(argTemps, argCount);
-            for k := 0 to argCount - 1 do
-              argTemps[k] := -1;
-            if argCount > 0 then argTemps[0] := instr.Src1;
-            if argCount > 1 then argTemps[1] := instr.Src2;
-            if (argCount > 2) and (instr.LabelName <> '') then
-            begin
-              // parse CSV from LabelName (temps starting from index 2)
-              sParse := instr.LabelName;
-              ppos := Pos(',', sParse);
-              ai := 2;
-              while (ppos > 0) and (ai < argCount) do
-              begin
-                argTemps[ai] := StrToIntDef(Copy(sParse, 1, ppos - 1), -1);
-                Delete(sParse, 1, ppos);
-                Inc(ai);
-                ppos := Pos(',', sParse);
-              end;
-              if (sParse <> '') and (ai < argCount) then
-                argTemps[ai] := StrToIntDef(sParse, -1);
-            end;
+         irCall:
+           begin
+             // v0.2.0: Unified Call Lowering - SysV ABI compliant
+             // Supports: internal calls, imported calls, external (libc) calls
+             argCount := instr.ImmInt;
 
+             // Build argTemps from dedicated ArgTemps array (v0.2.0) with fallback to Src1/Src2
+             SetLength(argTemps, argCount);
+             for k := 0 to argCount - 1 do
+             begin
+               if k < Length(instr.ArgTemps) then
+                 argTemps[k] := instr.ArgTemps[k]
+               else if k = 0 then
+                 argTemps[k] := instr.Src1
+               else if k = 1 then
+                 argTemps[k] := instr.Src2
+               else
+                 argTemps[k] := -1;
+             end;
 
-            // Move args into registers (SysV: RDI, RSI, RDX, RCX, R8, R9)
-            if argCount > 0 then
-            begin
-              // direct registers for up to 6 args
-              if (argCount >= 1) and (argTemps[0] >= 0) then WriteMovRegMem(FCode, 7, RBP, SlotOffset(localCnt + argTemps[0])); // RDI
-              if (argCount >= 2) and (argTemps[1] >= 0) then WriteMovRegMem(FCode, 6, RBP, SlotOffset(localCnt + argTemps[1])); // RSI
-              if (argCount >= 3) and (argTemps[2] >= 0) then WriteMovRegMem(FCode, 2, RBP, SlotOffset(localCnt + argTemps[2])); // RDX
-              if (argCount >= 4) and (argTemps[3] >= 0) then WriteMovRegMem(FCode, 1, RBP, SlotOffset(localCnt + argTemps[3])); // RCX
-              if (argCount >= 5) and (argTemps[4] >= 0) then WriteMovRegMem(FCode, 8, RBP, SlotOffset(localCnt + argTemps[4])); // R8
-              if (argCount >= 6) and (argTemps[5] >= 0) then WriteMovRegMem(FCode, 9, RBP, SlotOffset(localCnt + argTemps[5])); // R9
-            end;
+             // Determine effective call mode
+             // If symbol is external (not found in local labels and not a builtin), treat as external
+             if instr.CallMode = cmExternal then
+             begin
+               // External call - will use PLT stub
+               AddExternalSymbol(instr.ImmStr, GetLibraryForSymbol(instr.ImmStr));
+             end
+             else if (instr.CallMode = cmInternal) and IsExternalSymbol(instr.ImmStr) then
+             begin
+               // Auto-detect: symbol not found locally -> treat as external
+               instr.CallMode := cmExternal;
+               AddExternalSymbol(instr.ImmStr, GetLibraryForSymbol(instr.ImmStr));
+             end;
+
+             // --- Argument Passing (SysV AMD64 ABI) ---
+             // Up to 6 arguments in registers, rest on stack
+             // RDI, RSI, RDX, RCX, R8, R9 for integer/pointer args
+
+             // Move args into registers (SysV: RDI, RSI, RDX, RCX, R8, R9)
+             if argCount > 0 then
+             begin
+               // Load args from slots into parameter registers
+               if (argCount >= 1) and (argTemps[0] >= 0) then WriteMovRegMem(FCode, 7, RBP, SlotOffset(localCnt + argTemps[0])); // RDI
+               if (argCount >= 2) and (argTemps[1] >= 0) then WriteMovRegMem(FCode, 6, RBP, SlotOffset(localCnt + argTemps[1])); // RSI
+               if (argCount >= 3) and (argTemps[2] >= 0) then WriteMovRegMem(FCode, 2, RBP, SlotOffset(localCnt + argTemps[2])); // RDX
+               if (argCount >= 4) and (argTemps[3] >= 0) then WriteMovRegMem(FCode, 1, RBP, SlotOffset(localCnt + argTemps[3])); // RCX
+               if (argCount >= 5) and (argTemps[4] >= 0) then WriteMovRegMem(FCode, 8, RBP, SlotOffset(localCnt + argTemps[4])); // R8
+               if (argCount >= 6) and (argTemps[5] >= 0) then WriteMovRegMem(FCode, 9, RBP, SlotOffset(localCnt + argTemps[5])); // R9
+             end;
 
             // handle extra args >6: push them in reverse order onto stack
             extraCount := 0;
@@ -1649,23 +1671,45 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
               EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $EC); EmitU8(FCode, Byte(callPad));
             end;
 
-            // Set AL=0 for varargs calls (SysV ABI: number of vector registers used)
-            // Since we don't use XMM registers for arguments, AL should always be 0
-            EmitU8(FCode, $30); EmitU8(FCode, $C0); // xor al, al
+             // Set AL=0 for varargs calls (SysV ABI: number of vector registers used)
+             // Since we don't use XMM registers for arguments, AL should always be 0
+             EmitU8(FCode, $30); EmitU8(FCode, $C0); // xor al, al
 
-            // Check if this is an external symbol and collect it
-            if IsExternalSymbol(instr.ImmStr) then
-            begin
-              AddExternalSymbol(instr.ImmStr, GetLibraryForSymbol(instr.ImmStr));
-            end;
-
-            // emit call and patch later
-            SetLength(FJumpPatches, Length(FJumpPatches) + 1);
-            FJumpPatches[High(FJumpPatches)].Pos := FCode.Size;
-            FJumpPatches[High(FJumpPatches)].LabelName := instr.ImmStr;
-            FJumpPatches[High(FJumpPatches)].JmpSize := 5; // call rel32
-            EmitU8(FCode, $E8); // call rel32
-            EmitU32(FCode, 0);  // placeholder offset
+             // --- Emit Call based on Call Mode ---
+             case instr.CallMode of
+               cmExternal:
+                 begin
+                   // External call via PLT stub
+                   // Call to symbol@plt which will be resolved by dynamic linker
+                   SetLength(FJumpPatches, Length(FJumpPatches) + 1);
+                   FJumpPatches[High(FJumpPatches)].Pos := FCode.Size;
+                   FJumpPatches[High(FJumpPatches)].LabelName := instr.ImmStr + '@plt';
+                   FJumpPatches[High(FJumpPatches)].JmpSize := 5; // call rel32
+                   EmitU8(FCode, $E8); // call rel32
+                   EmitU32(FCode, 0);  // placeholder offset - patched to PLT stub
+                 end;
+               cmImported:
+                 begin
+                   // Cross-unit imported function
+                   // Similar to external but from known unit - also uses PLT for now
+                   SetLength(FJumpPatches, Length(FJumpPatches) + 1);
+                   FJumpPatches[High(FJumpPatches)].Pos := FCode.Size;
+                   FJumpPatches[High(FJumpPatches)].LabelName := instr.ImmStr;
+                   FJumpPatches[High(FJumpPatches)].JmpSize := 5;
+                   EmitU8(FCode, $E8);
+                   EmitU32(FCode, 0);
+                 end;
+               cmInternal:
+                 begin
+                   // Direct internal call - relative offset to local function
+                   SetLength(FJumpPatches, Length(FJumpPatches) + 1);
+                   FJumpPatches[High(FJumpPatches)].Pos := FCode.Size;
+                   FJumpPatches[High(FJumpPatches)].LabelName := instr.ImmStr;
+                   FJumpPatches[High(FJumpPatches)].JmpSize := 5; // call rel32
+                   EmitU8(FCode, $E8); // call rel32
+                   EmitU32(FCode, 0);  // placeholder offset
+                 end;
+             end;
 
             // restore stack: remove padding + extra pushed args
             restoreBytes := callPad + pushBytes;
@@ -2008,43 +2052,75 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
 
    end;
 
-  // patch jumps to labels
-  for i := 0 to High(FJumpPatches) do
-  begin
-    // find target label position (check both normal labels and PLT stubs)
-    targetPos := -1;
-    for j := 0 to High(FLabelPositions) do
-    begin
-      if FLabelPositions[j].Name = FJumpPatches[i].LabelName then
-      begin
-        targetPos := FLabelPositions[j].Pos;
-        Break;
-      end;
-    end;
-    
-    // If not found in normal labels, check PLT stubs
-    if targetPos < 0 then
-    begin
-      for j := 0 to High(FPLTStubs) do
-      begin
-        if FPLTStubs[j].Name = FJumpPatches[i].LabelName then
-        begin
-          targetPos := FPLTStubs[j].Pos;
-          Break;
-        end;
-      end;
-    end;
-    if targetPos >= 0 then
-    begin
-      jmpPos := FJumpPatches[i].Pos;
-      rel32 := Int64(targetPos) - Int64(jmpPos + FJumpPatches[i].JmpSize);
+    // Generate PLT stubs for external symbols at the end of code
+    GeneratePLTStubs;
 
-      if FJumpPatches[i].JmpSize = 5 then
-        FCode.PatchU32LE(jmpPos + 1, Cardinal(rel32)) // jmp rel32: opcode at pos, rel32 at pos+1
-      else
-        FCode.PatchU32LE(jmpPos + 2, Cardinal(rel32)); // jcc rel32: opcode 0F xx at pos, rel32 at pos+2
+    // patch jumps to labels (v0.2.0: unified call patching)
+    // DEBUG: Dump jump patches
+    WriteLn('DEBUG: ', Length(FJumpPatches), ' jump patches to apply');
+    for i := 0 to High(FLabelPositions) do
+      WriteLn('DEBUG: Label ', FLabelPositions[i].Name, ' at pos ', FLabelPositions[i].Pos);
+    for i := 0 to High(FJumpPatches) do
+    begin
+      // find target label position (check normal labels, PLT stubs, and PLT@suffix)
+      targetPos := -1;
+      labelName := FJumpPatches[i].LabelName;
+      WriteLn('DEBUG: Processing jump patch ', i, ': label=', labelName, ' pos=', FJumpPatches[i].Pos, ' size=', FJumpPatches[i].JmpSize);
+
+     // Check if this is a PLT call (symbol@plt)
+     isPLTCall := Pos('@plt', labelName) > 0;
+     if isPLTCall then
+     begin
+       // Strip @plt suffix for lookup
+       pltBaseName := Copy(labelName, 1, Pos('@plt', labelName) - 1);
+       for j := 0 to High(FPLTStubs) do
+       begin
+         if FPLTStubs[j].Name = labelName then
+         begin
+           targetPos := FPLTStubs[j].Pos;
+           Break;
+         end;
+       end;
+     end
+     else
+     begin
+       // Normal label lookup
+       for j := 0 to High(FLabelPositions) do
+       begin
+         if FLabelPositions[j].Name = labelName then
+         begin
+           targetPos := FLabelPositions[j].Pos;
+           Break;
+         end;
+       end;
+
+       // If not found in normal labels, check PLT stubs (for extern calls without @plt suffix)
+       if targetPos < 0 then
+       begin
+         for j := 0 to High(FPLTStubs) do
+         begin
+           if FPLTStubs[j].Name = labelName + '@plt' then
+           begin
+             targetPos := FPLTStubs[j].Pos;
+             Break;
+           end;
+         end;
+       end;
      end;
-   end;
+     if targetPos >= 0 then
+     begin
+       jmpPos := FJumpPatches[i].Pos;
+       rel32 := Int64(targetPos) - Int64(jmpPos + FJumpPatches[i].JmpSize);
+       WriteLn('DEBUG: Patching jump ', i, ': jmpPos=', jmpPos, ' targetPos=', targetPos, ' rel32=', rel32);
+
+       if FJumpPatches[i].JmpSize = 5 then
+         FCode.PatchU32LE(jmpPos + 1, Cardinal(rel32)) // jmp rel32: opcode at pos, rel32 at pos+1
+       else
+         FCode.PatchU32LE(jmpPos + 2, Cardinal(rel32)); // jcc rel32: opcode 0F xx at pos, rel32 at pos+2
+      end
+      else
+        WriteLn('DEBUG: WARNING - target not found for jump patch ', i, ': ', labelName);
+    end;
    
     // Generate PLT stubs for external symbols at the end of code
     GeneratePLTStubs;
@@ -2161,18 +2237,28 @@ begin
   end;
   
   // Check if it's a builtin function (should not be treated as external)
+  // Note: Filesystem functions (open, read, write, close) are NOT builtins
+  // They are extern calls to libc
   if (name = 'print_str') or (name = 'print_int') or (name = 'exit') or (name = 'strlen') or
      (name = 'print_float') or (name = 'str_char_at') or (name = 'str_set_char') or
      (name = 'str_length') or (name = 'str_compare') or (name = 'str_copy_builtin') or
      (name = 'int_to_str') or (name = 'str_to_int') or
-     // Math builtins
-     (name = 'abs') or (name = 'fabs') or (name = 'sin') or (name = 'cos') or 
+     // Math builtins (emitted inline or via runtime snippets)
+     (name = 'abs') or (name = 'fabs') or (name = 'sin') or (name = 'cos') or
      (name = 'sqrt') or (name = 'sqr') or (name = 'exp') or (name = 'ln') or
      (name = 'arctan') or (name = 'round') or (name = 'trunc') or (name = 'int_part') or
      (name = 'frac') or (name = 'pi') or (name = 'random') or (name = 'randomize') or
      (name = 'odd') or (name = 'hi') or (name = 'lo') or (name = 'swap') then
   begin
     Result := False;  // These are builtins, not external symbols
+    Exit;
+  end;
+
+  // v0.3.0: Filesystem functions are external (libc)
+  if (name = 'open') or (name = 'read') or (name = 'write') or (name = 'close') or
+     (name = 'unlink') or (name = 'rename') or (name = 'lseek') then
+  begin
+    Result := True;  // These are external libc functions
     Exit;
   end;
   
@@ -2193,40 +2279,70 @@ end;
 procedure TX86_64Emitter.GeneratePLTStubs;
 var
   i: Integer;
-  stubPos: Integer;
+  pltBasePos: Integer;
+  plt0Pos: Integer;
   pltGOTPatch: TPLTGOTPatch;
   pltStub: TLabelPos;
+  rel32: Int64;
+  curPos: Integer;
 begin
-  // Generate PLT stub for each external symbol
+  if Length(FExternalSymbols) = 0 then Exit;
+
+  // Record base position for PLT
+  pltBasePos := FCode.Size;
+
+  // Emit PLT0 (resolver entry)
+  plt0Pos := FCode.Size;
+  // pushq QWORD PTR [rip + disp32] ; push link map or relocation index per platform
+  FCode.WriteU8($FF); FCode.WriteU8($35);
+  // record patch for PLT0 push target (will point into GOT)
+  pltGOTPatch.Pos := FCode.Size;
+  pltGOTPatch.SymbolName := '__plt0_push';
+  pltGOTPatch.SymbolIndex := -1;
+  SetLength(FPLTGOTPatches, Length(FPLTGOTPatches) + 1);
+  FPLTGOTPatches[High(FPLTGOTPatches)] := pltGOTPatch;
+  FCode.WriteU32LE(0);
+
+  // jmpq *QWORD PTR [rip + disp32]
+  FCode.WriteU8($FF); FCode.WriteU8($25);
+  // record patch for PLT0 jmp target
+  pltGOTPatch.Pos := FCode.Size;
+  pltGOTPatch.SymbolName := '__plt0_jmp';
+  pltGOTPatch.SymbolIndex := -1;
+  SetLength(FPLTGOTPatches, Length(FPLTGOTPatches) + 1);
+  FPLTGOTPatches[High(FPLTGOTPatches)] := pltGOTPatch;
+  FCode.WriteU32LE(0);
+
+  // padding/nop
+  FCode.WriteU8($0F); FCode.WriteU8($1F); FCode.WriteU8($40); FCode.WriteU8($00); // nopl [rax]
+
+  // Now emit one PLT entry per symbol
   for i := 0 to High(FExternalSymbols) do
   begin
-    // Record PLT stub position
-    stubPos := FCode.Size;
-    
-    // Store PLT stub location
+    // mark PLT label
+    curPos := FCode.Size;
     pltStub.Name := FExternalSymbols[i].Name + '@plt';
-    pltStub.Pos := stubPos;
+    pltStub.Pos := curPos;
     SetLength(FPLTStubs, Length(FPLTStubs) + 1);
     FPLTStubs[High(FPLTStubs)] := pltStub;
-    
-    // Emit PLT stub pattern: jmp qword [rip+disp32]
-    // FF 25 00 00 00 00 - jmp QWORD PTR [rip+0x0]  (GOT offset will be patched later)
-    FCode.WriteU8($FF);
-    FCode.WriteU8($25);
-    
-    // Record patch position (GOT offset to be filled in by ELF writer)
-    pltGOTPatch.Pos := FCode.Size; // Current position where offset goes
+
+    // jmpq *QWORD PTR [rip + disp32]  ; jmp *GOT[3+i]
+    FCode.WriteU8($FF); FCode.WriteU8($25);
+    pltGOTPatch.Pos := FCode.Size;
     pltGOTPatch.SymbolName := FExternalSymbols[i].Name;
     pltGOTPatch.SymbolIndex := i;
     SetLength(FPLTGOTPatches, Length(FPLTGOTPatches) + 1);
     FPLTGOTPatches[High(FPLTGOTPatches)] := pltGOTPatch;
-    
-    // Placeholder GOT offset (will be patched by ELF writer)
-    FCode.WriteU32LE($00000000);
-    
-    // Add alignment/padding NOPs for standard PLT stub format
-    FCode.WriteU8($90); // nop
-    FCode.WriteU8($90); // nop
+    FCode.WriteU32LE(0);
+
+    // pushq imm32  ; relocation index (i+1)
+    FCode.WriteU8($68);
+    FCode.WriteU32LE(i + 1);
+
+    // jmp rel32 -> PLT0 (relative to next instruction)
+    rel32 := plt0Pos - (FCode.Size + 5);
+    FCode.WriteU8($E9);
+    FCode.WriteU32LE(Cardinal(rel32));
   end;
 end;
 

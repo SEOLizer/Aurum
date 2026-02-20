@@ -22,6 +22,7 @@ type
     procedure WriteU64LE(v: QWord);
     procedure WriteBytes(const buf: array of Byte);
     procedure WriteBytesFill(count: Integer; v: Byte);
+    procedure WriteBuffer(const buf; len: Integer);
 
     procedure PatchU8(offset: Integer; v: Byte);
     procedure PatchU16LE(offset: Integer; v: Word);
@@ -124,11 +125,24 @@ end;
 
 procedure TByteBuffer.WriteBytesFill(count: Integer; v: Byte);
 begin
-  if count <= 0 then
-    Exit;
   Grow(count);
   FillByte(FData[FSize], count, v);
   Inc(FSize, count);
+end;
+
+procedure TByteBuffer.WriteBuffer(const buf; len: Integer);
+var
+  p: PByte;
+  i: Integer;
+begin
+  if len <= 0 then Exit;
+  Grow(len);
+  p := @buf;
+  for i := 0 to len - 1 do
+  begin
+    FData[FSize + i] := p[i];
+  end;
+  Inc(FSize, len);
 end;
 
 procedure TByteBuffer.PatchU8(offset: Integer; v: Byte);
