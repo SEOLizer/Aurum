@@ -1,0 +1,8 @@
+// minimal_test.lyx - Minimaler Test für dynamisches ELF
+
+extern fn _exit(code: int64): void;
+
+fn main(): int64 {
+  _exit(42);
+  return 0;
+}

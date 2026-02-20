@@ -1,0 +1,88 @@
+// test_fs.lyx - Test für Dateisystem-Funktionen (v0.3.0)
+// Testet: open, read, write, close, unlink
+
+import std.fs;
+import std.io;
+
+fn main(): int64 {
+  var test_path: pchar := "/tmp/lyx_test_file.txt";
+  var buf: pchar := "Hello from Lyx v0.3.0!\n";
+  var read_buf: pchar := "                                                                "; // 64 spaces
+  var fd: fd := 0;
+  var written: int64 := 0;
+  var n: int64 := 0;
+
+  printf("Testing Lyx Filesystem API v0.3.0\n");
+  printf("=================================\n\n");
+
+  // Test 1: Datei schreiben
+  printf("Test 1: Writing to file...\n");
+  // O_WRONLY | O_CREAT | O_TRUNC = 1 | 64 | 512 = 577
+  fd := open(test_path, 577, 420);
+  if (fd < 0) {
+    printf("FAIL: Could not open file for writing\n");
+    return 1;
+  }
+  printf("  File opened successfully (fd=%d)\n", fd);
+
+  written := write(fd, buf, 24); // "Hello from Lyx v0.3.0!\n"
+  if (written < 0) {
+    printf("FAIL: write() returned error\n");
+    close(fd);
+    return 1;
+  }
+  printf("  Written %d bytes\n", written);
+
+  n := close(fd);
+  if (n < 0) {
+    printf("FAIL: close() returned error\n");
+    return 1;
+  }
+  printf("  File closed successfully\n\n");
+
+  // Test 2: Datei lesen
+  printf("Test 2: Reading from file...\n");
+  fd := open(test_path, 0, 0); // O_RDONLY = 0
+  if (fd < 0) {
+    printf("FAIL: Could not open file for reading\n");
+    return 1;
+  }
+  printf("  File opened for reading (fd=%d)\n", fd);
+
+  n := read(fd, read_buf, 64);
+  if (n < 0) {
+    printf("FAIL: read() returned error\n");
+    close(fd);
+    return 1;
+  }
+  printf("  Read %d bytes\n", n);
+  printf("  Content: ");
+  print_str(read_buf);
+  printf("\n");
+
+  close(fd);
+  printf("  File closed\n\n");
+
+  // Test 3: Datei löschen
+  printf("Test 3: Deleting file...\n");
+  if (unlink(test_path) < 0) {
+    printf("FAIL: unlink() returned error\n");
+    return 1;
+  }
+  printf("  File deleted successfully\n\n");
+
+  // Test 4: Existenz prüfen
+  printf("Test 4: Checking file existence...\n");
+  fd := open(test_path, 0, 0);
+  if (fd < 0) {
+    printf("  File correctly does not exist (expected)\n");
+  } else {
+    printf("FAIL: File still exists after deletion!\n");
+    close(fd);
+    return 1;
+  }
+
+  printf("\n=================================\n");
+  printf("All filesystem tests PASSED!\n");
+  return 0;
+}

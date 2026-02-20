@@ -2118,14 +2118,11 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
        else
          FCode.PatchU32LE(jmpPos + 2, Cardinal(rel32)); // jcc rel32: opcode 0F xx at pos, rel32 at pos+2
       end
-      else
-        WriteLn('DEBUG: WARNING - target not found for jump patch ', i, ': ', labelName);
+       else
+         WriteLn('DEBUG: WARNING - target not found for jump patch ', i, ': ', labelName);
     end;
-   
-    // Generate PLT stubs for external symbols at the end of code
-    GeneratePLTStubs;
 
-    // --- Instrumentation: dump generated code + data + label/handler info for debugging ---
+     // --- Instrumentation: dump generated code + data + label/handler info for debugging ---
     try
       FCode.SaveToFile('/tmp/emit_code.bin');
       FData.SaveToFile('/tmp/emit_data.bin');

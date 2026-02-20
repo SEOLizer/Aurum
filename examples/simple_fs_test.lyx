@@ -1,0 +1,25 @@
+// simple_fs_test.lyx - Einfacher Filesystem-Test
+
+// Direkt extern deklarieren (ohne Import)
+extern fn open(path: pchar, flags: int64, mode: int64): int64;
+extern fn write(fd: int64, buf: pchar, count: int64): int64;
+extern fn close(fd: int64): int64;
+extern fn unlink(path: pchar): int64;
+
+fn main(): int64 {
+  var test_path: pchar := "/tmp/simple_test.txt";
+  var buf: pchar := "Hello World\n";
+  var fd: int64 := 0;
+
+  // O_WRONLY | O_CREAT | O_TRUNC = 1 | 64 | 512 = 577
+  fd := open(test_path, 577, 420);
+  if (fd < 0) {
+    return 1;
+  }
+
+  write(fd, buf, 12);
+  close(fd);
+  unlink(test_path);
+
+  return 0;
+}

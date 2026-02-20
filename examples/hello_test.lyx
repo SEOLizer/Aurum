@@ -1,0 +1,5 @@
+// hello_test.lyx - Einfachster Test
+
+fn main(): int64 {
+  return 42;
+}

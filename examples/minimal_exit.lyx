@@ -1,0 +1,8 @@
+// minimal_exit.lyx - Minimaler Test mit einem externen Symbol
+
+extern fn _exit(status: int64): void;
+
+fn main(): int64 {
+  _exit(42);
+  return 0;
+}

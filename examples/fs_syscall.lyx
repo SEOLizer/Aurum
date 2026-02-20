@@ -1,0 +1,28 @@
+// fs_syscall.lyx - Dateisystem-Test mit direkten Syscalls
+
+// Syscall numbers for x86_64 Linux
+con SYS_write: int64 := 1;
+con SYS_exit: int64 := 60;
+
+fn main(): int64 {
+  var msg: pchar := "Hello via syscall\n";
+  var len: int64 := 18;
+  
+  // syscall write(1, msg, len)
+  asm
+    "mov rax, 1",      // SYS_write
+    "mov rdi, 1",      // stdout
+    "mov rsi, r12",    // msg (in r12, loaded earlier)
+    "mov rdx, r13",    // len (in r13, loaded earlier)
+    "syscall"
+  end;
+  
+  // syscall exit(0)
+  asm
+    "mov rax, 60",     // SYS_exit
+    "mov rdi, 0",      // exit code
+    "syscall"
+  end;
+  
+  return 0;
+}
