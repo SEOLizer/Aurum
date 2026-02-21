@@ -385,6 +385,8 @@ type
     FReturnType: TAurumType;
     FBody: TAstBlock;
     FIsPublic: Boolean;
+    FIsExtern: Boolean;
+    FIsVarArgs: Boolean;
   public
     constructor Create(const aName: string; const aParams: TAstParamList;
       aReturnType: TAurumType; aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False);
@@ -392,8 +394,10 @@ type
     property Name: string read FName;
     property Params: TAstParamList read FParams;
     property ReturnType: TAurumType read FReturnType;
-    property Body: TAstBlock read FBody;
+    property Body: TAstBlock read FBody write FBody;
     property IsPublic: Boolean read FIsPublic;
+    property IsExtern: Boolean read FIsExtern write FIsExtern;
+    property IsVarArgs: Boolean read FIsVarArgs write FIsVarArgs;
   end;
 
   { Con-Deklaration (Top-Level): con NAME: type := constExpr; }
