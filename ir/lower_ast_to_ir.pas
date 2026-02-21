@@ -5,14 +5,21 @@ interface
 
 uses
   SysUtils, Classes,
-  ast, ir, diag, lexer, unit_manager;
+  ast, ir, diag, lexer;
 
 type
+  TConstValueKind = (cvInt, cvFloat, cvString);
+  
   TConstValue = class
   public
-    IsStr: Boolean;
+    Kind: TConstValueKind;
     IntVal: Int64;
+    FloatVal: Double;
     StrVal: string;
+    
+    constructor Create(val: Int64);
+    constructor Create(val: Double);
+    constructor Create(const val: string);
   end;
 
   TIRLowering = class
@@ -22,19 +29,23 @@ type
     FDiag: TDiagnostics;
     FTempCounter: Integer;
     FLabelCounter: Integer;
+    FHandlerCounter: Integer;
     FLocalMap: TStringList; // name -> local index (as object integer)
-    FLocalTypes: array of TAurumType; // index -> declared local type
-    FLocalElemSize: array of Integer; // index -> element size in bytes for dynamic array locals (0 if not array)
+    FLocalTypes: array of TLyxType; // index -> declared local type
     FConstMap: TStringList; // name -> TConstValue (compile-time constants)
     FLocalConst: array of TConstValue; // per-function local constant values (or nil)
     FBreakStack: TStringList; // stack of break labels
+    FTypeMap: TStringList; // name -> TAstTypeDecl (type declarations)
+    FLocalTypeNames: array of string; // index -> declared local type name (for struct types)
 
     function NewTemp: Integer;
     function NewLabel(const prefix: string): string;
-    function AllocLocal(const name: string; aType: TAurumType): Integer;
-    function AllocLocalMany(const name: string; aType: TAurumType; count: Integer): Integer;
-    function GetLocalType(idx: Integer): TAurumType;
+    function AllocLocal(const name: string; aType: TLyxType): Integer;
+    function GetLocalType(idx: Integer): TLyxType;
+    function GetLocalTypeName(idx: Integer): string;
     function ResolveLocal(const name: string): Integer;
+    function ResolveTypeDecl(const name: string): TAstTypeDecl;
+    function GetStructSize(const typeName: string): Integer;
     procedure Emit(instr: TIRInstr);
 
     function LowerStmt(stmt: TAstStmt): Boolean;
@@ -44,7 +55,6 @@ type
     destructor Destroy; override;
 
     function Lower(prog: TAstProgram): TIRModule;
-    procedure LowerImportedUnits(um: TUnitManager);
   end;
 
 implementation
@@ -70,15 +80,18 @@ constructor TIRLowering.Create(modul: TIRModule; diag: TDiagnostics);
     FDiag := diag;
     FTempCounter := 0;
     FLabelCounter := 0;
+    FHandlerCounter := 0;
     FLocalMap := TStringList.Create;
     FLocalMap.Sorted := False;
     FConstMap := TStringList.Create;
     FConstMap.Sorted := False;
     FBreakStack := TStringList.Create;
     FBreakStack.Sorted := False;
+    FTypeMap := TStringList.Create;
+    FTypeMap.Sorted := False;
     SetLength(FLocalTypes, 0);
-    SetLength(FLocalElemSize, 0);
     SetLength(FLocalConst, 0);
+    SetLength(FLocalTypeNames, 0);
   end;
 
 
@@ -94,6 +107,7 @@ begin
     if Assigned(FLocalConst[i]) then FLocalConst[i].Free;
   SetLength(FLocalConst, 0);
   FBreakStack.Free;
+  FTypeMap.Free;
   inherited Destroy;
 end;
 
@@ -110,9 +124,11 @@ begin
   Inc(FLabelCounter);
 end;
 
-function TIRLowering.AllocLocal(const name: string; aType: TAurumType): Integer;
+function TIRLowering.AllocLocal(const name: string; aType: TLyxType): Integer;
 var
   idx: Integer;
+  fieldCount: Integer;
+  td: TAstTypeDecl;
 begin
   idx := FLocalMap.IndexOf(name);
   if idx >= 0 then
@@ -121,46 +137,45 @@ begin
     Exit;
   end;
   Result := FCurrentFunc.LocalCount;
-  FCurrentFunc.LocalCount := FCurrentFunc.LocalCount + 1;
+
+  // For struct types, allocate one slot per field (8 bytes each)
+   if aType = atStruct then
+   begin
+     // Get the type declaration to determine the number of fields.
+     // The actual type name is passed during TAstVarDecl processing.
+     // For now, allocate one slot for the base address, and the lowering of struct literal
+     // or field access will handle the actual offsets. This simplifies alloclocal
+     // for struct vars, as we assume struct data is contiguous within its single allocated slot.
+     FCurrentFunc.LocalCount := FCurrentFunc.LocalCount + 1;
+   end
+  else
+  begin
+    FCurrentFunc.LocalCount := FCurrentFunc.LocalCount + 1;
+  end;
+
   FLocalMap.AddObject(name, IntToObj(Result));
   // ensure FLocalTypes has same length
   SetLength(FLocalTypes, FCurrentFunc.LocalCount);
   FLocalTypes[Result] := aType;
-  // ensure FLocalElemSize has same length and initialize to 0
-  SetLength(FLocalElemSize, FCurrentFunc.LocalCount);
-  FLocalElemSize[Result] := 0;
+  // Also ensure FLocalTypeNames has same length
+  SetLength(FLocalTypeNames, FCurrentFunc.LocalCount);
+  FLocalTypeNames[Result] := '';
 end;
 
-function TIRLowering.AllocLocalMany(const name: string; aType: TAurumType; count: Integer): Integer;
-var
-  idx, i, base: Integer;
-begin
-  idx := FLocalMap.IndexOf(name);
-  if idx >= 0 then
-  begin
-    Result := ObjToInt(FLocalMap.Objects[idx]);
-    Exit;
-  end;
-  base := FCurrentFunc.LocalCount;
-  FCurrentFunc.LocalCount := FCurrentFunc.LocalCount + count;
-  FLocalMap.AddObject(name, IntToObj(base));
-  // ensure FLocalTypes has same length
-  SetLength(FLocalTypes, FCurrentFunc.LocalCount);
-  for i := 0 to count - 1 do
-    FLocalTypes[base + i] := aType;
-  // ensure FLocalElemSize has same length and initialize entries to 0
-  SetLength(FLocalElemSize, FCurrentFunc.LocalCount);
-  for i := 0 to count - 1 do
-    FLocalElemSize[base + i] := 0;
-  Result := base;
-end;
-
-function TIRLowering.GetLocalType(idx: Integer): TAurumType;
+function TIRLowering.GetLocalType(idx: Integer): TLyxType;
 begin
   if (idx >= 0) and (idx < Length(FLocalTypes)) then
     Result := FLocalTypes[idx]
   else
     Result := atUnresolved;
+end;
+
+function TIRLowering.GetLocalTypeName(idx: Integer): string;
+begin
+  if (idx >= 0) and (idx < Length(FLocalTypeNames)) then
+    Result := FLocalTypeNames[idx]
+  else
+    Result := '';
 end;
 
 procedure TIRLowering.Emit(instr: TIRInstr);
@@ -180,57 +195,82 @@ var
   j: Integer;
   cv: TConstValue;
 begin
-  // iterate top-level decls, create functions
+  // First pass: collect type declarations
+  for i := 0 to High(prog.Decls) do
+  begin
+    node := prog.Decls[i];
+    if node is TAstTypeDecl then
+    begin
+      if FTypeMap.IndexOf(TAstTypeDecl(node).Name) < 0 then
+        FTypeMap.AddObject(TAstTypeDecl(node).Name, TObject(node));
+    end;
+  end;
+
+  // Second pass: process functions and constants
   for i := 0 to High(prog.Decls) do
   begin
     node := prog.Decls[i];
     if node is TAstFuncDecl then
     begin
-       fn := FModule.AddFunction(TAstFuncDecl(node).Name);
-       // Lower function body
-       FCurrentFunc := fn;
-       FLocalMap.Clear;
-       FTempCounter := 0;
-       fn.ParamCount := Length(TAstFuncDecl(node).Params);
-       fn.LocalCount := fn.ParamCount;
-       SetLength(FLocalTypes, fn.LocalCount);
-       SetLength(FLocalConst, fn.LocalCount);
-       for j := 0 to fn.ParamCount - 1 do
-       begin
-         FLocalMap.AddObject(TAstFuncDecl(node).Params[j].Name, IntToObj(j));
-         FLocalTypes[j] := TAstFuncDecl(node).Params[j].ParamType;
-         FLocalConst[j] := nil;
-       end;
-
-
-      // lower statements sequentially
-      for j := 0 to High(TAstFuncDecl(node).Body.Stmts) do
+      // Skip extern functions entirely - don't add to IR module
+      if TAstFuncDecl(node).IsExtern then
       begin
-        LowerStmt(TAstFuncDecl(node).Body.Stmts[j]);
+        // extern functions are handled at call sites, not defined locally
+        Continue;
+      end;
+      
+      fn := FModule.AddFunction(TAstFuncDecl(node).Name);
+      // Lower function body
+      FCurrentFunc := fn;
+      FLocalMap.Clear;
+      FTempCounter := 0;
+      fn.ParamCount := Length(TAstFuncDecl(node).Params);
+      fn.LocalCount := fn.ParamCount;
+      SetLength(FLocalTypes, fn.LocalCount);
+      SetLength(FLocalConst, fn.LocalCount);
+      for j := 0 to fn.ParamCount - 1 do
+      begin
+        // Store parameter types for later use (debugging) 
+        FLocalTypes[j] := TAstFuncDecl(node).Params[j].ParamType;
+        FLocalConst[j] := nil;
+      end;
+
+
+      // lower function body (now guaranteed to have a body)
+      if Assigned(TAstFuncDecl(node).Body) then
+      begin
+        for j := 0 to High(TAstFuncDecl(node).Body.Stmts) do
+        begin
+          LowerStmt(TAstFuncDecl(node).Body.Stmts[j]);
+        end;
       end;
       FCurrentFunc := nil;
     end
     else if node is TAstConDecl then
     begin
       // register compile-time constant for inline substitution
-      cv := TConstValue.Create;
       if TAstConDecl(node).InitExpr is TAstIntLit then
       begin
-        cv.IsStr := False;
-        cv.IntVal := TAstIntLit(TAstConDecl(node).InitExpr).Value;
+        cv := TConstValue.Create(TAstIntLit(TAstConDecl(node).InitExpr).Value);
       end
       else if TAstConDecl(node).InitExpr is TAstStrLit then
       begin
-        cv.IsStr := True;
-        cv.StrVal := TAstStrLit(TAstConDecl(node).InitExpr).Value;
+        cv := TConstValue.Create(TAstStrLit(TAstConDecl(node).InitExpr).Value);
+      end
+      else if TAstConDecl(node).InitExpr is TAstCharLit then
+      begin
+        cv := TConstValue.Create(Int64(Ord(TAstCharLit(TAstConDecl(node).InitExpr).Value)));
+      end
+      else if TAstConDecl(node).InitExpr is TAstFloatLit then
+      begin
+        cv := TConstValue.Create(StrToFloat(TAstFloatLit(TAstConDecl(node).InitExpr).Value));
       end
       else if TAstConDecl(node).InitExpr is TAstBoolLit then
       begin
-        cv.IsStr := False;
         if TAstBoolLit(TAstConDecl(node).InitExpr).Value then
-          cv.IntVal := 1
+          cv := TConstValue.Create(Int64(1))
         else
-          cv.IntVal := 0;
+          cv := TConstValue.Create(Int64(0));
       end
       else
       begin
@@ -242,67 +282,6 @@ begin
     end;
   end;
   Result := FModule;
-end;
-
-procedure TIRLowering.LowerImportedUnits(um: TUnitManager);
-{ Lower all functions from imported units }
-var
-  i, j, k: Integer;
-  loadedUnit: TLoadedUnit;
-  node: TAstNode;
-  fn: TIRFunction;
-  unitAST: TAstProgram;
-begin
-  if not Assigned(um) then Exit;
-
-  for i := 0 to um.Units.Count - 1 do
-  begin
-    loadedUnit := TLoadedUnit(um.Units.Objects[i]);
-    if not Assigned(loadedUnit) or not Assigned(loadedUnit.AST) then
-      Continue;
-
-    unitAST := loadedUnit.AST;
-
-    // Lower all function declarations from this unit
-    for j := 0 to High(unitAST.Decls) do
-    begin
-      node := unitAST.Decls[j];
-      if node is TAstFuncDecl then
-      begin
-        // Only lower public functions from imported units
-        if not TAstFuncDecl(node).IsPublic then
-          Continue;
-
-        // Check if function already exists (avoid duplicates)
-        fn := FModule.FindFunction(TAstFuncDecl(node).Name);
-        if not Assigned(fn) then
-        begin
-          fn := FModule.AddFunction(TAstFuncDecl(node).Name);
-          FCurrentFunc := fn;
-          FLocalMap.Clear;
-          FTempCounter := 0;
-          fn.ParamCount := Length(TAstFuncDecl(node).Params);
-          fn.LocalCount := fn.ParamCount;
-          SetLength(FLocalTypes, fn.LocalCount);
-          SetLength(FLocalConst, fn.LocalCount);
-
-          for k := 0 to fn.ParamCount - 1 do
-          begin
-            FLocalMap.AddObject(TAstFuncDecl(node).Params[k].Name, IntToObj(k));
-            FLocalTypes[k] := TAstFuncDecl(node).Params[k].ParamType;
-            FLocalConst[k] := nil;
-          end;
-
-          // Lower statements
-          if Assigned(TAstFuncDecl(node).Body) then
-            for k := 0 to High(TAstFuncDecl(node).Body.Stmts) do
-              LowerStmt(TAstFuncDecl(node).Body.Stmts[k]);
-
-          FCurrentFunc := nil;
-        end;
-      end;
-    end;
-  end;
 end;
 
 { Lowering helpers }
@@ -318,23 +297,63 @@ begin
     Result := -1;
 end;
 
+function TIRLowering.ResolveTypeDecl(const name: string): TAstTypeDecl;
+var
+  idx: Integer;
+begin
+  Result := nil;
+  if FTypeMap = nil then Exit;
+  idx := FTypeMap.IndexOf(name);
+  if idx >= 0 then
+    Result := TAstTypeDecl(FTypeMap.Objects[idx]);
+end;
+
+function TIRLowering.GetStructSize(const typeName: string): Integer;
+var
+  td: TAstTypeDecl;
+begin
+  Result := 0;
+  td := ResolveTypeDecl(typeName);
+  if td <> nil then
+    Result := Length(td.Fields) * 8; // 8 bytes per field
+end;
+
 function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
-  var
+var
   instr: TIRInstr;
-  t1, t2, t3, t4, t5, t6: Integer;
+  t1, t2, t3: Integer;
   si: Integer;
   argTemps: array of Integer;
   ai: Integer;
   ci: Integer;
   cv2: TConstValue;
-  ltype: TAurumType;
+  ltype: TLyxType;
   w: Integer;
   loc: Integer;
-  // temps for array builtins
-  arrName, arrName2, name0, name1: string;
-  arrLoc, arrLoc2, loc0, loc1: Integer;
-  esz, esz2, esz_len, esz_free: Integer;
-  thenLabel, elseLabel, endLabel: string;
+  // struct field access variables
+  fname: string;
+  declTypeName: string;
+  td: TAstTypeDecl;
+  fieldOffset: Integer;
+  fieldIndex: Integer;
+  foundField: Boolean;
+  // struct literal variables
+  st: TAstStructLit;
+  structSize: Integer;
+  fieldValue: TAstExpr;
+  valTemp: Integer;
+  j: Integer;
+  // array literal variables
+  arrayLit: TAstArrayLit;
+  arraySize: Integer;
+  i: Integer;
+  elemTemp: Integer;
+   // array indexing variables
+   arrayIndex: TAstArrayIndex;
+   resultTemp: Integer;
+   // cast variables
+   castExpr: TAstCast;
+   sourceTemp: Integer;
 begin
   instr := Default(TIRInstr);
   if expr is TAstIntLit then
@@ -356,8 +375,19 @@ begin
     Emit(instr);
     Exit(t1);
   end;
+  if expr is TAstFloatLit then
+  begin
+    // Float-Literal als irConstFloat
+    t1 := NewTemp;
+    instr.Op := irConstFloat;
+    instr.Dest := t1;
+    instr.ImmFloat := StrToFloat(TAstFloatLit(expr).Value);
+    Emit(instr);
+    Exit(t1);
+  end;
   if expr is TAstCharLit then
   begin
+    // Char-Literal als Integer-Wert (ASCII-Code)
     t1 := NewTemp;
     instr.Op := irConstInt;
     instr.Dest := t1;
@@ -377,51 +407,153 @@ begin
     Emit(instr);
     Exit(t1);
   end;
-   if expr is TAstIndexAccess then
-   begin
-     // handle static array index: baseIdent[CONST]
-     if (TAstIndexAccess(expr).Obj is TAstIdent) and (TAstIndexAccess(expr).Index is TAstIntLit) then
-     begin
-       loc := ResolveLocal(TAstIdent(TAstIndexAccess(expr).Obj).Name);
-       if loc < 0 then
-         FDiag.Error('use of undeclared local ' + TAstIdent(TAstIndexAccess(expr).Obj).Name, expr.Span)
-       else
-       begin
-          w := Integer(TAstIntLit(TAstIndexAccess(expr).Index).Value);
-          t1 := NewTemp;
-          instr.Op := irLoadLocal; instr.Dest := t1; instr.Src1 := loc + w; Emit(instr);
-
-         Exit(t1);
-       end;
-     end
-     else
-     begin
-       FDiag.Error('dynamic indexing not yet supported in lowering', expr.Span);
-       Exit(-1);
-     end;
-   end;
-
-   if expr is TAstIdent then
-   begin
-     // check if this is a compile-time constant (con)
-
+  if expr is TAstArrayLit then
+  begin
+    // Array-Literal: Stack-Allokation + Element-Initialisierung
+    arrayLit := TAstArrayLit(expr);
+    arraySize := Length(arrayLit.Items);
+    
+    // 1) Allokiere Platz auf Stack (8 bytes pro Element)
+    t1 := NewTemp; // wird die Array-Adresse enthalten
+    instr.Op := irStackAlloc;
+    instr.Dest := t1;
+    instr.ImmInt := arraySize * 8; // 8 bytes pro Element
+    Emit(instr);
+    
+    // 2) Initialisiere jedes Element: array[i] = items[i]
+    for i := 0 to arraySize - 1 do
+    begin
+      elemTemp := LowerExpr(arrayLit.Items[i]);
+      instr.Op := irStoreElem;
+      instr.Dest := 0; // unused
+      instr.Src1 := t1; // array base address
+      instr.Src2 := elemTemp; // element value
+      instr.ImmInt := i; // index
+      Emit(instr);
+    end;
+    
+    Exit(t1); // return array base address
+  end;
+  if expr is TAstStructLit then
+  begin
+    // Struct-Literal: Stack-Allokation + Feld-Initialisierung
+    st := TAstStructLit(expr);
+    // Hole Typ-Deklaration
+    td := ResolveTypeDecl(st.TypeName);
+    if td = nil then
+    begin
+      FDiag.Error('use of undeclared type: ' + st.TypeName, expr.Span);
+      Result := -1;
+      Exit;
+    end;
+    // Berechne Gesamtgröße: 8 Bytes pro Feld
+    structSize := Length(td.Fields) * 8;
+    // 1) Allokiere Platz auf Stack
+    t1 := NewTemp;
+    instr.Op := irStackAlloc;
+    instr.Dest := t1;
+    instr.ImmInt := structSize;
+    Emit(instr);
+    // 2) Initialisiere jedes Feld
+    for i := 0 to High(td.Fields) do
+    begin
+      // Finde Wert für dieses Feld im Literal
+      fieldValue := nil;
+      for j := 0 to st.FieldCount - 1 do
+      begin
+        if st.GetFieldName(j) = td.Fields[i].Name then
+        begin
+          fieldValue := st.GetFieldValue(j);
+          Break;
+        end;
+      end;
+      if fieldValue = nil then
+      begin
+        FDiag.Error('missing field in struct literal: ' + td.Fields[i].Name, expr.Span);
+        Continue;
+      end;
+      // Lower den Wert
+      valTemp := LowerExpr(fieldValue);
+      // Store Feld: [base + offset] = value
+      instr.Op := irStoreField;
+      instr.Dest := 0;
+      instr.Src1 := t1; // base address
+      instr.Src2 := valTemp; // field value
+      instr.ImmInt := i * 8; // offset (8 bytes per field)
+      Emit(instr);
+    end;
+    Exit(t1); // return struct base address
+  end;
+  if expr is TAstArrayIndex then
+  begin
+    // Array-Index: arr[i] -> load element
+    arrayIndex := TAstArrayIndex(expr);
+    
+    // Lower array expression (should return array base address)
+    t1 := LowerExpr(arrayIndex.ArrayExpr);
+    
+    // Lower index expression (should return integer)
+    t2 := LowerExpr(arrayIndex.Index);
+    
+    // Load element: dest = array_base[index]
+    resultTemp := NewTemp;
+    instr.Op := irLoadElem;
+    instr.Dest := resultTemp;
+    instr.Src1 := t1;  // array base address
+    instr.Src2 := t2;  // index
+    instr.ImmInt := 0; // element size offset (8 bytes per element)
+    Emit(instr);
+    
+    Exit(resultTemp);
+  end;
+  if expr is TAstIndexAccess then
+  begin
+    // Index-Zugriff: obj[index] -> load element
+    // Lower object expression (should return array base address)
+    t1 := LowerExpr(TAstIndexAccess(expr).Obj);
+    
+    // Lower index expression (should return integer)
+    t2 := LowerExpr(TAstIndexAccess(expr).Index);
+    
+    // Load element: dest = array_base[index]
+    resultTemp := NewTemp;
+    instr.Op := irLoadElem;
+    instr.Dest := resultTemp;
+    instr.Src1 := t1;  // array base address
+    instr.Src2 := t2;  // index
+    instr.ImmInt := 0; // element size offset (8 bytes per element)
+    Emit(instr);
+    
+    Exit(resultTemp);
+  end;
+  if expr is TAstIdent then
+  begin
+    // check if this is a compile-time constant (con)
     ci := FConstMap.IndexOf(TAstIdent(expr).Name);
     if ci >= 0 then
     begin
       cv2 := TConstValue(FConstMap.Objects[ci]);
       t1 := NewTemp;
-      if cv2.IsStr then
-      begin
-        si := FModule.InternString(cv2.StrVal);
-        instr.Op := irConstStr;
-        instr.Dest := t1;
-        instr.ImmStr := IntToStr(si);
-      end
-      else
-      begin
-        instr.Op := irConstInt;
-        instr.Dest := t1;
-        instr.ImmInt := cv2.IntVal;
+      case cv2.Kind of
+        cvString:
+        begin
+          si := FModule.InternString(cv2.StrVal);
+          instr.Op := irConstStr;
+          instr.Dest := t1;
+          instr.ImmStr := IntToStr(si);
+        end;
+        cvInt:
+        begin
+          instr.Op := irConstInt;
+          instr.Dest := t1;
+          instr.ImmInt := cv2.IntVal;
+        end;
+        cvFloat:
+        begin
+          instr.Op := irConstFloat;
+          instr.Dest := t1;
+          instr.ImmFloat := cv2.FloatVal;
+        end;
       end;
       Emit(instr);
       Exit(t1);
@@ -470,72 +602,114 @@ begin
     end;
     Exit(t1);
   end;
+  if expr is TAstFieldAccess then
+  begin
+    // Field access: obj.field
+    // For simple identifier as object, use the slot directly (not load the value)
+    if TAstFieldAccess(expr).Obj is TAstIdent then
+    begin
+      // Get local slot directly (not through LowerExpr which loads the value)
+      loc := ResolveLocal(TAstIdent(TAstFieldAccess(expr).Obj).Name);
+      if loc < 0 then
+      begin
+        FDiag.Error('use of undeclared local ' + TAstIdent(TAstFieldAccess(expr).Obj).Name, expr.Span);
+        Result := -1;
+        Exit;
+      end;
+      // Get struct type name from the local slot
+      declTypeName := GetLocalTypeName(loc);
+      if declTypeName = '' then
+      begin
+        FDiag.Error('not a struct variable: ' + TAstIdent(TAstFieldAccess(expr).Obj).Name, expr.Span);
+        Result := -1;
+        Exit;
+      end;
+      // Get field name
+      fname := TAstFieldAccess(expr).Field;
+      // Look up the type declaration to find field offset
+      td := ResolveTypeDecl(declTypeName);
+      if td = nil then
+      begin
+        FDiag.Error('unknown struct type: ' + declTypeName, expr.Span);
+        Result := -1;
+        Exit;
+      end;
+      // Find field and compute index
+      fieldIndex := 0;
+      foundField := False;
+      for i := 0 to High(td.Fields) do
+      begin
+        if td.Fields[i].Name = fname then
+        begin
+          foundField := True;
+          fieldIndex := i;
+          Break;
+        end;
+      end;
+      if not foundField then
+      begin
+        FDiag.Error('unknown field: ' + fname, expr.Span);
+        Result := -1;
+        Exit;
+      end;
+      // Load field: dest = load from [localSlot + fieldIndex * 8]
+      resultTemp := NewTemp;
+      instr.Op := irLoadField;
+      instr.Dest := resultTemp;
+      instr.Src1 := loc;  // base address (local slot)
+      instr.ImmInt := fieldIndex;  // field index (backend multiplies by 8)
+      Emit(instr);
+      Exit(resultTemp);
+    end;
+    // For complex expressions, use the lowered value (not fully supported)
+    FDiag.Error('field access on complex expression not supported', expr.Span);
+    Result := -1;
+    Exit;
+  end;
   if expr is TAstBinOp then
   begin
     t1 := LowerExpr(TAstBinOp(expr).Left);
     t2 := LowerExpr(TAstBinOp(expr).Right);
-    case TAstBinOp(expr).Op of
-      tkPlus: instr.Op := irAdd;
-      tkMinus: instr.Op := irSub;
-      tkStar: instr.Op := irMul;
-      tkSlash: instr.Op := irDiv;
-      tkPercent: instr.Op := irMod;
-      tkEq: instr.Op := irCmpEq;
-      tkNeq: instr.Op := irCmpNeq;
-      tkLt: instr.Op := irCmpLt;
-      tkLe: instr.Op := irCmpLe;
-      tkGt: instr.Op := irCmpGt;
-      tkGe: instr.Op := irCmpGe;
-      tkAnd:
-        begin
-          // short-circuit: if left is false, result is 0 (skip right)
-          instr.Op := irAnd; // will be used as fallback
-          // actually implement short-circuit via branches
-          begin
-            loc := NewTemp; // result temp
-            thenLabel := NewLabel('Land_true');
-            elseLabel := NewLabel('Land_false');
-            endLabel := NewLabel('Land_end');
-            // test left
-            instr.Op := irBrFalse; instr.Src1 := t1; instr.LabelName := elseLabel; Emit(instr);
-            // left is true, test right
-            instr.Op := irBrFalse; instr.Src1 := t2; instr.LabelName := elseLabel; Emit(instr);
-            // both true -> result = 1
-            instr.Op := irConstInt; instr.Dest := loc; instr.ImmInt := 1; Emit(instr);
-            instr.Op := irJmp; instr.LabelName := endLabel; Emit(instr);
-            // false label -> result = 0
-            instr.Op := irLabel; instr.LabelName := elseLabel; Emit(instr);
-            instr.Op := irConstInt; instr.Dest := loc; instr.ImmInt := 0; Emit(instr);
-            // end label
-            instr.Op := irLabel; instr.LabelName := endLabel; Emit(instr);
-            Exit(loc);
-          end;
-        end;
-      tkOr:
-        begin
-          // short-circuit: if left is true, result is 1 (skip right)
-          begin
-            loc := NewTemp;
-            thenLabel := NewLabel('Lor_true');
-            elseLabel := NewLabel('Lor_false');
-            endLabel := NewLabel('Lor_end');
-            // test left
-            instr.Op := irBrTrue; instr.Src1 := t1; instr.LabelName := thenLabel; Emit(instr);
-            // left is false, test right
-            instr.Op := irBrTrue; instr.Src1 := t2; instr.LabelName := thenLabel; Emit(instr);
-            // both false -> result = 0
-            instr.Op := irConstInt; instr.Dest := loc; instr.ImmInt := 0; Emit(instr);
-            instr.Op := irJmp; instr.LabelName := endLabel; Emit(instr);
-            // true label -> result = 1
-            instr.Op := irLabel; instr.LabelName := thenLabel; Emit(instr);
-            instr.Op := irConstInt; instr.Dest := loc; instr.ImmInt := 1; Emit(instr);
-            // end label
-            instr.Op := irLabel; instr.LabelName := endLabel; Emit(instr);
-            Exit(loc);
-          end;
-        end;
+    // Check if operands are float types for float arithmetic
+    if (TAstBinOp(expr).Left.ResolvedType in [atF32, atF64]) or
+       (TAstBinOp(expr).Right.ResolvedType in [atF32, atF64]) then
+    begin
+      // Float operations
+      case TAstBinOp(expr).Op of
+        tkPlus: instr.Op := irFAdd;
+        tkMinus: instr.Op := irFSub;
+        tkStar: instr.Op := irFMul;
+        tkSlash: instr.Op := irFDiv;
+        tkEq: instr.Op := irFCmpEq;
+        tkNeq: instr.Op := irFCmpNeq;
+        tkLt: instr.Op := irFCmpLt;
+        tkLe: instr.Op := irFCmpLe;
+        tkGt: instr.Op := irFCmpGt;
+        tkGe: instr.Op := irFCmpGe;
+      else
+        instr.Op := irInvalid;
+      end;
+    end
     else
-      instr.Op := irInvalid;
+    begin
+      // Integer operations
+      case TAstBinOp(expr).Op of
+        tkPlus: instr.Op := irAdd;
+        tkMinus: instr.Op := irSub;
+        tkStar: instr.Op := irMul;
+        tkSlash: instr.Op := irDiv;
+        tkPercent: instr.Op := irMod;
+        tkEq: instr.Op := irCmpEq;
+        tkNeq: instr.Op := irCmpNeq;
+        tkLt: instr.Op := irCmpLt;
+        tkLe: instr.Op := irCmpLe;
+        tkGt: instr.Op := irCmpGt;
+        tkGe: instr.Op := irCmpGe;
+        tkAnd: instr.Op := irAnd;
+        tkOr: instr.Op := irOr;
+      else
+        instr.Op := irInvalid;
+      end;
     end;
     instr.Dest := NewTemp;
     instr.Src1 := t1;
@@ -548,7 +722,11 @@ begin
     t1 := LowerExpr(TAstUnaryOp(expr).Operand);
     if TAstUnaryOp(expr).Op = tkMinus then
     begin
-      instr.Op := irNeg;
+      // Check if operand is float for float negation
+      if TAstUnaryOp(expr).Operand.ResolvedType in [atF32, atF64] then
+        instr.Op := irFNeg
+      else
+        instr.Op := irNeg;
       instr.Dest := NewTemp;
       instr.Src1 := t1;
       Emit(instr);
@@ -563,266 +741,319 @@ begin
       Exit(instr.Dest);
     end;
   end;
-  if expr is TAstCall then
-  begin
-    // handle builtins: print_str, print_int, exit
-    if TAstCall(expr).Name = 'print_str' then
+    if expr is TAstCall then
     begin
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
-      instr.Op := irCallBuiltin;
-      instr.ImmStr := 'print_str';
-      instr.Src1 := t1;
-      Emit(instr);
-      Exit(-1); // void
-    end
-    else if TAstCall(expr).Name = 'print_int' then
-    begin
-      // constant-fold print_int(x) -> print_str("...") when x is literal
-      if (Length(TAstCall(expr).Args) >= 1) and (TAstCall(expr).Args[0] is TAstIntLit) then
+      // handle builtins: print_str, print_int, exit
+      if TAstCall(expr).Name = 'print_str' then
       begin
-        si := FModule.InternString(IntToStr(TAstIntLit(TAstCall(expr).Args[0]).Value));
-        t1 := NewTemp;
-        instr.Op := irConstStr;
-        instr.Dest := t1;
-        instr.ImmStr := IntToStr(si);
-        Emit(instr);
+        t1 := LowerExpr(TAstCall(expr).Args[0]);
         instr.Op := irCallBuiltin;
         instr.ImmStr := 'print_str';
         instr.Src1 := t1;
         Emit(instr);
-        Exit(-1);
-      end;
-
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
-      instr.Op := irCallBuiltin;
-      instr.ImmStr := 'print_int';
-      instr.Src1 := t1;
-      Emit(instr);
-      Exit(-1);
-    end
-    else if TAstCall(expr).Name = 'exit' then
-    begin
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
-      instr.Op := irCallBuiltin;
-      instr.ImmStr := 'exit';
-      instr.Src1 := t1;
-      Emit(instr);
-      Exit(-1);
-    end
-    else if TAstCall(expr).Name = 'buf_put_byte' then
-    begin
-      // buf_put_byte(buf: pchar, idx: int64, b: int64) -> int64
-      t1 := LowerExpr(TAstCall(expr).Args[0]);
-      t2 := LowerExpr(TAstCall(expr).Args[1]);
-      t3 := LowerExpr(TAstCall(expr).Args[2]);
-      instr.Op := irCallBuiltin;
-      instr.ImmStr := 'buf_put_byte';
-      instr.Src1 := t1;
-      instr.Src2 := t2;
-      instr.LabelName := IntToStr(t3);
-      instr.Dest := NewTemp;
-      Emit(instr);
-      Exit(instr.Dest);
-    end
-     else if TAstCall(expr).Name = 'itoa_to_buf' then
-     begin
-       // itoa_to_buf(val: int64, buf: pchar, idx: int64, buflen: int64) -> int64
-       t1 := LowerExpr(TAstCall(expr).Args[0]);
-       t2 := LowerExpr(TAstCall(expr).Args[1]);
-        t3 := LowerExpr(TAstCall(expr).Args[2]);
-        t4 := LowerExpr(TAstCall(expr).Args[3]);
-        // optional extras: minWidth, padZero
-        if Length(TAstCall(expr).Args) > 4 then
-          t5 := LowerExpr(TAstCall(expr).Args[4])
-        else
-          t5 := -1;
-        if Length(TAstCall(expr).Args) > 5 then
-          t6 := LowerExpr(TAstCall(expr).Args[5])
-        else
-          t6 := -1;
+        Exit(-1); // void
+      end
+      else if TAstCall(expr).Name = 'print_int' then
+      begin
+        t1 := LowerExpr(TAstCall(expr).Args[0]);
         instr.Op := irCallBuiltin;
-        instr.ImmStr := 'itoa_to_buf';
+        instr.ImmStr := 'print_int';
         instr.Src1 := t1;
-        instr.Src2 := t2;
-        instr.LabelName := IntToStr(t3) + ',' + IntToStr(t4) + ',' + IntToStr(t5) + ',' + IntToStr(t6);
-        instr.Dest := NewTemp;
         Emit(instr);
-        Exit(instr.Dest);
+        Exit(-1); // void
       end
-      else if (TAstCall(expr).Name = 'push') or (TAstCall(expr).Name = 'append') then
-      begin
-        // push(arrVar, val) / append(arrVar, val)
-        if Length(TAstCall(expr).Args) <> 2 then
-        begin
-          FDiag.Error('push/append requires 2 arguments', TAstCall(expr).Span);
-          Exit(-1);
-        end;
-        // first arg must be identifier (variable)
-        if not (TAstCall(expr).Args[0] is TAstIdent) then
-        begin
-          FDiag.Error('push/append: first argument must be array variable identifier', TAstCall(expr).Args[0].Span);
-          Exit(-1);
-        end;
-        arrName := TAstIdent(TAstCall(expr).Args[0]).Name;
-        arrLoc := ResolveLocal(arrName);
-        if arrLoc < 0 then
-        begin
-          FDiag.Error('push/append: unknown variable ' + arrName, TAstCall(expr).Args[0].Span);
-          Exit(-1);
-        end;
-        t1 := LowerExpr(TAstCall(expr).Args[1]); // value temp
-        instr.Op := irCallBuiltin;
-        instr.ImmStr := 'push';
-        instr.Src1 := arrLoc;
-        instr.Src2 := t1;
-        // attach element size metadata if available
-        esz := 8;
-        if (arrLoc >= 0) and (arrLoc < Length(FLocalElemSize)) then esz := FLocalElemSize[arrLoc];
-        instr.LabelName := IntToStr(esz);
-        Emit(instr);
-        Exit(-1);
-      end
-      else if TAstCall(expr).Name = 'pop' then
-      begin
-        // pop(arrVar) -> int64
-        if Length(TAstCall(expr).Args) <> 1 then
-        begin
-          FDiag.Error('pop requires 1 argument', TAstCall(expr).Span);
-          Exit(-1);
-        end;
-        if not (TAstCall(expr).Args[0] is TAstIdent) then
-        begin
-          FDiag.Error('pop: first argument must be array variable identifier', TAstCall(expr).Args[0].Span);
-          Exit(-1);
-        end;
-        arrName2 := TAstIdent(TAstCall(expr).Args[0]).Name;
-        arrLoc2 := ResolveLocal(arrName2);
-        if arrLoc2 < 0 then
-        begin
-          FDiag.Error('pop: unknown variable ' + arrName2, TAstCall(expr).Args[0].Span);
-          Exit(-1);
-        end;
-        instr.Op := irCallBuiltin;
-        instr.ImmStr := 'pop';
-        instr.Src1 := arrLoc2;
-        instr.Dest := NewTemp;
-        // attach element size metadata if available
-        esz2 := 8;
-        if (arrLoc2 >= 0) and (arrLoc2 < Length(FLocalElemSize)) then esz2 := FLocalElemSize[arrLoc2];
-        instr.LabelName := IntToStr(esz2);
-        Emit(instr);
-        Exit(instr.Dest);
-      end
+      else if TAstCall(expr).Name = 'int_to_str' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // int64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'int_to_str';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
 
-     else if TAstCall(expr).Name = 'len' then
-     begin
-       // len(arrVar) -> int64
-       if Length(TAstCall(expr).Args) <> 1 then
-       begin
-         FDiag.Error('len requires 1 argument', TAstCall(expr).Span);
-         Exit(-1);
-       end;
-       if TAstCall(expr).Args[0] is TAstIdent then
-       begin
-          name0 := TAstIdent(TAstCall(expr).Args[0]).Name;
-          // Resolve local slot for variable
-          loc0 := ResolveLocal(name0);
-          if loc0 < 0 then
-          begin
-            FDiag.Error('len: unknown variable ' + name0, TAstCall(expr).Args[0].Span);
-            Exit(-1);
-          end;
-          instr.Op := irCallBuiltin;
-          instr.ImmStr := 'len';
-          instr.Src1 := loc0;
-          instr.Dest := NewTemp;
-          // attach element size metadata if available
-          esz_len := 8;
-          if (loc0 >= 0) and (loc0 < Length(FLocalElemSize)) then esz_len := FLocalElemSize[loc0];
-          instr.LabelName := IntToStr(esz_len);
-          Emit(instr);
-          Exit(instr.Dest);
+    else if TAstCall(expr).Name = 'str_to_int' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // pchar string
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'str_to_int';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
 
-        instr.Op := irCallBuiltin;
-            instr.ImmStr := 'len';
-            instr.Src1 := loc0;
-            instr.Dest := NewTemp;
-            // attach element size metadata if available
-             esz_len := 8;
-             if (loc0 >= 0) and (loc0 < Length(FLocalElemSize)) then esz_len := FLocalElemSize[loc0];
-             instr.LabelName := IntToStr(esz_len);
+    // ============================================================================
+    // COMPREHENSIVE MATH BUILTINS (22 functions)
+    // ============================================================================
 
-            Emit(instr);
-            Exit(instr.Dest);
+    else if TAstCall(expr).Name = 'abs' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // int64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'abs';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'fabs' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'fabs';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'sin' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 angle
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'sin';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'cos' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 angle
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'cos';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'sqrt' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'sqrt';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'sqr' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'sqr';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'exp' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'exp';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'ln' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'ln';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'arctan' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'arctan';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'round' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'round';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'trunc' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'trunc';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'int_part' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'int_part';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'frac' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // f64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'frac';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'pi' then
+    begin
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'pi';
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'random' then
+    begin
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'random';
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'randomize' then
+    begin
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'randomize';
+      Emit(instr);
+      Exit(-1); // void
+    end
+    else if TAstCall(expr).Name = 'odd' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // int64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'odd';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'hi' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // int64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'hi';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'lo' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // int64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'lo';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
+    else if TAstCall(expr).Name = 'swap' then
+    begin
+      t1 := LowerExpr(TAstCall(expr).Args[0]);  // int64 value
+      resultTemp := NewTemp;
+      instr.Op := irCallBuiltin;
+      instr.ImmStr := 'swap';
+      instr.Src1 := t1;
+      instr.Dest := resultTemp;
+      Emit(instr);
+      Exit(resultTemp);
+    end
 
-         end;
-       end
-       else
-       begin
-         FDiag.Error('len: argument must be identifier', TAstCall(expr).Args[0].Span);
-         Exit(-1);
-       end;
-     end
-     else if TAstCall(expr).Name = 'free' then
-     begin
-       // free(arrVar)
-       if Length(TAstCall(expr).Args) <> 1 then
-       begin
-         FDiag.Error('free requires 1 argument', TAstCall(expr).Span);
-         Exit(-1);
-       end;
-       if not (TAstCall(expr).Args[0] is TAstIdent) then
-       begin
-         FDiag.Error('free: first argument must be array variable identifier', TAstCall(expr).Args[0].Span);
-         Exit(-1);
-       end;
-        name1 := TAstIdent(TAstCall(expr).Args[0]).Name;
-        loc1 := ResolveLocal(name1);
-        if loc1 < 0 then
-
-       begin
-         FDiag.Error('free: unknown variable ' + name1, TAstCall(expr).Args[0].Span);
-         Exit(-1);
-       end;
-        instr.Op := irCallBuiltin;
-        instr.ImmStr := 'free';
-        instr.Src1 := loc1;
-        // attach element size metadata if available
-         esz_free := 8;
-         if (loc1 >= 0) and (loc1 < Length(FLocalElemSize)) then esz_free := FLocalElemSize[loc1];
-         instr.LabelName := IntToStr(esz_free);
-
-        Emit(instr);
-        Exit(-1);
-
-     end
-     else
-     begin
-
-      // generic call
+    else
+    begin
+      // generic call - unified call lowering for v0.2.0
       SetLength(argTemps, Length(TAstCall(expr).Args));
       for ai := 0 to High(argTemps) do
         argTemps[ai] := LowerExpr(TAstCall(expr).Args[ai]);
+
       instr.Op := irCall;
       instr.ImmStr := TAstCall(expr).Name;
       instr.ImmInt := Length(argTemps);
+
+      // Store argument temps in dedicated array (replaces CSV in LabelName hack)
+      SetLength(instr.ArgTemps, Length(argTemps));
+      for ai := 0 to High(argTemps) do
+        instr.ArgTemps[ai] := argTemps[ai];
+
+      // Set up to 2 args in Src1/Src2 for backward compatibility with simple backends
       if instr.ImmInt > 0 then instr.Src1 := argTemps[0] else instr.Src1 := -1;
       if instr.ImmInt > 1 then instr.Src2 := argTemps[1] else instr.Src2 := -1;
+
+      // TODO: Determine call mode from symbol table (unit_manager)
+      // For now, default to internal - will be resolved in later pass
+      instr.CallMode := cmInternal;
+
+      // Clear LabelName - no longer used for arg passing
       instr.LabelName := '';
-      for ai := 2 to High(argTemps) do
-      begin
-        if instr.LabelName <> '' then instr.LabelName := instr.LabelName + ',';
-        instr.LabelName := instr.LabelName + IntToStr(argTemps[ai]);
-      end;
+
       instr.Dest := NewTemp;
       Emit(instr);
       Exit(instr.Dest);
-    end;
-  end;
+     end;
+   end
+   else if expr is TAstCast then
+   begin
+     // Cast expression: expr as Type
+     castExpr := TAstCast(expr);
+     sourceTemp := LowerExpr(castExpr.Expr);
+     resultTemp := NewTemp;
+     
+     instr.Op := irCast;
+     instr.Src1 := sourceTemp;
+     instr.Dest := resultTemp;
+     instr.CastFromType := castExpr.Expr.ResolvedType;
+     instr.CastToType := castExpr.TargetType;
+     Emit(instr);
+     Exit(resultTemp);
+   end;
 
-  // fallback
-  FDiag.Error('lowering: unsupported expr', expr.Span);
-  Result := -1;
+   // fallback
+   FDiag.Error('lowering: unsupported expr', expr.Span);
+   Result := -1;
 end;
 
 function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
@@ -831,9 +1062,10 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     loc: Integer;
     tmp: Integer;
     condTmp: Integer;
-    t0, t1, t2: Integer;
     thenLabel, elseLabel, endLabel: string;
     whileNode: TAstWhile;
+    forNode: TAstFor;
+    repNode: TAstRepeatUntil;
     startLabel, bodyLabel, exitLabel: string;
     i: Integer;
     sw: TAstSwitch;
@@ -842,7 +1074,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     caseLabels: TStringList;
     lbl: string;
     caseTmp: Integer;
-    ltype: TAurumType;
+    ltype: TLyxType;
     width: Integer;
     w: Integer;
     lit: Int64;
@@ -851,156 +1083,154 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     half: UInt64;
     signedVal: Int64;
     cvLocal: TConstValue;
-    vd: TAstVarDecl;
-    items: TAstExprList;
-    elemSize: Integer;
+    // struct variable handling
+    st: TAstStructLit;
+    fieldValue: TAstExpr;
+    valTemp: Integer;
+    j: Integer;
+    // field assign variables
+    fa: TAstFieldAssign;
+    declTypeName: string;
+    td: TAstTypeDecl;
+    fieldOffset: Integer;
+    fieldIndex: Integer;
+    foundField: Boolean;
+    // array assignment variables
+    arrayAssignStmt: TAstArrayAssign;
+    arrayTemp, indexTemp, valueTemp: Integer;
+    // for loop variables
+    startTmp, endTmp, iTmp, incTmp, cmpTmp: Integer;
+    forLoc: Integer;
+    endSlot: Integer;
+    // try/catch vars
+    handlerTemp: Integer;
+    catchLoc: Integer;
+    tmpExn: Integer;
+    tryNode: TAstTry;
+    catchLabel: string;
+    handlerId: Integer;
   begin
   instr := Default(TIRInstr);
   Result := True;
-   if stmt is TAstVarDecl then
+  if stmt is TAstVarDecl then
+  begin
+    loc := AllocLocal(TAstVarDecl(stmt).Name, TAstVarDecl(stmt).DeclType);
+    // If this is a struct type, store the type name for field access
+    if TAstVarDecl(stmt).DeclTypeName <> '' then
     begin
-      vd := TAstVarDecl(stmt);
-      if vd.ArrayLen > 0 then
+      SetLength(FLocalTypeNames, FCurrentFunc.LocalCount);
+      FLocalTypeNames[loc] := TAstVarDecl(stmt).DeclTypeName;
+    end;
+
+    // Special handling for struct types with struct literal init
+    // Check DeclTypeName to identify named struct types
+    if (TAstVarDecl(stmt).DeclTypeName <> '') and
+       (TAstVarDecl(stmt).InitExpr is TAstStructLit) then
+    begin
+      // Get struct type declaration
+      declTypeName := TAstVarDecl(stmt).DeclTypeName;
+      td := ResolveTypeDecl(declTypeName);
+      if td = nil then
       begin
-        // static array: allocate consecutive locals and initialize per-item
-        loc := AllocLocalMany(vd.Name, vd.DeclType, vd.ArrayLen);
-        if vd.InitExpr is TAstArrayLit then
+        FDiag.Error('unknown struct type: ' + declTypeName, stmt.Span);
+        Exit(False);
+      end;
+      // Get the struct literal
+      st := TAstStructLit(TAstVarDecl(stmt).InitExpr);
+      // For each field, store directly to the local's memory area
+      for i := 0 to High(td.Fields) do
+      begin
+        // Find value for this field in the literal
+        fieldValue := nil;
+        for j := 0 to st.FieldCount - 1 do
         begin
-          items := TAstArrayLit(vd.InitExpr).Items;
-          if Length(items) <> vd.ArrayLen then
-            FDiag.Error('array literal length mismatch', vd.Span)
-          else
+          if st.GetFieldName(j) = td.Fields[i].Name then
           begin
-            for i := 0 to High(items) do
-            begin
-              tmp := LowerExpr(items[i]);
-              // store into base + i
-              instr.Op := irStoreLocal; instr.Dest := loc + i; instr.Src1 := tmp; Emit(instr);
-            end;
+            fieldValue := st.GetFieldValue(j);
+            Break;
           end;
+        end;
+        if fieldValue = nil then
+        begin
+          FDiag.Error('missing field in struct literal: ' + td.Fields[i].Name, stmt.Span);
+          Continue;
+        end;
+        // Lower the field value
+        valTemp := LowerExpr(fieldValue);
+        // Store field at field index (backend multiplies by 8)
+        instr.Op := irStoreField;
+        instr.Dest := 0;
+        instr.Src1 := loc;  // local slot as base
+        instr.Src2 := valTemp;
+        instr.ImmInt := i;  // field index (backend will multiply by 8)
+        Emit(instr);
+      end;
+      Exit(True);
+    end;
+
+    // If initializer is constant integer and the local has narrower signed width, constant fold
+    // BUT NOT for struct types!
+    if (TAstVarDecl(stmt).DeclType <> atStruct) and (TAstVarDecl(stmt).InitExpr is TAstIntLit) then
+    begin
+      lit := TAstIntLit(TAstVarDecl(stmt).InitExpr).Value;
+      ltype := GetLocalType(loc);
+      if (ltype <> atUnresolved) and (ltype <> atInt64) then
+      begin
+        // determine width in bits
+        width := 64;
+        case ltype of
+          atInt8, atUInt8: width := 8;
+          atInt16, atUInt16: width := 16;
+          atInt32, atUInt32: width := 32;
+          atInt64, atUInt64: width := 64;
+        end;
+        mask64 := (UInt64(1) shl width) - 1;
+        truncated := UInt64(lit) and mask64;
+        if (ltype in [atInt8, atInt16, atInt32, atInt64]) then
+        begin
+          // signed interpretation
+          half := UInt64(1) shl (width - 1);
+          if truncated >= half then
+            signedVal := Int64(truncated) - Int64(UInt64(1) shl width)
+          else
+            signedVal := Int64(truncated);
+          // record local constant for future loads instead of emitting store
+          cvLocal := TConstValue.Create(signedVal);
+          if loc >= Length(FLocalConst) then SetLength(FLocalConst, loc+1);
+          FLocalConst[loc] := cvLocal;
         end
         else
         begin
-          // initializer not an array literal: try to lower single expression into first element
-          tmp := LowerExpr(vd.InitExpr);
-          instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := tmp; Emit(instr);
+          // unsigned: record local constant zero-extended value
+          cvLocal := TConstValue.Create(Int64(truncated));
+          if loc >= Length(FLocalConst) then SetLength(FLocalConst, loc+1);
+          FLocalConst[loc] := cvLocal;
         end;
         Exit(True);
-      end
-      else if vd.ArrayLen = -1 then
-      begin
-
-        // dynamic array: represent as single local pointer (pchar/int64)
-        loc := AllocLocal(vd.Name, atPChar);
-        // record element size for this local slot (needed by backend for element addressing)
-          begin
-            elemSize := 8; // default
-            case vd.DeclType of
-              atInt8, atUInt8: elemSize := 1;
-              atInt16, atUInt16: elemSize := 2;
-              atInt32, atUInt32: elemSize := 4;
-              atInt64, atUInt64: elemSize := 8;
-              atChar: elemSize := 1;
-              atPChar: elemSize := 8;
-            else
-              elemSize := 8; // conservative default
-            end;
-            if loc >= Length(FLocalElemSize) then SetLength(FLocalElemSize, loc+1);
-            FLocalElemSize[loc] := elemSize;
-          end;
-
-        // initializer: if empty array literal -> set nil (0)
-        if vd.InitExpr is TAstArrayLit then
-        begin
-          // only allow empty literal for now
-          if Length(TAstArrayLit(vd.InitExpr).Items) <> 0 then
-            FDiag.Error('cannot initialize dynamic array with non-empty literal', vd.Span);
-           // emit const 0 -> store
-           t0 := NewTemp;
-           instr.Op := irConstInt; instr.Dest := t0; instr.ImmInt := 0; Emit(instr);
-           instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := t0; Emit(instr);
-
-        end
-
-       else
-       begin
-         tmp := LowerExpr(vd.InitExpr);
-         instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := tmp; Emit(instr);
-       end;
-       Exit(True);
-     end
-     else
-     begin
-       // scalar local
-       loc := AllocLocal(vd.Name, vd.DeclType);
-       // If initializer is constant integer and the local has narrower signed width, constant fold
-       if (vd.InitExpr is TAstIntLit) then
-       begin
-         lit := TAstIntLit(vd.InitExpr).Value;
-         ltype := GetLocalType(loc);
-         if (ltype <> atUnresolved) and (ltype <> atInt64) then
-         begin
-           // determine width in bits
-           width := 64;
-           case ltype of
-             atInt8, atUInt8: width := 8;
-             atInt16, atUInt16: width := 16;
-             atInt32, atUInt32: width := 32;
-             atInt64, atUInt64: width := 64;
-           end;
-           mask64 := (UInt64(1) shl width) - 1;
-           truncated := UInt64(lit) and mask64;
-           if (ltype in [atInt8, atInt16, atInt32, atInt64]) then
-           begin
-             // signed interpretation
-             half := UInt64(1) shl (width - 1);
-             if truncated >= half then
-               signedVal := Int64(truncated) - Int64(UInt64(1) shl width)
-             else
-               signedVal := Int64(truncated);
-             // record local constant for future loads instead of emitting store
-             cvLocal := TConstValue.Create;
-             cvLocal.IsStr := False;
-             cvLocal.IntVal := signedVal;
-             if loc >= Length(FLocalConst) then SetLength(FLocalConst, loc+1);
-             FLocalConst[loc] := cvLocal;
-           end
-           else
-           begin
-             // unsigned: record local constant zero-extended value
-             cvLocal := TConstValue.Create;
-             cvLocal.IsStr := False;
-             cvLocal.IntVal := Int64(truncated);
-             if loc >= Length(FLocalConst) then SetLength(FLocalConst, loc+1);
-             FLocalConst[loc] := cvLocal;
-           end;
-           Exit(True);
-         end;
-       end;
-       tmp := LowerExpr(vd.InitExpr);
-       // If local has narrower integer width, truncate before store
-       ltype := GetLocalType(loc);
-       if (ltype <> atUnresolved) and (ltype <> atInt64) then
-       begin
-         // determine width in bits
-         width := 64;
-         case ltype of
-           atInt8, atUInt8: width := 8;
-           atInt16, atUInt16: width := 16;
-           atInt32, atUInt32: width := 32;
-           atInt64, atUInt64: width := 64;
-         end;
-         instr.Op := irTrunc; instr.Dest := NewTemp; instr.Src1 := tmp; instr.ImmInt := width; Emit(instr);
-         tmp := instr.Dest;
-       end;
-       instr.Op := irStoreLocal;
-       instr.Dest := loc;
-       instr.Src1 := tmp;
-       Emit(instr);
-       Exit(True);
-     end;
-   end;
-
+      end;
+    end;
+    tmp := LowerExpr(TAstVarDecl(stmt).InitExpr);
+    // If local has narrower integer width, truncate before store
+    ltype := GetLocalType(loc);
+    if (ltype <> atUnresolved) and (ltype <> atInt64) then
+    begin
+      // determine width in bits
+      width := 64;
+      case ltype of
+        atInt8, atUInt8: width := 8;
+        atInt16, atUInt16: width := 16;
+        atInt32, atUInt32: width := 32;
+        atInt64, atUInt64: width := 64;
+      end;
+      instr.Op := irTrunc; instr.Dest := NewTemp; instr.Src1 := tmp; instr.ImmInt := width; Emit(instr);
+      tmp := instr.Dest;
+    end;
+    instr.Op := irStoreLocal;
+    instr.Dest := loc;
+    instr.Src1 := tmp;
+    Emit(instr);
+    Exit(True);
+  end;
 
   if stmt is TAstAssign then
   begin
@@ -1038,9 +1268,165 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     Exit(True);
   end;
 
+  if stmt is TAstFieldAssign then
+  begin
+    // Field assignment: obj.field := value
+    fa := TAstFieldAssign(stmt);
+    // Only support simple identifier as object
+    if not (fa.Obj is TAstIdent) then
+    begin
+      FDiag.Error('field assignment on complex expression not supported', stmt.Span);
+      Exit(False);
+    end;
+    // Get local slot
+    loc := ResolveLocal(TAstIdent(fa.Obj).Name);
+    if loc < 0 then
+    begin
+      FDiag.Error('use of undeclared local ' + TAstIdent(fa.Obj).Name, stmt.Span);
+      Exit(False);
+    end;
+    // Get type name
+    declTypeName := GetLocalTypeName(loc);
+    if declTypeName = '' then
+    begin
+      FDiag.Error('not a struct variable: ' + TAstIdent(fa.Obj).Name, stmt.Span);
+      Exit(False);
+    end;
+    // Get type declaration
+    td := ResolveTypeDecl(declTypeName);
+    if td = nil then
+    begin
+      FDiag.Error('unknown struct type: ' + declTypeName, stmt.Span);
+      Exit(False);
+    end;
+    // Find field and compute index
+    fieldIndex := 0;
+    foundField := False;
+    for i := 0 to High(td.Fields) do
+    begin
+      if td.Fields[i].Name = fa.Field then
+      begin
+        foundField := True;
+        fieldIndex := i;
+        Break;
+      end;
+    end;
+    if not foundField then
+    begin
+      FDiag.Error('unknown field: ' + fa.Field, stmt.Span);
+      Exit(False);
+    end;
+    // Lower value expression
+    valueTemp := LowerExpr(fa.Value);
+    // Store field: *(localSlot + fieldIndex * 8) = value
+    instr.Op := irStoreField;
+    instr.Dest := 0;
+    instr.Src1 := loc;
+    instr.Src2 := valueTemp;
+    instr.ImmInt := fieldIndex;  // field index (backend multiplies by 8)
+    Emit(instr);
+    Exit(True);
+  end;
+
+  if stmt is TAstTry then
+  begin
+    // Lower try/catch
+    tryNode := TAstTry(stmt);
+    // Create labels
+    catchLabel := NewLabel('Lcatch');
+    endLabel := NewLabel('Ltry_end');
+
+    // Allocate handler frame on stack (5 qwords = 40 bytes)
+    handlerTemp := NewTemp;
+    instr.Op := irStackAlloc; instr.Dest := handlerTemp; instr.ImmInt := 40; Emit(instr);
+
+    // Push handler (Emitter will record placeholder for catchLabel)
+    instr.Op := irPushHandler; instr.Src1 := handlerTemp; instr.LabelName := catchLabel; Emit(instr);
+
+    // Lower try block
+    if Assigned(tryNode.TryBlock) then
+    begin
+      for i := 0 to High(tryNode.TryBlock.Stmts) do
+        LowerStmt(tryNode.TryBlock.Stmts[i]);
+    end
+    else
+      FDiag.Error('empty try block', stmt.Span);
+
+    // Pop handler (normal exit)
+    instr.Op := irPopHandler; instr.Src1 := handlerTemp; Emit(instr);
+
+    // Jump over catch
+    instr.Op := irJmp; instr.LabelName := endLabel; Emit(instr);
+
+    // Catch label
+    instr.Op := irLabel; instr.LabelName := catchLabel; Emit(instr);
+
+    // Pop handler (we no longer consider it the head)
+    instr.Op := irPopHandler; instr.Src1 := handlerTemp; Emit(instr);
+
+    // Load exception into tmpExn
+    tmpExn := NewTemp;
+    instr.Op := irLoadHandlerExn; instr.Dest := tmpExn; instr.Src1 := handlerTemp; Emit(instr);
+
+    // Allocate catch variable local if present
+    catchLoc := -1;
+    if tryNode.CatchVarName <> '' then
+    begin
+      catchLoc := AllocLocal(tryNode.CatchVarName, tryNode.CatchType);
+      // store exception value into local
+      instr.Op := irStoreLocal; instr.Dest := catchLoc; instr.Src1 := tmpExn; Emit(instr);
+    end;
+
+    // Lower catch body
+    if Assigned(tryNode.CatchBlock) then
+    begin
+      for i := 0 to High(tryNode.CatchBlock.Stmts) do
+        LowerStmt(tryNode.CatchBlock.Stmts[i]);
+    end;
+
+    // End label
+    instr.Op := irLabel; instr.LabelName := endLabel; Emit(instr);
+
+    Exit(True);
+  end
+
+  else if stmt is TAstArrayAssign then
+  begin
+    // Array assignment: arr[index] := value
+    arrayAssignStmt := TAstArrayAssign(stmt);
+    
+    // Lower array expression (should return array base address)
+    arrayTemp := LowerExpr(arrayAssignStmt.ArrayExpr);
+    
+    // Lower index expression
+    indexTemp := LowerExpr(arrayAssignStmt.Index);
+    
+    // Lower value expression
+    valueTemp := LowerExpr(arrayAssignStmt.Value);
+    
+    // Store element: array[index] = value (dynamic)
+    instr.Op := irStoreElemDyn;
+    instr.Dest := 0; // unused
+    instr.Src1 := arrayTemp;  // array base address
+    instr.Src2 := indexTemp;  // index temp
+    instr.Src3 := valueTemp;  // value to store
+    Emit(instr);
+    
+    Exit(True);
+  end;
+
   if stmt is TAstExprStmt then
   begin
     LowerExpr(TAstExprStmt(stmt).Expr);
+    Exit(True);
+  end;
+
+  if stmt is TAstThrow then
+  begin
+    tmp := LowerExpr(TAstThrow(stmt).Expr);
+    instr.Op := irThrow;
+    instr.Src1 := tmp;
+    Emit(instr);
     Exit(True);
   end;
 
@@ -1118,73 +1504,134 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
       Exit(True);
     end;
 
+    if stmt is TAstFor then
+    begin
+      forNode := TAstFor(stmt);
+      startLabel := NewLabel('Lfor');
+      exitLabel := NewLabel('Lfor_end');
 
-   if stmt is TAstFor then
-   begin
-     // for varName := start to/downto end do body
-     // lower as: var = start; while (var <= end) { body; var := var +/- 1 }
-     with TAstFor(stmt) do
-     begin
-       loc := AllocLocal(VarName, atInt64);
-       tmp := LowerExpr(StartExpr);
-       instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := tmp; Emit(instr);
-       startLabel := NewLabel('Lfor');
-       exitLabel := NewLabel('Lfor_end');
-       // start label
-       instr.Op := irLabel; instr.LabelName := startLabel; Emit(instr);
-       // load var and end, compare
-       t1 := NewTemp;
-       instr.Op := irLoadLocal; instr.Dest := t1; instr.Src1 := loc; Emit(instr);
-       t2 := LowerExpr(EndExpr);
-       condTmp := NewTemp;
-       if IsDownto then
-         begin instr.Op := irCmpGe; end
-       else
-         begin instr.Op := irCmpLe; end;
-       instr.Dest := condTmp; instr.Src1 := t1; instr.Src2 := t2; Emit(instr);
-       instr.Op := irBrFalse; instr.Src1 := condTmp; instr.LabelName := exitLabel; Emit(instr);
-       // body
-       FBreakStack.AddObject(exitLabel, nil);
-       LowerStmt(Body);
-       FBreakStack.Delete(FBreakStack.Count - 1);
-       // increment/decrement
-       t1 := NewTemp;
-       instr.Op := irLoadLocal; instr.Dest := t1; instr.Src1 := loc; Emit(instr);
-       t2 := NewTemp;
-       instr.Op := irConstInt; instr.Dest := t2; instr.ImmInt := 1; Emit(instr);
-       condTmp := NewTemp;
-       if IsDownto then
-         instr.Op := irSub
-       else
-         instr.Op := irAdd;
-       instr.Dest := condTmp; instr.Src1 := t1; instr.Src2 := t2; Emit(instr);
-       instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := condTmp; Emit(instr);
-       // jump to start
-       instr.Op := irJmp; instr.LabelName := startLabel; Emit(instr);
-       // exit label
-       instr.Op := irLabel; instr.LabelName := exitLabel; Emit(instr);
-     end;
-     Exit(True);
-   end;
+      // Allocate loop variable
+      forLoc := AllocLocal(forNode.VarName, atInt64);
 
-   if stmt is TAstRepeatUntil then
-   begin
-     startLabel := NewLabel('Lrepeat');
-     exitLabel := NewLabel('Lrepeat_end');
-     // start label
-     instr.Op := irLabel; instr.LabelName := startLabel; Emit(instr);
-     // body
-     FBreakStack.AddObject(exitLabel, nil);
-     LowerStmt(TAstRepeatUntil(stmt).Body);
-     FBreakStack.Delete(FBreakStack.Count - 1);
-     // condition
-     condTmp := LowerExpr(TAstRepeatUntil(stmt).Cond);
-     // if condition false, jump back to start (repeat until cond is true)
-     instr.Op := irBrFalse; instr.Src1 := condTmp; instr.LabelName := startLabel; Emit(instr);
-     // exit label
-     instr.Op := irLabel; instr.LabelName := exitLabel; Emit(instr);
-     Exit(True);
-   end;
+      // Lower start expression and store to loop variable
+      startTmp := LowerExpr(forNode.StartExpr);
+      instr.Op := irStoreLocal;
+      instr.Dest := forLoc;
+      instr.Src1 := startTmp;
+      Emit(instr);
+
+      // Lower end expression and store to a hidden local (evaluated once)
+      endSlot := AllocLocal('__for_end_' + forNode.VarName, atInt64);
+      endTmp := LowerExpr(forNode.EndExpr);
+      instr.Op := irStoreLocal;
+      instr.Dest := endSlot;
+      instr.Src1 := endTmp;
+      Emit(instr);
+
+      // Loop start label
+      instr.Op := irLabel; instr.LabelName := startLabel; Emit(instr);
+
+      // Load loop variable and end value, compare
+      iTmp := NewTemp;
+      instr.Op := irLoadLocal;
+      instr.Dest := iTmp;
+      instr.Src1 := forLoc;
+      Emit(instr);
+
+      endTmp := NewTemp;
+      instr.Op := irLoadLocal;
+      instr.Dest := endTmp;
+      instr.Src1 := endSlot;
+      Emit(instr);
+
+      cmpTmp := NewTemp;
+      if forNode.IsDownto then
+        instr.Op := irCmpGe  // i >= end for downto
+      else
+        instr.Op := irCmpLe; // i <= end for to
+      instr.Dest := cmpTmp;
+      instr.Src1 := iTmp;
+      instr.Src2 := endTmp;
+      Emit(instr);
+
+      // Branch to exit if condition is false
+      instr.Op := irBrFalse;
+      instr.Src1 := cmpTmp;
+      instr.LabelName := exitLabel;
+      Emit(instr);
+
+      // Loop body (support break -> exitLabel)
+      FBreakStack.AddObject(exitLabel, nil);
+      LowerStmt(forNode.Body);
+      FBreakStack.Delete(FBreakStack.Count - 1);
+
+      // Increment/decrement loop variable
+      iTmp := NewTemp;
+      instr.Op := irLoadLocal;
+      instr.Dest := iTmp;
+      instr.Src1 := forLoc;
+      Emit(instr);
+
+      // Create constant 1
+      incTmp := NewTemp;
+      instr.Op := irConstInt;
+      instr.Dest := incTmp;
+      instr.ImmInt := 1;
+      Emit(instr);
+
+      // Add or subtract
+      cmpTmp := NewTemp;
+      if forNode.IsDownto then
+        instr.Op := irSub
+      else
+        instr.Op := irAdd;
+      instr.Dest := cmpTmp;
+      instr.Src1 := iTmp;
+      instr.Src2 := incTmp;
+      Emit(instr);
+
+      // Store back
+      instr.Op := irStoreLocal;
+      instr.Dest := forLoc;
+      instr.Src1 := cmpTmp;
+      Emit(instr);
+
+      // Jump back to start
+      instr.Op := irJmp; instr.LabelName := startLabel; Emit(instr);
+
+      // Exit label
+      instr.Op := irLabel; instr.LabelName := exitLabel; Emit(instr);
+      Exit(True);
+    end;
+
+    if stmt is TAstRepeatUntil then
+    begin
+      repNode := TAstRepeatUntil(stmt);
+      startLabel := NewLabel('Lrepeat');
+      exitLabel := NewLabel('Lrepeat_end');
+
+      // Start label
+      instr.Op := irLabel; instr.LabelName := startLabel; Emit(instr);
+
+      // Body (support break -> exitLabel)
+      FBreakStack.AddObject(exitLabel, nil);
+      LowerStmt(repNode.Body);
+      FBreakStack.Delete(FBreakStack.Count - 1);
+
+      // Evaluate condition
+      condTmp := LowerExpr(repNode.Cond);
+
+      // If condition is FALSE, jump back to start (repeat UNTIL true)
+      instr.Op := irBrFalse;
+      instr.Src1 := condTmp;
+      instr.LabelName := startLabel;
+      Emit(instr);
+
+      // Exit label (for break)
+      instr.Op := irLabel; instr.LabelName := exitLabel; Emit(instr);
+      Exit(True);
+    end;
+
 
    if stmt is TAstBlock then
    begin
@@ -1266,7 +1713,29 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
 
    FDiag.Error('lowering: unsupported statement', stmt.Span);
    Result := False;
- end;
+  end;
 
+{ TConstValue constructors }
+
+constructor TConstValue.Create(val: Int64);
+begin
+  inherited Create;
+  Kind := cvInt;
+  IntVal := val;
+end;
+
+constructor TConstValue.Create(val: Double);
+begin
+  inherited Create;
+  Kind := cvFloat;
+  FloatVal := val;
+end;
+
+constructor TConstValue.Create(const val: string);
+begin
+  inherited Create;
+  Kind := cvString;
+  StrVal := val;
+end;
 
 end.
