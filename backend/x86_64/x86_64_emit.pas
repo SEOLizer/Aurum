@@ -82,31 +82,50 @@ begin
 end;
 procedure WriteMovRegMem(buf: TByteBuffer; reg, base: Byte; disp: Integer);
 var rexR, rexB: Integer;
+    modrm, modBits: Byte;
 begin
   // mov r64, r/m64 : REX.W + 8B /r   (reg=reg, rm=mem)
   rexR := (reg shr 3) and 1;
   rexB := (base shr 3) and 1;
   EmitRex(buf, 1, rexR, 0, rexB);
   EmitU8(buf, $8B);
-  EmitU8(buf, $80 or (((reg and 7) shl 3) and $38) or (base and $7));
-  // if rm == 4 (RSP) we must emit SIB byte
+  // choose mod bits: use disp8 if fits, otherwise disp32
+  if (disp >= -128) and (disp <= 127) then
+    modBits := $40 // mod = 01 (disp8)
+  else
+    modBits := $80; // mod = 10 (disp32)
+  modrm := modBits or Byte(((reg and 7) shl 3) and $38) or Byte(base and $7);
+  EmitU8(buf, modrm);
+  // if base==RSP we must emit SIB
   if (base and 7) = 4 then
     EmitU8(buf, $24); // scale=0, index=4 (no index), base=4 (RSP)
-  EmitU32(buf, Cardinal(disp));
+  // emit displacement
+  if modBits = $40 then
+    EmitU8(buf, Byte(disp))
+  else
+    EmitU32(buf, Cardinal(disp));
 end;
 procedure WriteMovMemReg(buf: TByteBuffer; base: Byte; disp: Integer; reg: Byte);
 var rexR, rexB: Integer;
+    modrm, modBits: Byte;
 begin
   // mov r/m64, r64 : REX.W + 89 /r   (reg=reg, rm=mem)
   rexR := (reg shr 3) and 1;
   rexB := (base shr 3) and 1;
   EmitRex(buf, 1, rexR, 0, rexB);
   EmitU8(buf, $89);
-  EmitU8(buf, $80 or (((reg and 7) shl 3) and $38) or (base and $7));
-  // if rm == 4 (RSP) we must emit SIB byte
+  if (disp >= -128) and (disp <= 127) then
+    modBits := $40
+  else
+    modBits := $80;
+  modrm := modBits or Byte(((reg and 7) shl 3) and $38) or Byte(base and $7);
+  EmitU8(buf, modrm);
   if (base and 7) = 4 then
-    EmitU8(buf, $24); // scale=0, index=4 (no index), base=4 (RSP)
-  EmitU32(buf, Cardinal(disp));
+    EmitU8(buf, $24);
+  if modBits = $40 then
+    EmitU8(buf, Byte(disp))
+  else
+    EmitU32(buf, Cardinal(disp));
 end;
 procedure WriteAddRegReg(buf: TByteBuffer; dst, src: Byte);
 var rexR, rexB: Integer;
