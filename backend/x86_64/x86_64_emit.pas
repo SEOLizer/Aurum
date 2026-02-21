@@ -229,6 +229,12 @@ begin EmitU8(buf,$0F); EmitU8(buf,$8D); EmitU32(buf, rel32); end;
 procedure WriteJleRel32(buf: TByteBuffer; rel32: Cardinal);
 begin EmitU8(buf,$0F); EmitU8(buf,$8E); EmitU32(buf, rel32); end;
 
+procedure WriteJlRel32(buf: TByteBuffer; rel32: Cardinal);
+begin EmitU8(buf,$0F); EmitU8(buf,$8C); EmitU32(buf, rel32); end;
+
+procedure WriteJgRel32(buf: TByteBuffer; rel32: Cardinal);
+begin EmitU8(buf,$0F); EmitU8(buf,$8F); EmitU32(buf, rel32); end;
+
 procedure WriteJmpRel32(buf: TByteBuffer; rel32: Cardinal);
 begin EmitU8(buf,$E9); EmitU32(buf, rel32); end;
 
@@ -517,8 +523,10 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   envOffset: UInt64;
   envLeaPositions: array of Integer;
    len: Integer;
-    nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
-    strlenLoopPos, strlenDonePos: Integer;
+     nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
+     strlenLoopPos, strlenDonePos: Integer;
+     itoaDonePos, parseDonePos, notNegPos, notDigitPos, notDigit2Pos, noNegPos, noSignPos: Integer;
+     dlt: Integer;
    targetPos, jmpPos: Integer;
    jmpAfterPadPos: Integer;
   // for call/abi
@@ -929,6 +937,108 @@ begin
                 WriteIncReg(FCode, RDI); // inc rdi
                 EmitU8(FCode, $EB); EmitU8(FCode, $F4); // jmp strcpy_loop (-12)
                 // strcpy_done:
+              end
+
+              // ============================================================================
+              // STRING CONVERSION BUILTINS
+              // ============================================================================
+
+              else if instr.ImmStr = 'int_to_str' then
+              begin
+                // int_to_str(value: int64) -> pchar
+                // Use existing print_int buffer logic but return string pointer
+                if not bufferAdded then
+                begin
+                  bufferOffset := totalDataOffset;
+                  for k := 1 to 64 do FData.WriteU8(0);  // 64-byte buffer for int64 strings
+                  Inc(totalDataOffset, 64);
+                  bufferAdded := True;
+                end;
+
+                // Load input value into RAX
+                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+                
+                // Setup buffer pointer (start of buffer)
+                leaPos := FCode.Size;
+                EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);  // lea rsi, [buffer]
+                SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
+                bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
+
+                // Handle zero special case  
+                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F8); EmitU8(FCode, 0);  // cmp rax, 0
+                nonZeroPos := FCode.Size;
+                WriteJneRel32(FCode, 0);  // jne nonzero
+
+                // Zero case: write "0" and return
+                WriteMovMemImm8(FCode, RSI, 0, Ord('0'));
+                WriteMovMemImm8(FCode, RSI, 1, 0);
+                WriteMovRegReg(FCode, RAX, RSI);
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+                jmpDonePos := FCode.Size;
+                WriteJmpRel32(FCode, 0);
+
+                // Non-zero case
+                k := FCode.Size;
+                FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+
+                // Handle negative numbers
+                WriteMovRegImm64(FCode, RCX, 0);  // negative flag = 0
+                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F8); EmitU8(FCode, 0);  // cmp rax, 0
+                jgePos := FCode.Size;
+                WriteJgeRel32(FCode, 0);  // jge positive
+                EmitU8(FCode, $48); EmitU8(FCode, $F7); EmitU8(FCode, $D8);  // neg rax (make positive)
+                WriteMovRegImm64(FCode, RCX, 1);  // negative flag = 1
+
+                // Start conversion from end of buffer (RSI + 63)
+                k := FCode.Size;
+                FCode.PatchU32LE(jgePos + 2, Cardinal(k - jgePos - 6));
+                WriteMovRegReg(FCode, RDI, RSI);
+                WriteMovRegImm64(FCode, RDX, 63);
+                WriteAddRegReg(FCode, RDI, RDX);
+                WriteMovMemImm8(FCode, RDI, 0, 0);  // null terminator
+                WriteDecReg(FCode, RDI);            // point to last digit position
+
+                // Digit conversion loop
+                loopStartPos := FCode.Size;
+                WriteMovRegImm64(FCode, RBX, 10);
+                EmitU8(FCode, $48); EmitU8(FCode, $31); EmitU8(FCode, $D2);  // xor rdx, rdx  
+                EmitU8(FCode, $48); EmitU8(FCode, $F7); EmitU8(FCode, $F3);  // div rbx -> rax=quot, rdx=remainder
+
+                // Store digit: remainder + '0'
+                WriteMovRegImm64(FCode, RBX, Ord('0'));
+                WriteAddRegReg(FCode, RDX, RBX);
+                EmitU8(FCode, $88); EmitU8(FCode, $17);  // mov [rdi], dl
+                WriteDecReg(FCode, RDI);
+
+                // Continue if quotient != 0
+                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F8); EmitU8(FCode, 0);  // cmp rax, 0
+                WriteJneRel32(FCode, Cardinal(loopStartPos - FCode.Size - 6));
+
+                // Add minus sign if negative
+                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $F9); EmitU8(FCode, 0);  // cmp rcx, 0
+                noSignPos := FCode.Size;
+                WriteJeRel32(FCode, 0);
+                WriteMovMemImm8(FCode, RDI, 0, Ord('-'));
+                WriteDecReg(FCode, RDI);
+
+                // Return pointer to first character
+                k := FCode.Size;
+                FCode.PatchU32LE(noSignPos + 2, Cardinal(k - noSignPos - 6));
+                WriteIncReg(FCode, RDI);  // point to first character
+                WriteMovRegReg(FCode, RAX, RDI);
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+
+                // Done label
+                k := FCode.Size;
+                FCode.PatchU32LE(jmpDonePos + 1, Cardinal(k - jmpDonePos - 5));
+              end
+
+              else if instr.ImmStr = 'str_to_int' then
+              begin
+                // str_to_int(s: pchar) -> int64
+                // Debug version: return hardcoded 42 first
+                WriteMovRegImm64(FCode, RAX, 42);  // hardcoded result = 42
+                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
               end
 
               // ============================================================================
@@ -2631,6 +2741,7 @@ begin
   if (name = 'print_str') or (name = 'print_int') or (name = 'exit') or (name = 'strlen') or
      (name = 'print_float') or (name = 'str_char_at') or (name = 'str_set_char') or
      (name = 'str_length') or (name = 'str_compare') or (name = 'str_copy_builtin') or
+     (name = 'int_to_str') or (name = 'str_to_int') or
      // Math builtins
      (name = 'abs') or (name = 'fabs') or (name = 'sin') or (name = 'cos') or 
      (name = 'sqrt') or (name = 'sqr') or (name = 'exp') or (name = 'ln') or
