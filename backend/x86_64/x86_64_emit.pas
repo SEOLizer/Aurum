@@ -1360,7 +1360,6 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
               // set local slot to 0
               WriteMovRegImm64(FCode, RDI, 0);
               WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Src1), RDI);
-            end;
          irConstInt:
            begin
              // Load immediate integer into temp slot
