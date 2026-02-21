@@ -1485,6 +1485,13 @@ begin
             end;
 
 
+            // If the IR carries explicit ArgTemps array, use it (newer IR), otherwise fall back to parsed argTemps
+            if Length(instr.ArgTemps) > 0 then
+            begin
+              for k := 0 to argCount - 1 do
+                if k <= High(instr.ArgTemps) then argTemps[k] := instr.ArgTemps[k];
+            end;
+
             // Move args into registers (SysV: RDI, RSI, RDX, RCX, R8, R9)
             if argCount > 0 then
             begin
