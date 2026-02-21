@@ -765,42 +765,58 @@ end;
 
 function TParser.ParseUnaryExpr: TAstExpr;
 var
+  ops: array of TTokenKind;
   op: TTokenKind;
-  operand: TAstExpr;
-  span: TSourceSpan;
+  i: Integer;
   value: Int64;
+  boolVal: Boolean;
+  span: TSourceSpan;
 begin
-  if Check(tkMinus) then
+  // Collect consecutive prefix unary operators (e.g. - - ! !)
+  while Check(tkMinus) or Check(tkNot) do
   begin
-    span := FCurTok.Span;
+    SetLength(ops, Length(ops) + 1);
+    ops[High(ops)] := FCurTok.Kind;
     Advance;
-    if Check(tkIntLit) then
-    begin
-      // fold unary minus applied directly to literal
-      value := -StrToInt64Def(FCurTok.Value, 0);
-      span := FCurTok.Span;
-      Advance;
-      Exit(TAstIntLit.Create(value, span));
-    end;
-    operand := ParseUnaryExpr;
-    if operand = nil then
-      Exit(nil);
-    Result := TAstUnaryOp.Create(tkMinus, operand, operand.Span);
-    Exit;
   end;
 
-  if Check(tkNot) then
-  begin
-    op := FCurTok.Kind;
-    Advance;
-    operand := ParseUnaryExpr;
-    if operand = nil then
-      Exit(nil);
-    Result := TAstUnaryOp.Create(op, operand, operand.Span);
-    Exit;
-  end;
-
+  // Parse the primary expression (operand)
   Result := ParsePrimary;
+  if Result = nil then Exit(nil);
+
+  // Apply collected unary operators from right to left
+  for i := High(ops) downto 0 do
+  begin
+    op := ops[i];
+    if op = tkMinus then
+    begin
+      if Result is TAstIntLit then
+      begin
+        value := -TAstIntLit(Result).Value;
+        span := Result.Span;
+        Result.Free;
+        Result := TAstIntLit.Create(value, span);
+      end
+      else
+      begin
+        Result := TAstUnaryOp.Create(tkMinus, Result, Result.Span);
+      end;
+    end
+    else if op = tkNot then
+    begin
+      if Result is TAstBoolLit then
+      begin
+        boolVal := TAstBoolLit(Result).Value;
+        span := Result.Span;
+        Result.Free;
+        Result := TAstBoolLit.Create(boolVal, span);
+      end
+      else
+      begin
+        Result := TAstUnaryOp.Create(tkNot, Result, Result.Span);
+      end;
+    end;
+  end;
 end;
 
 function TParser.ParsePrimary: TAstExpr;

@@ -330,6 +330,8 @@ var
   argCount: Integer;
   argTemps: array of Integer;
   fn: TIRFunction;
+  ltype: TAurumType;
+  width: Integer;
 begin
   Result := -1;
   if not Assigned(expr) then
@@ -442,7 +444,31 @@ begin
             instr.Dest := t0;
             instr.Src1 := loc;
             Emit(instr);
-            Result := t0;
+            // If local type is narrower than 64 bits, emit sign- or zero-extend
+            ltype := GetLocalType(loc);
+            if (ltype <> atUnresolved) and (ltype <> atInt64) and (ltype <> atUInt64) then
+            begin
+              width := 64;
+              case ltype of
+                atInt8, atUInt8: width := 8;
+                atInt16, atUInt16: width := 16;
+                atInt32, atUInt32: width := 32;
+              end;
+              if ltype in [atInt8, atInt16, atInt32] then
+              begin
+                instr.Op := irSExt; instr.Dest := NewTemp; instr.Src1 := t0; instr.ImmInt := width; Emit(instr);
+                Result := instr.Dest;
+              end
+              else if ltype in [atUInt8, atUInt16, atUInt32] then
+              begin
+                instr.Op := irZExt; instr.Dest := NewTemp; instr.Src1 := t0; instr.ImmInt := width; Emit(instr);
+                Result := instr.Dest;
+              end
+              else
+                Result := t0;
+            end
+            else
+              Result := t0;
           end;
         end;
       end;
