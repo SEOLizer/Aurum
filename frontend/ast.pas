@@ -189,11 +189,17 @@ type
   private
     FObj: TAstExpr;
     FField: string;
+    FFieldOffset: Integer; // -1 if unknown
+    FOwnerName: string; // owner struct name if known
   public
     constructor Create(aObj: TAstExpr; const aField: string; aSpan: TSourceSpan);
     destructor Destroy; override;
     property Obj: TAstExpr read FObj;
     property Field: string read FField;
+    procedure SetFieldOffset(aOffset: Integer);
+    procedure SetOwnerName(const aName: string);
+    property FieldOffset: Integer read FFieldOffset;
+    property OwnerName: string read FOwnerName;
   end;
 
   { Indexzugriff: expr[index] }
@@ -983,6 +989,18 @@ begin
   inherited Create(nkFieldAccess, aSpan);
   FObj := aObj;
   FField := aField;
+  FFieldOffset := -1;
+  FOwnerName := '';
+end;
+
+procedure TAstFieldAccess.SetFieldOffset(aOffset: Integer);
+begin
+  FFieldOffset := aOffset;
+end;
+
+procedure TAstFieldAccess.SetOwnerName(const aName: string);
+begin
+  FOwnerName := aName;
 end;
 
 destructor TAstFieldAccess.Destroy;

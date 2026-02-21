@@ -344,7 +344,15 @@ begin
             if not found then
               FDiag.Error('unknown field ' + fName + ' in type ' + sSym.StructDecl.Name, expr.Span)
             else
+            begin
               Result := fldType;
+              // annotate AST node with offset + owner
+              if expr is TAstFieldAccess then
+              begin
+                TAstFieldAccess(expr).SetFieldOffset(sSym.StructDecl.FieldOffsets[fi]);
+                TAstFieldAccess(expr).SetOwnerName(sSym.StructDecl.Name);
+              end;
+            end;
             expr.ResolvedType := Result;
             Exit;
           end;

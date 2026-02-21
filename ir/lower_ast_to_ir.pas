@@ -332,6 +332,9 @@ var
   fn: TIRFunction;
   ltype: TAurumType;
   width: Integer;
+  fldOffset: Integer;
+  ownerName: string;
+  fidx, ii: Integer;
 begin
   Result := -1;
   if not Assigned(expr) then
@@ -653,14 +656,28 @@ begin
         if t1 < 0 then
           Exit;
 
-        // For now, emit as irLoadField with field name
-        // (proper field offset resolution would require struct info)
+        // If sema annotated the field offset on the AST node, use it
+        fldOffset := TAstFieldAccess(expr).FieldOffset;
+        ownerName := TAstFieldAccess(expr).OwnerName;
+
         t0 := NewTemp;
-        instr.Op := irLoadField;
-        instr.Dest := t0;
-        instr.Src1 := t1;
-        instr.LabelName := TAstFieldAccess(expr).Field;
-        Emit(instr);
+        if fldOffset >= 0 then
+        begin
+          instr.Op := irLoadField;
+          instr.Dest := t0;
+          instr.Src1 := t1;
+          instr.ImmInt := fldOffset; // use ImmInt for immediate offset
+          Emit(instr);
+        end
+        else
+        begin
+          // Fallback to name-based access (slower / requires runtime lookup)
+          instr.Op := irLoadField;
+          instr.Dest := t0;
+          instr.Src1 := t1;
+          instr.LabelName := TAstFieldAccess(expr).Field;
+          Emit(instr);
+        end;
         Result := t0;
       end;
 
