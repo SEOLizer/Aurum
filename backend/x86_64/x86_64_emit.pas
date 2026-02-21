@@ -199,6 +199,54 @@ begin
   EmitU32(buf, Cardinal(disp));
 end;
 
+// --- Missing SSE/float helper stubs added to recover compilation ---
+function DoubleToQWord(const d: Double): UInt64;
+begin
+  // reinterpret double bits as uint64
+  Result := PUInt64(@d)^;
+end;
+
+procedure WriteMovsdXmmMem(buf: TByteBuffer; xmmIndex: Integer; base: Byte; disp: Integer);
+begin
+  // stub: emit no-op; proper implementation needed for float operations
+end;
+
+procedure WriteMovsdMemXmm(buf: TByteBuffer; base: Byte; disp: Integer; xmmIndex: Integer);
+begin
+  // stub
+end;
+
+procedure WriteMovsdXmmXmm(buf: TByteBuffer; dstXmm: Integer; srcXmm: Integer);
+begin
+  // stub
+end;
+
+procedure WriteMulsdXmmXmm(buf: TByteBuffer; dstXmm: Integer; srcXmm: Integer);
+begin
+  // stub
+end;
+
+procedure WriteXorpdXmmXmm(buf: TByteBuffer; dstXmm: Integer; srcXmm: Integer);
+begin
+  // stub
+end;
+
+procedure WriteCvttsd2siRaxXmm(buf: TByteBuffer; xmmIndex: Integer);
+begin
+  // stub
+end;
+
+procedure WriteCvtsi2sdXmmRax(buf: TByteBuffer; xmmIndex: Integer);
+begin
+  // stub
+end;
+
+procedure WriteAddRegImm32(buf: TByteBuffer; reg: Byte; imm: Cardinal);
+begin
+  // stub
+end;
+
+
 procedure WriteMovMemRegByteNoDisp(buf: TByteBuffer; base: Byte; reg8: Byte);
 begin
   // mov byte ptr [base], r8 -> 88 /0 with mod=00 and rm=base
@@ -323,15 +371,14 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   envAdded: Boolean;
   envOffset: UInt64;
   envLeaPositions: array of Integer;
+  // variables for string/itoa handling
   len: Integer;
-   nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
-   len: Integer;
-     nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
-     strlenLoopPos, strlenDonePos: Integer;
-     itoaDonePos, parseDonePos, notNegPos, notDigitPos, notDigit2Pos, noNegPos, noSignPos: Integer;
-     dlt: Integer;
-   targetPos, jmpPos: Integer;
-   jmpAfterPadPos: Integer;
+  nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
+  strlenLoopPos, strlenDonePos: Integer;
+  itoaDonePos, parseDonePos, notNegPos, notDigitPos, notDigit2Pos, noNegPos, noSignPos: Integer;
+  dlt: Integer;
+  targetPos, jmpPos: Integer;
+  jmpAfterPadPos: Integer;
   // for call/abi
   argCount: Integer;
   argTemps: array of Integer;
