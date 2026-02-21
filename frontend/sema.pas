@@ -18,6 +18,7 @@ type
     // for functions
     ParamTypes: array of TAurumType;
     ParamCount: Integer;
+    IsVarArgs: Boolean; // true for variadic functions like printf
     constructor Create(const AName: string);
     destructor Destroy; override;
   end;
@@ -59,6 +60,7 @@ begin
   DeclType := atUnresolved;
   ArrayLen := 0;
   ParamCount := 0;
+  IsVarArgs := False;
   SetLength(ParamTypes, 0);
 end;
 
@@ -151,6 +153,16 @@ begin
   s.ParamCount := 1;
   SetLength(s.ParamTypes, 1);
   s.ParamTypes[0] := atInt64;
+  AddSymbolToCurrent(s, NullSpan);
+
+  // printf(pchar, ...) -> void (varargs)
+  s := TSymbol.Create('printf');
+  s.Kind := symFunc;
+  s.DeclType := atVoid;
+  s.ParamCount := 1;  // at least 1 required (format string)
+  SetLength(s.ParamTypes, 1);
+  s.ParamTypes[0] := atPChar;
+  s.IsVarArgs := True;
   AddSymbolToCurrent(s, NullSpan);
 
   // exit(int64) -> void
@@ -436,13 +448,37 @@ var
         end
         else
         begin
-          if Length(call.Args) <> s.ParamCount then
-            FDiag.Error(Format('wrong argument count for %s: expected %d, got %d', [call.Name, s.ParamCount, Length(call.Args)]), call.Span);
-          for i := 0 to High(call.Args) do
+          // Check argument count
+          if s.IsVarArgs then
           begin
-            atype := CheckExpr(call.Args[i]);
-            if (i < s.ParamCount) and (not TypeEqual(atype, s.ParamTypes[i])) then
-              FDiag.Error(Format('argument %d of %s: expected %s but got %s', [i, call.Name, AurumTypeToStr(s.ParamTypes[i]), AurumTypeToStr(atype)]), call.Args[i].Span);
+            // Varargs: require at least ParamCount arguments
+            if Length(call.Args) < s.ParamCount then
+              FDiag.Error(Format('wrong argument count for %s: expected at least %d, got %d', [call.Name, s.ParamCount, Length(call.Args)]), call.Span)
+            else
+            begin
+              // For varargs, only check the fixed parameters
+              for i := 0 to s.ParamCount - 1 do
+              begin
+                atype := CheckExpr(call.Args[i]);
+                if not TypeEqual(atype, s.ParamTypes[i]) then
+                  FDiag.Error(Format('argument %d of %s: expected %s but got %s', [i, call.Name, AurumTypeToStr(s.ParamTypes[i]), AurumTypeToStr(atype)]), call.Args[i].Span);
+              end;
+              // Check remaining args (varargs)
+              for i := s.ParamCount to High(call.Args) do
+                CheckExpr(call.Args[i]);
+            end;
+          end
+          else
+          begin
+            // Non-varargs: exact match required
+            if Length(call.Args) <> s.ParamCount then
+              FDiag.Error(Format('wrong argument count for %s: expected %d, got %d', [call.Name, s.ParamCount, Length(call.Args)]), call.Span);
+            for i := 0 to High(call.Args) do
+            begin
+              atype := CheckExpr(call.Args[i]);
+              if (i < s.ParamCount) and (not TypeEqual(atype, s.ParamTypes[i])) then
+                FDiag.Error(Format('argument %d of %s: expected %s but got %s', [i, call.Name, AurumTypeToStr(s.ParamTypes[i]), AurumTypeToStr(atype)]), call.Args[i].Span);
+            end;
           end;
           Result := s.DeclType;
         end;

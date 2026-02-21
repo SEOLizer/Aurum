@@ -114,12 +114,13 @@ begin
                 end;
               end;
               AssertTrue('Should find main function in IR', found);
-              
+               
               // Check that there are call instructions with different argument counts
               hasCallWithMultipleArgs := False;
               for i := 0 to High(fn.Instructions) do
               begin
-                if fn.Instructions[i].Op = irCall then
+                // Check both irCall and irCallBuiltin
+                if (fn.Instructions[i].Op = irCall) or (fn.Instructions[i].Op = irCallBuiltin) then
                 begin
                   if fn.Instructions[i].ImmInt > 1 then // more than 1 argument
                     hasCallWithMultipleArgs := True;

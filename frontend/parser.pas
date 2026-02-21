@@ -555,6 +555,8 @@ begin
     else
     begin
       vExpr := ParseExpr;
+      if vExpr = nil then
+        vExpr := TAstIntLit.Create(0, FCurTok.Span);
       Expect(tkSemicolon);
       Exit(TAstReturn.Create(vExpr, vExpr.Span));
     end;
@@ -735,10 +737,12 @@ var
   rhs: TAstExpr;
 begin
   Result := ParseMulExpr;
+  if Result = nil then Exit(nil);
   while Check(tkPlus) or Check(tkMinus) do
   begin
     op := FCurTok.Kind; Advance;
     rhs := ParseMulExpr;
+    if rhs = nil then Exit(nil);
     Result := TAstBinOp.Create(op, Result, rhs, Result.Span);
   end;
 end;
@@ -749,10 +753,12 @@ var
   rhs: TAstExpr;
 begin
   Result := ParseUnaryExpr;
+  if Result = nil then Exit(nil);
   while Check(tkStar) or Check(tkSlash) or Check(tkPercent) do
   begin
     op := FCurTok.Kind; Advance;
     rhs := ParseUnaryExpr;
+    if rhs = nil then Exit(nil);
     Result := TAstBinOp.Create(op, Result, rhs, Result.Span);
   end;
 end;
@@ -777,6 +783,8 @@ begin
       Exit(TAstIntLit.Create(value, span));
     end;
     operand := ParseUnaryExpr;
+    if operand = nil then
+      Exit(nil);
     Result := TAstUnaryOp.Create(tkMinus, operand, operand.Span);
     Exit;
   end;
@@ -786,6 +794,8 @@ begin
     op := FCurTok.Kind;
     Advance;
     operand := ParseUnaryExpr;
+    if operand = nil then
+      Exit(nil);
     Result := TAstUnaryOp.Create(op, operand, operand.Span);
     Exit;
   end;

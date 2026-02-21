@@ -531,6 +531,10 @@ begin
             instr.Src1 := argTemps[0]
           else
             instr.Src1 := -1;
+          instr.ImmInt := argCount;
+          SetLength(instr.ArgTemps, argCount);
+          for i := 0 to argCount - 1 do
+            instr.ArgTemps[i] := argTemps[i];
           Emit(instr);
           Result := -1;
         end
@@ -543,6 +547,27 @@ begin
             instr.Src1 := argTemps[0]
           else
             instr.Src1 := -1;
+          instr.ImmInt := argCount;
+          SetLength(instr.ArgTemps, argCount);
+          for i := 0 to argCount - 1 do
+            instr.ArgTemps[i] := argTemps[i];
+          Emit(instr);
+          Result := -1;
+        end
+        else if TAstCall(expr).Name = 'printf' then
+        begin
+          // printf is varargs - emit as builtin with all args
+          instr.Op := irCallBuiltin;
+          instr.Dest := -1;
+          instr.ImmStr := 'printf';
+          instr.ImmInt := argCount;
+          SetLength(instr.ArgTemps, argCount);
+          for i := 0 to argCount - 1 do
+            instr.ArgTemps[i] := argTemps[i];
+          if argCount >= 1 then
+            instr.Src1 := argTemps[0]
+          else
+            instr.Src1 := -1;
           Emit(instr);
           Result := -1;
         end
@@ -551,6 +576,10 @@ begin
           instr.Op := irCallBuiltin;
           instr.Dest := -1;
           instr.ImmStr := 'exit';
+          instr.ImmInt := argCount;
+          SetLength(instr.ArgTemps, argCount);
+          for i := 0 to argCount - 1 do
+            instr.ArgTemps[i] := argTemps[i];
           if argCount >= 1 then
             instr.Src1 := argTemps[0]
           else
