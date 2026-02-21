@@ -14,6 +14,7 @@ type
     FDiag: TDiagnostics;
     FCurTok: TToken;
     FHasCur: Boolean;
+    FLastParamListVarArgs: Boolean;
 
     procedure Advance; // setzt FCurTok
     function Check(kind: TTokenKind): Boolean;
