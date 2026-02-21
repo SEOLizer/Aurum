@@ -320,10 +320,309 @@ end;
 
 
 function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
+var
+  instr: TIRInstr;
+  loc: Integer;
+  t0, t1, t2: Integer;
+  i: Integer;
+  strIdx: Integer;
+  cv: TConstValue;
+  argCount: Integer;
+  argTemps: array of Integer;
+  fn: TIRFunction;
 begin
-  // Minimal placeholder implementation to restore compileability after merge conflicts.
-  // This will be expanded later with full lowering logic.
   Result := -1;
+  if not Assigned(expr) then
+    Exit;
+
+  // Initialize instruction
+  instr := Default(TIRInstr);
+
+  case expr.Kind of
+    nkIntLit:
+      begin
+        // Emit integer constant
+        t0 := NewTemp;
+        instr.Op := irConstInt;
+        instr.Dest := t0;
+        instr.ImmInt := TAstIntLit(expr).Value;
+        Emit(instr);
+        Result := t0;
+      end;
+
+    nkStrLit:
+      begin
+        // Intern string and emit reference
+        strIdx := FModule.InternString(TAstStrLit(expr).Value);
+        t0 := NewTemp;
+        instr.Op := irConstStr;
+        instr.Dest := t0;
+        instr.ImmStr := IntToStr(strIdx);
+        Emit(instr);
+        Result := t0;
+      end;
+
+    nkBoolLit:
+      begin
+        // Emit boolean as 0 or 1
+        t0 := NewTemp;
+        instr.Op := irConstInt;
+        instr.Dest := t0;
+        if TAstBoolLit(expr).Value then
+          instr.ImmInt := 1
+        else
+          instr.ImmInt := 0;
+        Emit(instr);
+        Result := t0;
+      end;
+
+    nkCharLit:
+      begin
+        // Emit char as integer constant
+        t0 := NewTemp;
+        instr.Op := irConstInt;
+        instr.Dest := t0;
+        instr.ImmInt := Ord(TAstCharLit(expr).Value);
+        Emit(instr);
+        Result := t0;
+      end;
+
+    nkIdent:
+      begin
+        // Look up local variable
+        loc := ResolveLocal(TAstIdent(expr).Name);
+        if loc < 0 then
+        begin
+          // Check if it's a compile-time constant
+          i := FConstMap.IndexOf(TAstIdent(expr).Name);
+          if i >= 0 then
+          begin
+            cv := TConstValue(FConstMap.Objects[i]);
+            t0 := NewTemp;
+            if cv.IsStr then
+            begin
+              strIdx := FModule.InternString(cv.StrVal);
+              instr.Op := irConstStr;
+              instr.Dest := t0;
+              instr.ImmStr := IntToStr(strIdx);
+            end
+            else
+            begin
+              instr.Op := irConstInt;
+              instr.Dest := t0;
+              instr.ImmInt := cv.IntVal;
+            end;
+            Emit(instr);
+            Result := t0;
+          end
+          else
+          begin
+            FDiag.Error('undefined identifier: ' + TAstIdent(expr).Name, expr.Span);
+            Exit;
+          end;
+        end
+        else
+        begin
+          // Check for const-folded local
+          if (loc < Length(FLocalConst)) and Assigned(FLocalConst[loc]) then
+          begin
+            cv := FLocalConst[loc];
+            t0 := NewTemp;
+            instr.Op := irConstInt;
+            instr.Dest := t0;
+            instr.ImmInt := cv.IntVal;
+            Emit(instr);
+            Result := t0;
+          end
+          else
+          begin
+            // Load local into temp
+            t0 := NewTemp;
+            instr.Op := irLoadLocal;
+            instr.Dest := t0;
+            instr.Src1 := loc;
+            Emit(instr);
+            Result := t0;
+          end;
+        end;
+      end;
+
+    nkBinOp:
+      begin
+        // Lower left and right operands
+        t1 := LowerExpr(TAstBinOp(expr).Left);
+        t2 := LowerExpr(TAstBinOp(expr).Right);
+        if (t1 < 0) or (t2 < 0) then
+          Exit;
+
+        t0 := NewTemp;
+        case TAstBinOp(expr).Op of
+          tkPlus:  instr.Op := irAdd;
+          tkMinus: instr.Op := irSub;
+          tkStar:  instr.Op := irMul;
+          tkSlash: instr.Op := irDiv;
+          tkPercent: instr.Op := irMod;
+          tkEq:    instr.Op := irCmpEq;
+          tkNeq:   instr.Op := irCmpNeq;
+          tkLt:    instr.Op := irCmpLt;
+          tkLe:    instr.Op := irCmpLe;
+          tkGt:    instr.Op := irCmpGt;
+          tkGe:    instr.Op := irCmpGe;
+          tkAnd:   instr.Op := irAnd;
+          tkOr:    instr.Op := irOr;
+          tkNor:   instr.Op := irNor;
+          tkXor:   instr.Op := irXor;
+        else
+          FDiag.Error('unsupported binary operator', expr.Span);
+          Exit;
+        end;
+        instr.Dest := t0;
+        instr.Src1 := t1;
+        instr.Src2 := t2;
+        Emit(instr);
+        Result := t0;
+      end;
+
+    nkUnaryOp:
+      begin
+        // Lower operand
+        t1 := LowerExpr(TAstUnaryOp(expr).Operand);
+        if t1 < 0 then
+          Exit;
+
+        t0 := NewTemp;
+        case TAstUnaryOp(expr).Op of
+          tkMinus:
+            begin
+              instr.Op := irNeg;
+              instr.Dest := t0;
+              instr.Src1 := t1;
+              Emit(instr);
+            end;
+          tkNot:
+            begin
+              instr.Op := irNot;
+              instr.Dest := t0;
+              instr.Src1 := t1;
+              Emit(instr);
+            end;
+        else
+          FDiag.Error('unsupported unary operator', expr.Span);
+          Exit;
+        end;
+        Result := t0;
+      end;
+
+    nkCall:
+      begin
+        // Lower arguments
+        argCount := Length(TAstCall(expr).Args);
+        SetLength(argTemps, argCount);
+        for i := 0 to argCount - 1 do
+          argTemps[i] := LowerExpr(TAstCall(expr).Args[i]);
+
+        // Check for builtins
+        if TAstCall(expr).Name = 'print_str' then
+        begin
+          instr.Op := irCallBuiltin;
+          instr.Dest := -1;
+          instr.ImmStr := 'print_str';
+          if argCount >= 1 then
+            instr.Src1 := argTemps[0]
+          else
+            instr.Src1 := -1;
+          Emit(instr);
+          Result := -1;
+        end
+        else if TAstCall(expr).Name = 'print_int' then
+        begin
+          instr.Op := irCallBuiltin;
+          instr.Dest := -1;
+          instr.ImmStr := 'print_int';
+          if argCount >= 1 then
+            instr.Src1 := argTemps[0]
+          else
+            instr.Src1 := -1;
+          Emit(instr);
+          Result := -1;
+        end
+        else if TAstCall(expr).Name = 'exit' then
+        begin
+          instr.Op := irCallBuiltin;
+          instr.Dest := -1;
+          instr.ImmStr := 'exit';
+          if argCount >= 1 then
+            instr.Src1 := argTemps[0]
+          else
+            instr.Src1 := -1;
+          Emit(instr);
+          Result := -1;
+        end
+        else
+        begin
+          // Regular function call
+          t0 := NewTemp;
+          instr.Op := irCall;
+          instr.Dest := t0;
+          instr.ImmStr := TAstCall(expr).Name;
+          instr.CallMode := cmInternal; // Default to internal
+          SetLength(instr.ArgTemps, argCount);
+          for i := 0 to argCount - 1 do
+            instr.ArgTemps[i] := argTemps[i];
+          Emit(instr);
+          Result := t0;
+        end;
+      end;
+
+    nkIndexAccess:
+      begin
+        // Lower array and index
+        t1 := LowerExpr(TAstIndexAccess(expr).Obj);
+        t2 := LowerExpr(TAstIndexAccess(expr).Index);
+        if (t1 < 0) or (t2 < 0) then
+          Exit;
+
+        t0 := NewTemp;
+        instr.Op := irLoadElem;
+        instr.Dest := t0;
+        instr.Src1 := t1;  // array base
+        instr.Src2 := t2;  // index
+        Emit(instr);
+        Result := t0;
+      end;
+
+    nkFieldAccess:
+      begin
+        // Lower object
+        t1 := LowerExpr(TAstFieldAccess(expr).Obj);
+        if t1 < 0 then
+          Exit;
+
+        // For now, emit as irLoadField with field name
+        // (proper field offset resolution would require struct info)
+        t0 := NewTemp;
+        instr.Op := irLoadField;
+        instr.Dest := t0;
+        instr.Src1 := t1;
+        instr.LabelName := TAstFieldAccess(expr).Field;
+        Emit(instr);
+        Result := t0;
+      end;
+
+    nkArrayLit:
+      begin
+        // Array literals are typically handled in statement context
+        // Return first element temp for now (or error)
+        if Length(TAstArrayLit(expr).Items) > 0 then
+          Result := LowerExpr(TAstArrayLit(expr).Items[0])
+        else
+          Result := -1;
+      end;
+
+  else
+    FDiag.Error('lowering: unsupported expression kind', expr.Span);
+    Result := -1;
+  end;
 end;
 
 function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;

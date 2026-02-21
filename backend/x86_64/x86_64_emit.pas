@@ -4,7 +4,7 @@ unit x86_64_emit;
 interface
 
 uses
-  SysUtils, Classes, bytes, ir;
+  SysUtils, Classes, bytes, ir, backend_types;
 
 type
   TLabelPos = record
@@ -357,19 +357,28 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   frameBytes: Integer;
   framePad: Integer;
   callPad: Integer;
-  // array operations
+   // array operations
   allocSize: Integer;
   elemIndex: Integer;
   elemOffset: Integer;
   pushBytes: Integer;
   restoreBytes: Integer;
+  savedPushBytes: Integer;
   // integer width helpers
   mask64: UInt64;
   sh: Integer;
-   argTemp3: Integer;
-   argTemp4: Integer;
-   argTemp5: Integer;
-   argTemp6: Integer;
+  argTemp3: Integer;
+  argTemp4: Integer;
+  argTemp5: Integer;
+  argTemp6: Integer;
+  // external symbol search
+  found: Boolean;
+  ei: Integer;
+  // diagnostic dump
+  dumpStart, dumpEnd, dumpLen, di: Integer;
+  dumpBuf: array of Byte;
+  fs: TFileStream;
+  fname: string;
 begin
   // reset patch arrays
   SetLength(FLeaPositions, 0);
@@ -1532,8 +1541,8 @@ begin
                if instr.ImmStr <> '' then
                begin
                  // add to FExternalSymbols if not present
-                 var found := False;
-                 for var ei := 0 to High(FExternalSymbols) do
+                 found := False;
+                 for ei := 0 to High(FExternalSymbols) do
                    if FExternalSymbols[ei].Name = instr.ImmStr then begin found := True; Break; end;
                  if not found then
                  begin
@@ -1665,10 +1674,6 @@ begin
   end;
 
   // diagnostic: dump emitted bytes per function for failing ABI tests
-  var dumpStart, dumpEnd, dumpLen, di: Integer;
-  var dumpBuf: array of Byte;
-  var fs: TFileStream;
-  var fname: string;
   // write slice for current function
   dumpStart := FLabelPositions[High(FLabelPositions)].Pos;
   dumpEnd := FCode.Size;

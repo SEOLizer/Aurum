@@ -44,6 +44,7 @@ type
     constructor Create(d: TDiagnostics; um: TUnitManager = nil);
     destructor Destroy; override;
     procedure Analyze(prog: TAstProgram);
+    procedure AnalyzeWithUnits(prog: TAstProgram; um: TUnitManager);
   end;
 
 implementation
@@ -894,6 +895,12 @@ begin
       PopScope;
     end;
   end;
+end;
+
+procedure TSema.AnalyzeWithUnits(prog: TAstProgram; um: TUnitManager);
+begin
+  FUnitManager := um;
+  Analyze(prog);
 end;
 
 end.
