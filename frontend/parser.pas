@@ -23,7 +23,6 @@ type
     // Parsing-Methoden
     function ParseTopDecl: TAstNode;
     function ParseFuncDecl(isPub: Boolean): TAstFuncDecl;
-    function ParseExternDecl: TAstFuncDecl;
     function ParseConDecl(isPub: Boolean): TAstConDecl;
     function ParseTypeDecl(isPub: Boolean): TAstTypeDecl;
     function ParseUnitDecl: TAstUnitDecl;
@@ -36,10 +35,8 @@ type
     function ParseRepeatUntilStmt: TAstRepeatUntil;
     function ParseAssignStmtOrExprStmt: TAstStmt;
 
-    // Expressions (Präzedenz): Nor -> Xor -> Or -> And -> Cmp -> Add -> Mul -> Unary -> Primary -> Postfix
+    // Expressions (Präzedenz): Or -> And -> Cmp -> Add -> Mul -> Unary -> Primary -> Postfix
     function ParseExpr: TAstExpr;
-    function ParseNorExpr: TAstExpr;
-    function ParseXorExpr: TAstExpr;
     function ParseOrExpr: TAstExpr;
     function ParseAndExpr: TAstExpr;
     function ParseCmpExpr: TAstExpr;
@@ -50,11 +47,9 @@ type
     function ParseCallOrIdent: TAstExpr;
     function ParsePostfix(base: TAstExpr): TAstExpr;
 
-    function ParseType: TLyxType;
+    function ParseTypeEx(out arrayLen: Integer): TAurumType;
+    function ParseType: TAurumType;
     function ParseParamList: TAstParamList;
-    function ParseParamListWithVarargs(out isVarArgs: Boolean): TAstParamList;
-    function ParseArrayLiteral: TAstExpr;
-    function ParseStructLiteral(const typeName: string): TAstExpr;
   public
     constructor Create(lexer: TLexer; diag: TDiagnostics);
     destructor Destroy; override;
@@ -174,18 +169,6 @@ begin
       Exit(nil);
     end;
   end;
-  if Check(tkExtern) then
-  begin
-    // extern function declaration
-    Advance; // consume 'extern'
-    if Check(tkFn) then
-      Exit(ParseExternDecl)
-    else
-    begin
-      FDiag.Error('expected fn after extern', FCurTok.Span);
-      Exit(nil);
-    end;
-  end;
   if Check(tkFn) then
     Exit(ParseFuncDecl(False));
   if Check(tkCon) then
@@ -201,7 +184,7 @@ function TParser.ParseFuncDecl(isPub: Boolean): TAstFuncDecl;
 var
   name: string;
   params: TAstParamList;
-  retType: TLyxType;
+  retType: TAurumType;
   body: TAstBlock;
 begin
   // fn
@@ -232,61 +215,13 @@ begin
     retType := atVoid; // default
 
   body := ParseBlock;
-  Result := TAstFuncDecl.Create(name, params, retType, body, FCurTok.Span, isPub, False);
-end;
-
-function TParser.ParseExternDecl: TAstFuncDecl;
-var
-  name: string;
-  params: TAstParamList;
-  retType: TLyxType;
-  isVarArgs: Boolean;
-  callingConv: string;
-begin
-  // Allow optional calling convention identifier before 'fn', e.g. 'extern c fn'
-  callingConv := '';
-  if Check(tkIdent) and (FCurTok.Value = 'c') then
-  begin
-    callingConv := 'c';
-    Advance; // consume 'c'
-  end;
-  Expect(tkFn);
-  if Check(tkIdent) then
-  begin
-    name := FCurTok.Value;
-    Advance;
-  end
-  else
-  begin
-    name := '<anon>';
-    FDiag.Error('expected function name', FCurTok.Span);
-  end;
-
-  Expect(tkLParen);
-  if not Check(tkRParen) then
-    params := ParseParamListWithVarargs(isVarArgs)
-  else
-  begin
-    params := nil;
-    isVarArgs := False;
-  end;
-  Expect(tkRParen);
-
-  if Accept(tkColon) then
-    retType := ParseType
-  else
-    retType := atVoid;
-
-  Expect(tkSemicolon);
-  // create function decl with no body and IsExtern flag
-  // For now, calling convention not parsed separately (empty)
-  Result := TAstFuncDecl.Create(name, params, retType, nil, FCurTok.Span, False, True, isVarArgs, 'c');
+  Result := TAstFuncDecl.Create(name, params, retType, body, FCurTok.Span, isPub);
 end;
 
 function TParser.ParseConDecl(isPub: Boolean): TAstConDecl;
 var
   name: string;
-  declType: TLyxType;
+  declType: TAurumType;
   initExpr: TAstExpr;
 begin
   Expect(tkCon);
@@ -311,9 +246,7 @@ end;
 function TParser.ParseTypeDecl(isPub: Boolean): TAstTypeDecl;
 var
   name: string;
-  declType: TLyxType;
-  fields: TAstTypeFieldList;
-  field: TAstTypeField;
+  declType: TAurumType;
 begin
   Expect(tkType);
   if Check(tkIdent) then
@@ -326,41 +259,16 @@ begin
     name := '<anon>';
     FDiag.Error('expected type name', FCurTok.Span);
   end;
-  // ':='
-  Expect(tkAssign);
-  // If next token is 'struct', parse field list
-  fields := nil;
-  if Accept(tkStruct) then
-  begin
-    Expect(tkLBrace);
-    while not Check(tkRBrace) and not Check(tkEOF) do
-    begin
-      if Check(tkIdent) then
-      begin
-        field.Name := FCurTok.Value; Advance;
-        Expect(tkColon);
-        field.FieldType := ParseType;
-        SetLength(fields, Length(fields) + 1);
-        fields[High(fields)] := field;
-        Expect(tkSemicolon);
-        Continue;
-      end
-      else
-      begin
-        FDiag.Error('expected field declaration in struct', FCurTok.Span);
-        Break;
-      end;
-    end;
-    Expect(tkRBrace);
-    declType := atStruct;
-  end
+  // '='
+  if Check(tkEq) then
+    Advance
   else
-    declType := ParseType;
-
+  begin
+    FDiag.Error('expected ''='' in type declaration', FCurTok.Span);
+  end;
+  declType := ParseType;
   Expect(tkSemicolon);
   Result := TAstTypeDecl.Create(name, declType, isPub, FCurTok.Span);
-  if declType = atStruct then
-    Result.SetStructFields(fields);
 end;
 
 function TParser.ParseUnitDecl: TAstUnitDecl;
@@ -497,11 +405,6 @@ var
   elseStmt: TAstStmt;
   bodyStmt: TAstStmt;
   vExpr: TAstExpr;
-  tryBlock: TAstBlock;
-  catchVarName: string;
-  catchTypeName: string;
-  catchType: TLyxType;
-  catchBlock: TAstBlock;
   cases: TAstCaseList;
   defaultBody: TAstStmt;
   caseObj: TAstCase;
@@ -513,7 +416,7 @@ begin
 
   if Check(tkIf) then
   begin
-    // if (Expr) Stmt [else Stmt] - supports else if chains
+    // if (Expr) Stmt [else Stmt]
     Advance; // if
     Expect(tkLParen);
     cond := ParseExpr;
@@ -521,29 +424,16 @@ begin
     thenStmt := Self.ParseStmt;
     elseStmt := nil;
     if Accept(tkElse) then
-    begin
-      // Support else if: if next token is 'if', parse it recursively
-      if Check(tkIf) then
-        elseStmt := Self.ParseStmt  // This creates the else-if chain
-      else
-        elseStmt := Self.ParseStmt;
-    end;
+      elseStmt := Self.ParseStmt;
     Exit(TAstIf.Create(cond, thenStmt, elseStmt, cond.Span));
   end;
 
   if Check(tkWhile) then
   begin
     Advance;
-    // Flexible while syntax: "while (condition)" or "while condition"
-    if Accept(tkLParen) then
-    begin
-      cond := ParseExpr;
-      Expect(tkRParen);
-    end
-    else
-    begin
-      cond := ParseExpr;
-    end;
+    Expect(tkLParen);
+    cond := ParseExpr;
+    Expect(tkRParen);
     bodyStmt := Self.ParseStmt;
     Exit(TAstWhile.Create(cond, bodyStmt, cond.Span));
   end;
@@ -601,46 +491,6 @@ begin
   if Check(tkRepeat) then
     Exit(ParseRepeatUntilStmt);
 
-  if Check(tkTry) then
-  begin
-    // try { ... } catch (e: Type) { ... }
-    Advance; // consume 'try'
-    tryBlock := ParseBlock;
-    catchVarName := '';
-    catchTypeName := '';
-    catchType := atUnresolved;
-    catchBlock := nil;
-    if Accept(tkCatch) then
-    begin
-      Expect(tkLParen);
-      if Check(tkIdent) then
-      begin
-        catchVarName := FCurTok.Value; Advance;
-      end
-      else
-      begin
-        FDiag.Error('expected identifier in catch', FCurTok.Span);
-      end;
-      Expect(tkColon);
-      catchType := ParseType;
-      // If type was identifier, capture its name
-      if FCurTok.Kind <> tkError then
-        catchTypeName := '';
-      Expect(tkRParen);
-      catchBlock := ParseBlock;
-    end
-    else
-      FDiag.Error('expected catch after try', FCurTok.Span);
-    Exit(TAstTry.Create(tryBlock, catchVarName, catchType, catchTypeName, catchBlock, tryBlock.Span));
-  end;
-
-  if Check(tkBreak) then
-  begin
-    Advance;
-    Expect(tkSemicolon);
-    Exit(TAstBreak.Create(FCurTok.Span));
-  end;
-
   if Check(tkReturn) then
   begin
     Advance;
@@ -655,16 +505,6 @@ begin
       Expect(tkSemicolon);
       Exit(TAstReturn.Create(vExpr, vExpr.Span));
     end;
-    end;
-
-  if Check(tkThrow) then
-  begin
-    Advance; // 'throw'
-    Expect(tkLParen);
-    vExpr := ParseExpr;
-    Expect(tkRParen);
-    Expect(tkSemicolon);
-    Exit(TAstThrow.Create(vExpr, vExpr.Span));
   end;
 
   if Check(tkLBrace) then
@@ -678,9 +518,9 @@ function TParser.ParseVarLetCoDecl: TAstVarDecl;
 var
   storage: TStorageKlass;
   name: string;
-  declType: TLyxType;
-  declTypeName: string;
+  declType: TAurumType;
   initExpr: TAstExpr;
+  arrayLen: Integer;
 begin
   if Accept(tkVar) then storage := skVar
   else if Accept(tkLet) then storage := skLet
@@ -697,18 +537,13 @@ begin
   end;
 
   Expect(tkColon);
-  // capture type name if it's an identifier
-  if Check(tkIdent) then
-    declTypeName := FCurTok.Value
-  else
-    declTypeName := '';
-  declType := ParseType;
+  declType := ParseTypeEx(arrayLen);
 
   Expect(tkAssign);
   initExpr := ParseExpr;
   Expect(tkSemicolon);
 
-  Result := TAstVarDecl.Create(storage, name, declType, declTypeName, initExpr, initExpr.Span);
+  Result := TAstVarDecl.Create(storage, name, declType, arrayLen, initExpr, initExpr.Span);
 end;
 
 function TParser.ParseForStmt: TAstFor;
@@ -764,10 +599,6 @@ var
   expr: TAstExpr;
   name: string;
   valExpr: TAstExpr;
-  arrExpr: TAstExpr;
-  indexExpr: TAstExpr;
-  objExpr: TAstExpr;
-  fieldName: string;
 begin
   expr := ParseExpr;
   // Assignment pattern: ident := expr ;
@@ -782,27 +613,16 @@ begin
     expr.Free;
     Exit(TAstAssign.Create(name, valExpr, valExpr.Span));
   end
-  else if (expr is TAstIndexAccess) and Check(tkAssign) then
+  else if ((expr is TAstFieldAccess) or (expr is TAstIndexAccess)) and Check(tkAssign) then
   begin
-    // transfer ownership from index access to array assign
-    TAstArrayIndex(expr).TransferOwnership(arrExpr, indexExpr);
-    expr.Free; // free the old TAstArrayIndex node
-
+    // TODO: full LValue assignment for field/index access
+    FDiag.Error('field/index assignment not yet supported', expr.Span);
     Advance; // consume ':='
     valExpr := ParseExpr;
     Expect(tkSemicolon);
-    Exit(TAstArrayAssign.Create(arrExpr, indexExpr, valExpr, valExpr.Span));
-  end
-  else if (expr is TAstFieldAccess) and Check(tkAssign) then
-  begin
-    // Field assignment: obj.field := value
-    // Transfer ownership from field access before freeing it
-    TAstFieldAccess(expr).TransferOwnership(objExpr, fieldName);
-    Advance; // consume ':='
-    valExpr := ParseExpr;
-    Expect(tkSemicolon);
-    Result := TAstFieldAssign.Create(objExpr, fieldName, valExpr, valExpr.Span);
     expr.Free;
+    valExpr.Free;
+    Exit(TAstExprStmt.Create(TAstIntLit.Create(0, FCurTok.Span), FCurTok.Span));
   end
   else
   begin
@@ -815,31 +635,7 @@ end;
 
 function TParser.ParseExpr: TAstExpr;
 begin
-  Result := ParseNorExpr;
-end;
-
-function TParser.ParseNorExpr: TAstExpr;
-var
-  rhs: TAstExpr;
-begin
-  Result := ParseXorExpr;
-  while Accept(tkNor) do
-  begin
-    rhs := ParseXorExpr;
-    Result := TAstBinOp.Create(tkNor, Result, rhs, Result.Span);
-  end;
-end;
-
-function TParser.ParseXorExpr: TAstExpr;
-var
-  rhs: TAstExpr;
-begin
   Result := ParseOrExpr;
-  while Accept(tkXor) do
-  begin
-    rhs := ParseOrExpr;
-    Result := TAstBinOp.Create(tkXor, Result, rhs, Result.Span);
-  end;
 end;
 
 function TParser.ParseOrExpr: TAstExpr;
@@ -914,68 +710,34 @@ var
   operand: TAstExpr;
   span: TSourceSpan;
   value: Int64;
-  s: string;
-  b: Boolean;
 begin
-  // Support nested/unlimited prefix operators by recursion.
-  // Handle unary '-' and '!' with constant folding when possible.
   if Check(tkMinus) then
   begin
     span := FCurTok.Span;
-    Advance; // consume '-'
-    operand := ParseUnaryExpr; // allow nested prefixes
-    // constant folding for integers
-    if operand is TAstIntLit then
+    Advance;
+    if Check(tkIntLit) then
     begin
-      value := -TAstIntLit(operand).Value;
-      operand.Free;
+      // fold unary minus applied directly to literal
+      value := -StrToInt64Def(FCurTok.Value, 0);
+      span := FCurTok.Span;
+      Advance;
       Exit(TAstIntLit.Create(value, span));
-    end
-    else if operand is TAstFloatLit then
-    begin
-      s := TAstFloatLit(operand).Value;
-      operand.Free;
-      if (Length(s) > 0) and (s[1] = '-') then
-        s := Copy(s, 2, MaxInt)
-      else
-        s := '-' + s;
-      Exit(TAstFloatLit.Create(s, span));
-    end
-    else
-    begin
-      Result := TAstUnaryOp.Create(tkMinus, operand, span);
-      Exit;
     end;
+    operand := ParseUnaryExpr;
+    Result := TAstUnaryOp.Create(tkMinus, operand, operand.Span);
+    Exit;
   end;
 
   if Check(tkNot) then
   begin
     op := FCurTok.Kind;
-    Advance; // consume '!'
+    Advance;
     operand := ParseUnaryExpr;
-    if operand is TAstBoolLit then
-    begin
-      b := TAstBoolLit(operand).Value;
-      span := operand.Span;
-      operand.Free;
-      Exit(TAstBoolLit.Create(not b, span));
-    end
-    else
-    begin
-      Result := TAstUnaryOp.Create(op, operand, operand.Span);
-      Exit;
-    end;
+    Result := TAstUnaryOp.Create(op, operand, operand.Span);
+    Exit;
   end;
 
-  // fallback: primary expression
   Result := ParsePrimary;
-
-  // Check for cast: expr as Type
-  if Check(tkAs) then
-  begin
-    Advance;  // consume 'as'
-    Result := TAstCast.Create(Result, ParseType, Result.Span);
-  end;
 end;
 
 function TParser.ParsePrimary: TAstExpr;
@@ -986,6 +748,8 @@ var
   b: Boolean;
   e: TAstExpr;
   dummy: TAstIntLit;
+  items: TAstExprList;
+  a: TAstExpr;
 begin
   if Check(tkIntLit) then
   begin
@@ -993,14 +757,6 @@ begin
     span := FCurTok.Span;
     Advance;
     Exit(TAstIntLit.Create(v, span));
-  end;
-
-  if Check(tkFloatLit) then
-  begin
-    s := FCurTok.Value;
-    span := FCurTok.Span;
-    Advance;
-    Exit(TAstFloatLit.Create(s, span));
   end;
 
   if Check(tkStrLit) then
@@ -1033,15 +789,31 @@ begin
   if Check(tkIdent) then
     Exit(ParseCallOrIdent);
 
+  if Accept(tkLBracket) then
+  begin
+    // array literal: [expr, expr, ...]
+    items := nil;
+    if not Check(tkRBracket) then
+    begin
+      while True do
+      begin
+        a := ParseExpr;
+        SetLength(items, Length(items) + 1);
+        items[High(items)] := a;
+        if Accept(tkComma) then Continue;
+        Break;
+      end;
+    end;
+    Expect(tkRBracket);
+    Exit(TAstArrayLit.Create(items, FCurTok.Span));
+  end;
+
   if Accept(tkLParen) then
   begin
     e := ParseExpr;
     Expect(tkRParen);
     Exit(e);
   end;
-
-  if Check(tkLBracket) then
-    Exit(ParseArrayLiteral);
 
   // unexpected primary
   FDiag.Error('unexpected token in expression: ' + TokenKindToStr(FCurTok.Kind), FCurTok.Span);
@@ -1078,11 +850,6 @@ begin
     end;
     Expect(tkRParen);
     Result := ParsePostfix(TAstCall.Create(name, args, span));
-  end
-  else if Check(tkLBrace) then
-  begin
-    // Struct-Literal: TypeName { field: value, ... }
-    Result := ParsePostfix(ParseStructLiteral(name));
   end
   else
     Result := ParsePostfix(TAstIdent.Create(name, span));
@@ -1121,39 +888,37 @@ begin
   end;
 end;
 
-function TParser.ParseType: TLyxType;
+function TParser.ParseTypeEx(out arrayLen: Integer): TAurumType;
 var s: string;
-    dummyType: TLyxType;
-    braceCount: Integer;
 begin
-  if Accept(tkArray) then // Check for array keyword first
-  begin
-    Result := atArray;
-    Exit;
-  end;
-
-  if Accept(tkStruct) then // Check for struct keyword
-  begin
-    // Parse struct body { field: type; ... }
-    // For now, just consume the syntax and return atStruct
-    Expect(tkLBrace);
-    // Skip struct body: consume tokens until matching }
-    braceCount := 1;
-    while (braceCount > 0) and not Check(tkEOF) do
-    begin
-      Advance; // move to next token
-      if Check(tkLBrace) then Inc(braceCount)
-      else if Check(tkRBrace) then Dec(braceCount);
-    end;
-    Result := atStruct;
-    Exit;
-  end;
-
+  arrayLen := 0;
   if Check(tkIdent) then
   begin
     s := FCurTok.Value;
     Advance;
-    Result := StrToLyxType(s);
+    Result := StrToAurumType(s);
+    // optional array suffix: [N] or []
+    if Accept(tkLBracket) then
+    begin
+      if Check(tkRBracket) then
+      begin
+        // [] dynamic array
+        arrayLen := -1;
+        Advance; // consume ]
+      end
+      else if Check(tkIntLit) then
+      begin
+        arrayLen := StrToIntDef(FCurTok.Value, 0);
+        Advance;
+        Expect(tkRBracket);
+      end
+      else
+      begin
+        FDiag.Error('expected integer literal or ] in array type', FCurTok.Span);
+        // try to recover
+        if Check(tkRBracket) then Advance;
+      end;
+    end;
   end
   else
   begin
@@ -1162,72 +927,23 @@ begin
   end;
 end;
 
-function TParser.ParseArrayLiteral: TAstExpr;
-var
-  items: TAstExprList;
-  item: TAstExpr;
-  span: TSourceSpan;
+function TParser.ParseType: TAurumType;
+var dummy: Integer;
 begin
-  span := FCurTok.Span;
-  Expect(tkLBracket);
-  items := nil;
-  while not Check(tkRBracket) and not Check(tkEOF) do
-  begin
-    item := ParseExpr;
-    SetLength(items, Length(items) + 1);
-    items[High(items)] := item;
-    if not Accept(tkComma) then Break;
-  end;
-  Expect(tkRBracket);
-  Result := TAstArrayLit.Create(items, span);
-end;
-
-function TParser.ParseStructLiteral(const typeName: string): TAstExpr;
-var
-  span: TSourceSpan;
-  fieldName: string;
-  fieldValue: TAstExpr;
-begin
-  span := FCurTok.Span;
-  Result := TAstStructLit.Create(typeName, span);
-  Expect(tkLBrace);
-  while not Check(tkRBrace) and not Check(tkEOF) do
-  begin
-    if Check(tkIdent) then
-    begin
-      fieldName := FCurTok.Value;
-      Advance;
-      Expect(tkColon);
-      fieldValue := ParseExpr;
-      TAstStructLit(Result).AddField(fieldName, fieldValue);
-      if not Accept(tkComma) then Break;
-    end
-    else
-    begin
-      FDiag.Error('expected field name in struct literal', FCurTok.Span);
-      Break;
-    end;
-  end;
-  Expect(tkRBrace);
+  Result := ParseTypeEx(dummy);
 end;
 
 function TParser.ParseParamList: TAstParamList;
 var
   params: TAstParamList;
   name: string;
-  typ: TLyxType;
+  typ: TAurumType;
   p: TAstParam;
+  arrLen: Integer;
 begin
   params := nil;
   while not Check(tkRParen) and not Check(tkEOF) do
   begin
-    // varargs (ellipsis)
-    if Check(tkEllipsis) then
-    begin
-      // do not consume here; caller will handle it after the parameter list
-      Break;
-    end;
-
     if Check(tkIdent) then
     begin
       name := FCurTok.Value; Advance;
@@ -1237,45 +953,9 @@ begin
       name := '<anon>'; FDiag.Error('expected parameter name', FCurTok.Span);
     end;
     Expect(tkColon);
-    typ := ParseType;
-    p.Name := name; p.ParamType := typ; p.Span := FCurTok.Span;
-    SetLength(params, Length(params) + 1);
-    params[High(params)] := p;
-    if Accept(tkComma) then Continue else Break;
-  end;
-  Result := params;
-end;
-
-function TParser.ParseParamListWithVarargs(out isVarArgs: Boolean): TAstParamList;
-var
-  params: TAstParamList;
-  name: string;
-  typ: TLyxType;
-  p: TAstParam;
-begin
-  params := nil;
-  isVarArgs := False;
-  
-  while not Check(tkRParen) and not Check(tkEOF) do
-  begin
-    // varargs (ellipsis)
-    if Check(tkEllipsis) then
-    begin
-      isVarArgs := True;
-      Advance; // consume ellipsis
-      Break; // no more parameters after ...
-    end;
-
-    if Check(tkIdent) then
-    begin
-      name := FCurTok.Value; Advance;
-    end
-    else
-    begin
-      name := '<anon>'; FDiag.Error('expected parameter name', FCurTok.Span);
-    end;
-    Expect(tkColon);
-    typ := ParseType;
+    typ := ParseTypeEx(arrLen);
+    if arrLen <> 0 then
+      FDiag.Error('array parameter types not yet supported', FCurTok.Span);
     p.Name := name; p.ParamType := typ; p.Span := FCurTok.Span;
     SetLength(params, Length(params) + 1);
     params[High(params)] := p;

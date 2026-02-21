@@ -8,9 +8,9 @@ uses
   diag, lexer;
 
 type
-  { --- Lyx-Typsystem --- }
+  { --- Aurum-Typsystem --- }
 
-  TLyxType = (
+  TAurumType = (
     atUnresolved,
     // signed integer widths
     atInt8, atInt16, atInt32, atInt64,
@@ -18,22 +18,13 @@ type
     atUInt8, atUInt16, atUInt32, atUInt64,
     // platform-size integers
     atISize, atUSize,
-    // char type
-    atChar,
-    // floating-point types
+    // floating-point
     atF32, atF64,
+    // char
+    atChar,
     atBool,
     atVoid,
-    atPChar,
-    // date/time types
-    atDate,      // days since epoch (int32)
-    atTime,      // seconds since midnight (int32)
-    atDateTime,  // seconds since epoch (int64)
-    atTimestamp, // microseconds since epoch (int64)
-    // array types (placeholder)
-    atArray,
-    // struct type (user-defined)
-    atStruct
+    atPChar
   );
 
   { --- Speicherklassen --- }
@@ -43,13 +34,13 @@ type
   { --- Knotenarten (für schnellen Typcheck ohne 'is') --- }
 
   TNodeKind = (
-     // Ausdrücke
-     nkIntLit, nkFloatLit, nkStrLit, nkCharLit, nkBoolLit, nkIdent,
-     nkBinOp, nkUnaryOp, nkCall, nkArrayLit, nkArrayIndex,
-     nkFieldAccess, nkIndexAccess, nkStructLit, nkFieldAssign, nkCast,
+    // Ausdrücke
+    nkIntLit, nkStrLit, nkBoolLit, nkCharLit, nkIdent,
+    nkBinOp, nkUnaryOp, nkCall, nkArrayLit,
+    nkFieldAccess, nkIndexAccess,
     // Statements
-    nkVarDecl, nkAssign, nkArrayAssign, nkIf, nkWhile, nkFor, nkRepeatUntil,
-    nkReturn, nkBreak, nkSwitch, nkTry, nkThrow,
+    nkVarDecl, nkAssign, nkIf, nkWhile, nkFor, nkRepeatUntil,
+    nkReturn, nkBreak, nkSwitch,
     nkBlock, nkExprStmt,
     // Top-Level
     nkFuncDecl, nkConDecl, nkTypeDecl,
@@ -88,10 +79,10 @@ type
 
   TAstExpr = class(TAstNode)
   private
-    FResolvedType: TLyxType;
+    FResolvedType: TAurumType;
   public
     constructor Create(aKind: TNodeKind; aSpan: TSourceSpan);
-    property ResolvedType: TLyxType read FResolvedType write FResolvedType;
+    property ResolvedType: TAurumType read FResolvedType write FResolvedType;
   end;
 
   { Ganzzahl-Literal: 42 }
@@ -103,15 +94,6 @@ type
     property Value: Int64 read FValue;
   end;
 
-  { Float-Literal: 3.14 }
-  TAstFloatLit = class(TAstExpr)
-  private
-    FValue: string;
-  public
-    constructor Create(const aValue: string; aSpan: TSourceSpan);
-    property Value: string read FValue;
-  end;
-
   { String-Literal: "hello\n" }
   TAstStrLit = class(TAstExpr)
   private
@@ -120,8 +102,6 @@ type
     constructor Create(const aValue: string; aSpan: TSourceSpan);
     property Value: string read FValue;
   end;
-
-
 
   { Bool-Literal: true / false }
   TAstBoolLit = class(TAstExpr)
@@ -136,11 +116,9 @@ type
   TAstIdent = class(TAstExpr)
   private
     FName: string;
-    FDeclTypeName: string;
   public
     constructor Create(const aName: string; aSpan: TSourceSpan);
     property Name: string read FName;
-    property DeclTypeName: string read FDeclTypeName write FDeclTypeName;
   end;
 
   { Binärer Operator: a + b, x == y }
@@ -182,30 +160,9 @@ type
     destructor Destroy; override;
     property Name: string read FName;
     property Args: TAstExprList read FArgs;
-   end;
-
-   { Type-Cast: expr as Type }
-   TAstCast = class(TAstExpr)
-   private
-     FExpr: TAstExpr;
-     FTargetType: TLyxType;
-   public
-     constructor Create(aExpr: TAstExpr; aTargetType: TLyxType; aSpan: TSourceSpan);
-     destructor Destroy; override;
-     property Expr: TAstExpr read FExpr;
-     property TargetType: TLyxType read FTargetType;
-   end;
-
-   { Char-Literal: 'A' }
-   TAstCharLit = class(TAstExpr)
-  private
-    FValue: Char;
-  public
-    constructor Create(aValue: Char; aSpan: TSourceSpan);
-    property Value: Char read FValue;
   end;
 
-  { Array-Literal: [1, 2, 3] }
+  { Array-Literal: [expr, expr, ...] }
   TAstArrayLit = class(TAstExpr)
   private
     FItems: TAstExprList;
@@ -215,18 +172,13 @@ type
     property Items: TAstExprList read FItems;
   end;
 
-  { Array-Index: arr[i] }
-  TAstArrayIndex = class(TAstExpr)
-  protected
-    FArray: TAstExpr;
-    FIndex: TAstExpr;
+  { Char-Literal: 'A' }
+  TAstCharLit = class(TAstExpr)
+  private
+    FValue: Char;
   public
-    constructor Create(aArray: TAstExpr; aIndex: TAstExpr; aSpan: TSourceSpan);
-    destructor Destroy; override;
-    property ArrayExpr: TAstExpr read FArray;
-    property Index: TAstExpr read FIndex;
-    // Transfer ownership for parser (used in array assignment)
-    procedure TransferOwnership(out AArray: TAstExpr; out AIndex: TAstExpr);
+    constructor Create(aValue: Char; aSpan: TSourceSpan);
+    property Value: Char read FValue;
   end;
 
   { Feldzugriff: expr.field }
@@ -239,11 +191,9 @@ type
     destructor Destroy; override;
     property Obj: TAstExpr read FObj;
     property Field: string read FField;
-    // Transfer ownership for parser (used in field assignment)
-    procedure TransferOwnership(out AObj: TAstExpr; out AField: string);
   end;
 
-  { Indexzugriff: expr[index] - generic version }
+  { Indexzugriff: expr[index] }
   TAstIndexAccess = class(TAstExpr)
   private
     FObj: TAstExpr;
@@ -253,24 +203,6 @@ type
     destructor Destroy; override;
     property Obj: TAstExpr read FObj;
     property Index: TAstExpr read FIndex;
-  end;
-
-  { Struct-Literal: Point { x: 10, y: 20 } }
-  TAstStructLit = class(TAstExpr)
-  private
-    FTypeName: string;
-    FFields: array of record
-      Name: string;
-      Value: TAstExpr;
-    end;
-  public
-    constructor Create(const aTypeName: string; aSpan: TSourceSpan);
-    destructor Destroy; override;
-    procedure AddField(const aName: string; aValue: TAstExpr);
-    property TypeName: string read FTypeName;
-    function FieldCount: Integer;
-    function GetFieldName(i: Integer): string;
-    function GetFieldValue(i: Integer): TAstExpr;
   end;
 
   // ================================================================
@@ -287,63 +219,34 @@ type
   private
     FStorage: TStorageKlass;
     FName: string;
-    FDeclType: TLyxType;
-    FDeclTypeName: string;
+    FDeclType: TAurumType; // element type for arrays
+    FArrayLen: Integer;    // 0 = not array, >0 = static length, -1 = dynamic array ([]) 
     FInitExpr: TAstExpr;
   public
     constructor Create(aStorage: TStorageKlass; const aName: string;
-      aDeclType: TLyxType; const aDeclTypeName: string; aInitExpr: TAstExpr; aSpan: TSourceSpan);
+      aDeclType: TAurumType; aArrayLen: Integer; aInitExpr: TAstExpr; aSpan: TSourceSpan);
     destructor Destroy; override;
     property Storage: TStorageKlass read FStorage;
     property Name: string read FName;
-    property DeclType: TLyxType read FDeclType;
-    property DeclTypeName: string read FDeclTypeName;
+    property DeclType: TAurumType read FDeclType;
+    property ArrayLen: Integer read FArrayLen;
     property InitExpr: TAstExpr read FInitExpr;
   end;
 
-   { Zuweisung: x := expr; }
-   TAstAssign = class(TAstStmt)
-   private
-     FName: string;
-     FValue: TAstExpr;
-   public
-     constructor Create(const aName: string; aValue: TAstExpr;
-       aSpan: TSourceSpan);
-     destructor Destroy; override;
-     property Name: string read FName;
-     property Value: TAstExpr read FValue;
-   end;
+  { Zuweisung: x := expr; }
+  TAstAssign = class(TAstStmt)
+  private
+    FName: string;
+    FValue: TAstExpr;
+  public
+    constructor Create(const aName: string; aValue: TAstExpr;
+      aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property Name: string read FName;
+    property Value: TAstExpr read FValue;
+  end;
 
-   { Array-Zuweisung: arr[i] := expr; }
-   TAstArrayAssign = class(TAstStmt)
-   private
-     FArray: TAstExpr;
-     FIndex: TAstExpr;
-     FValue: TAstExpr;
-   public
-     constructor Create(aArray: TAstExpr; aIndex: TAstExpr; aValue: TAstExpr;
-       aSpan: TSourceSpan);
-     destructor Destroy; override;
-      property ArrayExpr: TAstExpr read FArray;
-      property Index: TAstExpr read FIndex;
-      property Value: TAstExpr read FValue;
-    end;
-
-    { Feld-Zuweisung: obj.field := expr; }
-    TAstFieldAssign = class(TAstStmt)
-    private
-      FObj: TAstExpr;
-      FField: string;
-      FValue: TAstExpr;
-    public
-      constructor Create(aObj: TAstExpr; const aField: string; aValue: TAstExpr; aSpan: TSourceSpan);
-      destructor Destroy; override;
-      property Obj: TAstExpr read FObj;
-      property Field: string read FField;
-      property Value: TAstExpr read FValue;
-    end;
-
-   { If-Statement: if (cond) thenStmt [else elseStmt] }
+  { If-Statement: if (cond) thenStmt [else elseStmt] }
   TAstIf = class(TAstStmt)
   private
     FCond: TAstExpr;
@@ -452,34 +355,6 @@ type
     property Stmts: TAstStmtList read FStmts;
   end;
 
-  { Try/Catch: try { ... } catch (e: Type) { ... } }
-  TAstTry = class(TAstStmt)
-  private
-    FTryBlock: TAstBlock;
-    FCatchVarName: string;
-    FCatchType: TLyxType;
-    FCatchTypeName: string;
-    FCatchBlock: TAstBlock;
-  public
-    constructor Create(aTryBlock: TAstBlock; const aCatchVar: string; aCatchType: TLyxType; const aCatchTypeName: string; aCatchBlock: TAstBlock; aSpan: TSourceSpan);
-    destructor Destroy; override;
-    property TryBlock: TAstBlock read FTryBlock;
-    property CatchVarName: string read FCatchVarName;
-    property CatchType: TLyxType read FCatchType;
-    property CatchTypeName: string read FCatchTypeName;
-    property CatchBlock: TAstBlock read FCatchBlock;
-  end;
-
-  { Throw statement: throw(expr); }
-  TAstThrow = class(TAstStmt)
-  private
-    FExpr: TAstExpr;
-  public
-    constructor Create(aExpr: TAstExpr; aSpan: TSourceSpan);
-    destructor Destroy; override;
-    property Expr: TAstExpr read FExpr;
-  end;
-
   { Expression-Statement: expr; }
   TAstExprStmt = class(TAstStmt)
   private
@@ -497,7 +372,7 @@ type
   { Funktionsparameter }
   TAstParam = record
     Name: string;
-    ParamType: TLyxType;
+    ParamType: TAurumType;
     Span: TSourceSpan;
   end;
   TAstParamList = array of TAstParam;
@@ -507,65 +382,47 @@ type
   private
     FName: string;
     FParams: TAstParamList;
-    FReturnType: TLyxType;
+    FReturnType: TAurumType;
     FBody: TAstBlock;
     FIsPublic: Boolean;
-    FIsExtern: Boolean;
-    FIsVarArgs: Boolean;
-    FCallingConv: string;
   public
     constructor Create(const aName: string; const aParams: TAstParamList;
-      aReturnType: TLyxType; aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False; aIsExtern: Boolean = False; aIsVarArgs: Boolean = False; const aCallingConv: string = '');
+      aReturnType: TAurumType; aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False);
     destructor Destroy; override;
     property Name: string read FName;
     property Params: TAstParamList read FParams;
-    property ReturnType: TLyxType read FReturnType;
+    property ReturnType: TAurumType read FReturnType;
     property Body: TAstBlock read FBody;
     property IsPublic: Boolean read FIsPublic;
-    property IsExtern: Boolean read FIsExtern;
-    property IsVarArgs: Boolean read FIsVarArgs;
-    property CallingConv: string read FCallingConv;
   end;
 
   { Con-Deklaration (Top-Level): con NAME: type := constExpr; }
   TAstConDecl = class(TAstNode)
   private
     FName: string;
-    FDeclType: TLyxType;
+    FDeclType: TAurumType;
     FInitExpr: TAstExpr;
   public
-    constructor Create(const aName: string; aDeclType: TLyxType;
+    constructor Create(const aName: string; aDeclType: TAurumType;
       aInitExpr: TAstExpr; aSpan: TSourceSpan);
     destructor Destroy; override;
     property Name: string read FName;
-    property DeclType: TLyxType read FDeclType;
+    property DeclType: TAurumType read FDeclType;
     property InitExpr: TAstExpr read FInitExpr;
   end;
 
   { Type-Deklaration (Top-Level): type Name = Type; }
-  TAstTypeField = record
-    Name: string;
-    FieldType: TLyxType;
-  end;
-  TAstTypeFieldList = array of TAstTypeField;
-
   TAstTypeDecl = class(TAstNode)
   private
     FName: string;
-    FDeclType: TLyxType;
+    FDeclType: TAurumType;
     FIsPublic: Boolean;
-    FIsStruct: Boolean;
-    FFields: TAstTypeFieldList;
   public
-    constructor Create(const aName: string; aDeclType: TLyxType;
+    constructor Create(const aName: string; aDeclType: TAurumType;
       aPublic: Boolean; aSpan: TSourceSpan);
-    destructor Destroy; override;
-    procedure SetStructFields(const fields: TAstTypeFieldList);
     property Name: string read FName;
-    property DeclType: TLyxType read FDeclType;
+    property DeclType: TAurumType read FDeclType;
     property IsPublic: Boolean read FIsPublic;
-    property IsStruct: Boolean read FIsStruct;
-    property Fields: TAstTypeFieldList read FFields;
   end;
 
   { Unit-Deklaration: unit path.to.name; }
@@ -610,8 +467,8 @@ type
 
 { --- Hilfsfunktionen --- }
 
-function LyxTypeToStr(t: TLyxType): string;
-function StrToLyxType(const s: string): TLyxType;
+function AurumTypeToStr(t: TAurumType): string;
+function StrToAurumType(const s: string): TAurumType;
 function StorageKlassToStr(sk: TStorageKlass): string;
 function NodeKindToStr(nk: TNodeKind): string;
 
@@ -619,7 +476,7 @@ implementation
 
 { --- Hilfsfunktionen --- }
 
-function LyxTypeToStr(t: TLyxType): string;
+function AurumTypeToStr(t: TAurumType): string;
 begin
   case t of
     atUnresolved: Result := '<unresolved>';
@@ -633,23 +490,18 @@ begin
     atUInt64:     Result := 'uint64';
     atISize:      Result := 'isize';
     atUSize:      Result := 'usize';
-    atChar:       Result := 'char';
     atF32:        Result := 'f32';
     atF64:        Result := 'f64';
+    atChar:       Result := 'char';
     atBool:       Result := 'bool';
     atVoid:       Result := 'void';
     atPChar:      Result := 'pchar';
-    atDate:       Result := 'date';
-    atTime:       Result := 'time';
-    atDateTime:   Result := 'datetime';
-    atTimestamp:  Result := 'timestamp';
-    atArray:      Result := 'array';
   else
     Result := '<unknown>';
   end;
 end;
 
-function StrToLyxType(const s: string): TLyxType;
+function StrToAurumType(const s: string): TAurumType;
 begin
   case s of
     'int8':   Result := atInt8;
@@ -663,18 +515,13 @@ begin
     'uint64': Result := atUInt64;
     'isize':  Result := atISize;
     'usize':  Result := atUSize;
-    'char':   Result := atChar;
     'f32':    Result := atF32;
     'f64':    Result := atF64;
+    'char':   Result := atChar;
     'bool':   Result := atBool;
     'void':   Result := atVoid;
-    'pchar':      Result := atPChar;
-    'string':     Result := atPChar; // map string to pchar for now
-    'date':       Result := atDate;
-    'time':       Result := atTime;
-    'datetime':   Result := atDateTime;
-    'timestamp':  Result := atTimestamp;
-    'array':      Result := atArray;
+    'pchar':  Result := atPChar;
+    'string': Result := atPChar; // map string to pchar for now
   else
     Result := atUnresolved;
   end;
@@ -694,22 +541,18 @@ function NodeKindToStr(nk: TNodeKind): string;
 begin
   case nk of
     nkIntLit:      Result := 'IntLit';
-    nkFloatLit:    Result := 'FloatLit';
     nkStrLit:      Result := 'StrLit';
-    nkCharLit:     Result := 'CharLit';
     nkBoolLit:     Result := 'BoolLit';
+    nkCharLit:     Result := 'CharLit';
     nkIdent:       Result := 'Ident';
     nkBinOp:       Result := 'BinOp';
     nkUnaryOp:     Result := 'UnaryOp';
-     nkCall:        Result := 'Call';
-     nkCast:        Result := 'Cast';
-     nkArrayLit:    Result := 'ArrayLit';
-    nkArrayIndex:  Result := 'ArrayIndex';
+    nkCall:        Result := 'Call';
+    nkArrayLit:    Result := 'ArrayLit';
     nkFieldAccess: Result := 'FieldAccess';
     nkIndexAccess: Result := 'IndexAccess';
     nkVarDecl:     Result := 'VarDecl';
     nkAssign:      Result := 'Assign';
-    nkArrayAssign: Result := 'ArrayAssign';
     nkIf:          Result := 'If';
     nkWhile:       Result := 'While';
     nkFor:         Result := 'For';
@@ -777,23 +620,6 @@ begin
 end;
 
 // ================================================================
-// TAstFloatLit
-// ================================================================
-
-constructor TAstFloatLit.Create(const aValue: string; aSpan: TSourceSpan);
-begin
-  inherited Create(nkFloatLit, aSpan);
-  FValue := aValue;
-  FResolvedType := atF64; // default zu double precision
-end;
-
-// ================================================================
-// TAstCharLit
-// ================================================================
-
-
-
-// ================================================================
 // TAstBoolLit
 // ================================================================
 
@@ -812,7 +638,6 @@ constructor TAstIdent.Create(const aName: string; aSpan: TSourceSpan);
 begin
   inherited Create(nkIdent, aSpan);
   FName := aName;
-  FDeclTypeName := '';
 end;
 
 // ================================================================
@@ -875,37 +700,7 @@ begin
   inherited Destroy;
 end;
 
-// ================================================================
-// TAstCast
-// ================================================================
-
-constructor TAstCast.Create(aExpr: TAstExpr; aTargetType: TLyxType; aSpan: TSourceSpan);
-begin
-  inherited Create(nkCast, aSpan);
-  FExpr := aExpr;
-  FTargetType := aTargetType;
-end;
-
-destructor TAstCast.Destroy;
-begin
-  FExpr.Free;
-  inherited Destroy;
-end;
-
-// ================================================================
-// TAstStmt
-// ================================================================
-
-constructor TAstStmt.Create(aKind: TNodeKind; aSpan: TSourceSpan);
-begin
-  inherited Create(aKind, aSpan);
-end;
-
-// ================================================================
-// TAstArrayLit
-// ================================================================
-
-constructor TAstArrayLit.Create(const aItems: TAstExprList; aSpan: TSourceSpan);
+  constructor TAstArrayLit.Create(const aItems: TAstExprList; aSpan: TSourceSpan);
 begin
   inherited Create(nkArrayLit, aSpan);
   FItems := aItems;
@@ -922,25 +717,36 @@ begin
 end;
 
 // ================================================================
+// TAstStmt
+// ================================================================
+
+constructor TAstStmt.Create(aKind: TNodeKind; aSpan: TSourceSpan);
+begin
+  inherited Create(aKind, aSpan);
+end;
+
+// ================================================================
 // TAstVarDecl
 // ================================================================
 
-constructor TAstVarDecl.Create(aStorage: TStorageKlass; const aName: string; aDeclType: TLyxType; const aDeclTypeName: string; aInitExpr: TAstExpr; aSpan: TSourceSpan);
+constructor TAstVarDecl.Create(aStorage: TStorageKlass;
+  const aName: string; aDeclType: TAurumType; aArrayLen: Integer; aInitExpr: TAstExpr;
+  aSpan: TSourceSpan);
 begin
   inherited Create(nkVarDecl, aSpan);
   FStorage := aStorage;
   FName := aName;
   FDeclType := aDeclType;
-  FDeclTypeName := aDeclTypeName;
+  FArrayLen := aArrayLen;
   FInitExpr := aInitExpr;
 end;
-
 
 destructor TAstVarDecl.Destroy;
 begin
   FInitExpr.Free;
   inherited Destroy;
 end;
+
 
 // ================================================================
 // TAstAssign
@@ -1026,52 +832,6 @@ end;
 
 // ================================================================
 // TAstWhile
-// ================================================================
-
-// ================================================================
-// TAstReturn
-// ================================================================
-
-// TAstTry
-// ================================================================
-
-constructor TAstTry.Create(aTryBlock: TAstBlock; const aCatchVar: string; aCatchType: TLyxType; const aCatchTypeName: string; aCatchBlock: TAstBlock; aSpan: TSourceSpan);
-begin
-  inherited Create(nkTry, aSpan);
-  FTryBlock := aTryBlock;
-  FCatchVarName := aCatchVar;
-  FCatchType := aCatchType;
-  FCatchTypeName := aCatchTypeName;
-  FCatchBlock := aCatchBlock;
-end;
-
-
-destructor TAstTry.Destroy;
-begin
-  FTryBlock.Free;
-  FCatchBlock.Free;
-  inherited Destroy;
-end;
-
-// ================================================================
-// TAstThrow
-// ================================================================
-
-constructor TAstThrow.Create(aExpr: TAstExpr; aSpan: TSourceSpan);
-begin
-  inherited Create(nkThrow, aSpan);
-  FExpr := aExpr;
-end;
-
-
-destructor TAstThrow.Destroy;
-begin
-  FExpr.Free;
-  inherited Destroy;
-end;
-
-// ================================================================
-// TAstReturn
 // ================================================================
 
 constructor TAstWhile.Create(aCond: TAstExpr; aBody: TAstStmt;
@@ -1171,15 +931,6 @@ begin
   inherited Destroy;
 end;
 
-procedure TAstFieldAccess.TransferOwnership(out AObj: TAstExpr; out AField: string);
-begin
-  AObj := FObj;
-  AField := FField;
-  // Prevent destructor from freeing FObj
-  FObj := nil;
-  FField := '';
-end;
-
 // ================================================================
 // TAstIndexAccess
 // ================================================================
@@ -1197,58 +948,6 @@ begin
   FObj.Free;
   FIndex.Free;
   inherited Destroy;
-end;
-
-// ================================================================
-// TAstStructLit
-// ================================================================
-
-constructor TAstStructLit.Create(const aTypeName: string; aSpan: TSourceSpan);
-begin
-  inherited Create(nkStructLit, aSpan);
-  FTypeName := aTypeName;
-  SetLength(FFields, 0);
-end;
-
-destructor TAstStructLit.Destroy;
-var
-  i: Integer;
-begin
-  for i := 0 to High(FFields) do
-    FFields[i].Value.Free;
-  SetLength(FFields, 0);
-  inherited Destroy;
-end;
-
-procedure TAstStructLit.AddField(const aName: string; aValue: TAstExpr);
-var
-  i: Integer;
-begin
-  i := Length(FFields);
-  SetLength(FFields, i + 1);
-  FFields[i].Name := aName;
-  FFields[i].Value := aValue;
-end;
-
-function TAstStructLit.FieldCount: Integer;
-begin
-  Result := Length(FFields);
-end;
-
-function TAstStructLit.GetFieldName(i: Integer): string;
-begin
-  if (i >= 0) and (i < Length(FFields)) then
-    Result := FFields[i].Name
-  else
-    Result := '';
-end;
-
-function TAstStructLit.GetFieldValue(i: Integer): TAstExpr;
-begin
-  if (i >= 0) and (i < Length(FFields)) then
-    Result := FFields[i].Value
-  else
-    Result := nil;
 end;
 
 // ================================================================
@@ -1297,28 +996,14 @@ end;
 // TAstTypeDecl
 // ================================================================
 
-constructor TAstTypeDecl.Create(const aName: string; aDeclType: TLyxType; aPublic: Boolean; aSpan: TSourceSpan);
+constructor TAstTypeDecl.Create(const aName: string; aDeclType: TAurumType;
+  aPublic: Boolean; aSpan: TSourceSpan);
 begin
   inherited Create(nkTypeDecl, aSpan);
   FName := aName;
   FDeclType := aDeclType;
   FIsPublic := aPublic;
-  FIsStruct := False;
-  SetLength(FFields, 0);
 end;
-
-destructor TAstTypeDecl.Destroy;
-begin
-  SetLength(FFields, 0);
-  inherited Destroy;
-end;
-
-procedure TAstTypeDecl.SetStructFields(const fields: TAstTypeFieldList);
-begin
-  FFields := Copy(fields, 0, Length(fields));
-  FIsStruct := True;
-end;
-
 
 // ================================================================
 // TAstUnitDecl
@@ -1348,8 +1033,8 @@ end;
 // ================================================================
 
 constructor TAstFuncDecl.Create(const aName: string;
-  const aParams: TAstParamList; aReturnType: TLyxType;
-  aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False; aIsExtern: Boolean = False; aIsVarArgs: Boolean = False; const aCallingConv: string = '');
+  const aParams: TAstParamList; aReturnType: TAurumType;
+  aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False);
 begin
   inherited Create(nkFuncDecl, aSpan);
   FName := aName;
@@ -1357,16 +1042,11 @@ begin
   FReturnType := aReturnType;
   FBody := aBody;
   FIsPublic := aIsPublic;
-  FIsExtern := aIsExtern;
-  FIsVarArgs := aIsVarArgs;
-  FCallingConv := aCallingConv;
 end;
 
 destructor TAstFuncDecl.Destroy;
 begin
-  // Free body only if present
-  if Assigned(FBody) then
-    FBody.Free;
+  FBody.Free;
   FParams := nil;
   inherited Destroy;
 end;
@@ -1376,7 +1056,7 @@ end;
 // ================================================================
 
 constructor TAstConDecl.Create(const aName: string;
-  aDeclType: TLyxType; aInitExpr: TAstExpr; aSpan: TSourceSpan);
+  aDeclType: TAurumType; aInitExpr: TAstExpr; aSpan: TSourceSpan);
 begin
   inherited Create(nkConDecl, aSpan);
   FName := aName;
@@ -1409,60 +1089,6 @@ begin
     FDecls[i].Free;
   FDecls := nil;
   inherited Destroy;
-end;
-
-constructor TAstArrayAssign.Create(aArray: TAstExpr; aIndex: TAstExpr; aValue: TAstExpr;
-  aSpan: TSourceSpan);
-begin
-  inherited Create(nkArrayAssign, aSpan);
-  FArray := aArray;
-  FIndex := aIndex;
-  FValue := aValue;
-end;
-
-destructor TAstArrayAssign.Destroy;
-begin
-  FArray.Free;
-  FIndex.Free;
-  FValue.Free;
-  inherited Destroy;
-end;
-
-constructor TAstFieldAssign.Create(aObj: TAstExpr; const aField: string; aValue: TAstExpr; aSpan: TSourceSpan);
-begin
-  inherited Create(nkFieldAssign, aSpan);
-  FObj := aObj;
-  FField := aField;
-  FValue := aValue;
-end;
-
-destructor TAstFieldAssign.Destroy;
-begin
-  FObj.Free;
-  FValue.Free;
-  inherited Destroy;
-end;
-
-constructor TAstArrayIndex.Create(aArray: TAstExpr; aIndex: TAstExpr; aSpan: TSourceSpan);
-begin
-  inherited Create(nkArrayIndex, aSpan);
-  FArray := aArray;
-  FIndex := aIndex;
-end;
-
-destructor TAstArrayIndex.Destroy;
-begin
-  FArray.Free;
-  FIndex.Free;
-  inherited Destroy;
-end;
-
-procedure TAstArrayIndex.TransferOwnership(out AArray: TAstExpr; out AIndex: TAstExpr);
-begin
-  AArray := FArray;
-  AIndex := FIndex;
-  FArray := nil; // prevent double-free
-  FIndex := nil; // prevent double-free
 end;
 
 end.
