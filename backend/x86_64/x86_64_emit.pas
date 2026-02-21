@@ -246,6 +246,17 @@ begin
   // stub
 end;
 
+// Additional missing XMM helpers
+procedure WriteSubsdXmmXmm(buf: TByteBuffer; dstXmm: Integer; srcXmm: Integer);
+begin
+  // stub
+end;
+
+procedure WriteAddsdXmmXmm(buf: TByteBuffer; dstXmm: Integer; srcXmm: Integer);
+begin
+  // stub
+end;
+
 
 procedure WriteMovMemRegByteNoDisp(buf: TByteBuffer; base: Byte; reg8: Byte);
 begin
@@ -680,9 +691,8 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
 
                // patch done jump
                FCode.PatchU32LE(jmpDonePos + 1, Cardinal(k - jmpDonePos - 5));
-             end
-
-            else if instr.ImmStr = 'buf_put_byte' then
+              end
+ 
              else if instr.ImmStr = 'strlen' then
              begin
                // strlen(s: pchar) -> int64
