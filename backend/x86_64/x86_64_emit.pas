@@ -341,7 +341,6 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   envAdded: Boolean;
   envOffset: UInt64;
   envLeaPositions: array of Integer;
-  len: Integer;
    nonZeroPos, jmpDonePos, jgePos, loopStartPos, jneLoopPos, jeSignPos: Integer;
    targetPos, jmpPos: Integer;
    jmpAfterPadPos: Integer;
@@ -1779,6 +1778,7 @@ end;
 function TX86_64Emitter.GetExternalSymbols: TExternalSymbolArray;
 var i: Integer;
 begin
+  Result := nil;
   SetLength(Result, Length(FExternalSymbols));
   for i := 0 to High(Result) do
     Result[i] := FExternalSymbols[i];
@@ -1787,6 +1787,7 @@ end;
 function TX86_64Emitter.GetPLTGOTPatches: TPLTGOTPatchArray;
 var i: Integer;
 begin
+  Result := nil;
   SetLength(Result, Length(FPLTGOTPatches));
   for i := 0 to High(Result) do
     Result[i] := FPLTGOTPatches[i];

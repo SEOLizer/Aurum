@@ -35,6 +35,7 @@ var
   libList: TStringList;
   i: Integer;
 begin
+  Result := nil;
   libList := TStringList.Create;
   try
     libList.Duplicates := dupIgnore;
