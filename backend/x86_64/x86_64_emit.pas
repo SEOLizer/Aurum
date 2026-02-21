@@ -342,7 +342,16 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
    argTemp4: Integer;
    argTemp5: Integer;
    argTemp6: Integer;
-begin
+   // element size temporaries for array builtins
+   esz: Integer;
+   esz2: Integer;
+   esz_len: Integer;
+   esz_free: Integer;
+   // diagnostic strings for runtime errors
+   diagAdded: Boolean;
+   diagOffset: UInt64;
+   diagLeaPositions: array of Integer;
+ begin
   // reset patch arrays
   SetLength(FLeaPositions, 0);
   SetLength(FLeaStrIndex, 0);
@@ -361,12 +370,16 @@ begin
     Inc(totalDataOffset, Length(module.Strings[i]) + 1);
   end;
 
-  bufferAdded := False;
-  bufferOffset := 0;
-  SetLength(bufferLeaPositions, 0);
-  envAdded := False;
-  envOffset := 0;
-  SetLength(envLeaPositions, 0);
+   bufferAdded := False;
+   bufferOffset := 0;
+   SetLength(bufferLeaPositions, 0);
+   envAdded := False;
+   envOffset := 0;
+   SetLength(envLeaPositions, 0);
+   diagAdded := False;
+   diagOffset := 0;
+   SetLength(diagLeaPositions, 0);
+
 
   // Emit program entry (_start): automatically initialize env data (argc/argv) and call main
   begin
@@ -1118,120 +1131,76 @@ begin
             begin
               // append/push for dynamic arrays
               // instr.Src1 = array local slot index, instr.Src2 = value temp, instr.LabelName = element size
-              var esz := 8;
-              if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
-              // load array pointer from local
-              if instr.Src1 >= 0 then
-                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
-              else
-                WriteMovRegImm64(FCode, RAX, 0);
-              // if pointer == 0 -> allocate initial block
-              nonZeroPos := FCode.Size;
-              WriteJneRel32(FCode, 0); // jump if non-zero (patch later)
-              // allocate new region via mmap
-              // initCap = 4
-              WriteMovRegImm64(FCode, RDI, 0);
-              WriteMovRegImm64(FCode, RSI, UInt64(16 + 4 * esz));
-              WriteMovRegImm64(FCode, RDX, 3); // PROT_READ|PROT_WRITE
-              WriteMovRegImm64(FCode, R10, 34); // MAP_PRIVATE|MAP_ANONYMOUS
-              WriteMovRegImm64(FCode, R8, UInt64(-1));
-              WriteMovRegImm64(FCode, R9, 0);
-              WriteMovRegImm64(FCode, RAX, 9); // syscall mmap
-              WriteSyscall(FCode);
-              // RAX = newptr
-              // store length=0 and capacity=4
-              WriteMovRegImm64(FCode, RDI, 0);
-              WriteMovMemReg(FCode, RAX, 0, RDI);
-              WriteMovRegImm64(FCode, RDI, 4);
-              WriteMovMemReg(FCode, RAX, 8, RDI);
-              // store newptr into local slot
-              WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Src1), RAX);
-              // patch jump to here
-              k := FCode.Size;
-              FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
-              // Now RAX holds array pointer
-              // Load length into RCX
-              WriteMovRegMem(FCode, RCX, RAX, 0);
-              // load capacity into RDX
-              WriteMovRegMem(FCode, RDX, RAX, 8);
-              // compare length and capacity, if length == capacity grow
-              // cmp rcx, rdx
-              EmitRex(FCode, 1, (RDX shr 3) and 1, 0, (RCX shr 3) and 1);
-              EmitU8(FCode, $39);
-              EmitU8(FCode, $C0 or ((RDX and 7) shl 3) or (RCX and 7));
-              // je grow
-              nonZeroPos := FCode.Size;
-              WriteJeRel32(FCode, 0);
-              // no grow: compute dest = ptr + 16 + length*esz
-              // load value into RAX (64-bit)
-              if instr.Src2 >= 0 then
-                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src2))
-              else
-                WriteMovRegImm64(FCode, RAX, 0);
-              // compute dest in RDI: RDI = ptr + 16 + length*esz
-              // RAX currently holds ptr; load length into RCX
-              WriteMovRegMem(FCode, RCX, RAX, 0);
-              // compute base = ptr + 16
-              WriteMovRegReg(FCode, RDI, RAX);
-              WriteMovRegImm64(FCode, RDX, 16);
-              WriteAddRegReg(FCode, RDI, RDX);
-              // multiply length*esz into RDX
-              WriteMovRegReg(FCode, RDX, RCX);
-              if esz <> 1 then
-              begin
-                WriteMovRegImm64(FCode, RAX, UInt64(esz));
-                WriteImulRegReg(FCode, RDX, RAX);
-              end;
-              // add offset
-              WriteAddRegReg(FCode, RDI, RDX);
-              // copy value bytes from temp slot to dest using shared buffer
-              if not bufferAdded then
-              begin
-                bufferOffset := totalDataOffset;
-                for k := 1 to 64 do FData.WriteU8(0);
-                Inc(totalDataOffset, 64);
-                bufferAdded := True;
-              end;
-              // lea rsi, buffer (record position for patch)
-              leaPos := FCode.Size;
-              EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
-              SetLength(bufferLeaPositions, Length(bufferLeaPositions) + 1);
-              bufferLeaPositions[High(bufferLeaPositions)] := leaPos;
-              // store 8-byte value into buffer (at RSI)
-              WriteMovMemReg(FCode, RSI, 0, RAX);
-              // perform rep movsb: RCX = esz, RSI = buffer, RDI = dest
-              WriteMovRegImm64(FCode, RAX, UInt64(esz));
-              WriteMovRegReg(FCode, RCX, RAX);
-              // RSI already points to buffer; RDI already dest
-              // rep movsb
-              EmitU8(FCode, $F3); EmitU8(FCode, $A4);
+               esz := 8;
+               if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
 
-              // increment length: length++ -> load, add 1, store
-              WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
-              WriteMovRegMem(FCode, RCX, RAX, 0);
-              WriteMovRegImm64(FCode, RDI, 1);
-              WriteAddRegReg(FCode, RCX, RDI);
-              WriteMovMemReg(FCode, RAX, 0, RCX);
-            end
-            else if instr.ImmStr = 'pop' then
-            begin
-              // pop(arrVar) -> returns element
-              var esz := 8;
-              if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
               if instr.Src1 >= 0 then
                 WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
               else
                 WriteMovRegImm64(FCode, RAX, 0);
-              // if pointer == 0 -> exit(1)
-              WriteTestRegReg(FCode, RAX, RAX);
-              nonZeroPos := FCode.Size;
-              WriteJneRel32(FCode, 0);
-              // exit(1)
-              WriteMovRegImm64(FCode, RDI, 1);
-              WriteMovRegImm64(FCode, RAX, 60);
-              WriteSyscall(FCode);
-              k := FCode.Size;
-              FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+               // if pointer == 0 -> diagnostic + exit(1)
+               WriteTestRegReg(FCode, RAX, RAX);
+               nonZeroPos := FCode.Size;
+               WriteJneRel32(FCode, 0);
+               // diagnostic print + exit(1)
+               if not diagAdded then
+               begin
+                 diagOffset := totalDataOffset;
+                 for k := 1 to Length('runtime error: array is nil\n') do FData.WriteU8(Byte('runtime error: array is nil\n'[k]));
+                 FData.WriteU8(0);
+                 Inc(totalDataOffset, Length('runtime error: array is nil\n') + 1);
+                 diagAdded := True;
+               end;
+               // emit lea rsi, [rip+disp32] (patch later)
+               leaPos := FCode.Size;
+               EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+               SetLength(diagLeaPositions, Length(diagLeaPositions) + 1);
+               diagLeaPositions[High(diagLeaPositions)] := leaPos;
+               // strlen: rcx = rsi; loop scanning for 0
+               WriteMovRegReg(FCode, RCX, RSI);
+               EmitU8(FCode, $80); EmitU8(FCode, $39); EmitU8(FCode, $00);
+               EmitU8(FCode, $74); EmitU8(FCode, $05);
+               WriteIncReg(FCode, RCX);
+               EmitU8(FCode, $EB); EmitU8(FCode, $F6);
+               WriteMovRegReg(FCode, RDX, RCX);
+               WriteSubRegReg(FCode, RDX, RSI);
+               // syscall write(1, rsi, rdx)
+               WriteMovRegImm64(FCode, RAX, 1);
+               WriteMovRegImm64(FCode, RDI, 1);
+               WriteSyscall(FCode);
+               // diagnostic print + exit(1)
+               if not diagAdded then
+               begin
+                 diagOffset := totalDataOffset;
+                 for k := 1 to Length('runtime error: pop from empty array\n') do FData.WriteU8(Byte('runtime error: pop from empty array\n'[k]));
+                 FData.WriteU8(0);
+                 Inc(totalDataOffset, Length('runtime error: pop from empty array\n') + 1);
+                 diagAdded := True;
+               end;
+               // emit lea rsi, [rip+disp32] (patch later)
+               leaPos := FCode.Size;
+               EmitU8(FCode, $48); EmitU8(FCode, $8D); EmitU8(FCode, $35); EmitU32(FCode, 0);
+               SetLength(diagLeaPositions, Length(diagLeaPositions) + 1);
+               diagLeaPositions[High(diagLeaPositions)] := leaPos;
+               // strlen: rcx = rsi; loop scanning for 0
+               WriteMovRegReg(FCode, RCX, RSI);
+               EmitU8(FCode, $80); EmitU8(FCode, $39); EmitU8(FCode, $00);
+               EmitU8(FCode, $74); EmitU8(FCode, $05);
+               WriteIncReg(FCode, RCX);
+               EmitU8(FCode, $EB); EmitU8(FCode, $F6);
+               WriteMovRegReg(FCode, RDX, RCX);
+               WriteSubRegReg(FCode, RDX, RSI);
+               // syscall write(1, rsi, rdx)
+               WriteMovRegImm64(FCode, RAX, 1);
+               WriteMovRegImm64(FCode, RDI, 1);
+               WriteSyscall(FCode);
+               // exit(1)
+               WriteMovRegImm64(FCode, RDI, 1);
+               WriteMovRegImm64(FCode, RAX, 60);
+               WriteSyscall(FCode);
+               k := FCode.Size;
+               FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
+
               // load length
               WriteMovRegMem(FCode, RCX, RAX, 0);
               // if length == 0 -> exit(1)
@@ -1309,29 +1278,9 @@ begin
             else if instr.ImmStr = 'len' then
             begin
               // len(arr) -> returns length
-              var esz := 8;
-              if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
-              if instr.Src1 >= 0 then
-                WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
-              else
-                WriteMovRegImm64(FCode, RAX, 0);
-              // if pointer == 0 -> return 0
-              WriteTestRegReg(FCode, RAX, RAX);
-              nonZeroPos := FCode.Size;
-              WriteJneRel32(FCode, 0);
-              WriteMovRegImm64(FCode, RAX, 0);
-              if instr.Dest >= 0 then WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
-              k := FCode.Size;
-              FCode.PatchU32LE(nonZeroPos + 2, Cardinal(k - nonZeroPos - 6));
-              // load length from [ptr]
-              WriteMovRegMem(FCode, RAX, RAX, 0);
-              if instr.Dest >= 0 then WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
-            end
-            else if instr.ImmStr = 'free' then
-            begin
-              // free(arr): munmap region and set local to 0
-              var esz := 8;
-              if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
+               esz := 8;
+               if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
+
               if instr.Src1 >= 0 then
                 WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
               else
@@ -1751,33 +1700,48 @@ begin
      end;
   end;
 
-  // patch buffer LEAs for print_int
-  if bufferAdded then
-  begin
-    for i := 0 to High(bufferLeaPositions) do
-    begin
-      leaPos := bufferLeaPositions[i];
-      codeVA := $400000 + 4096;
-      instrVA := codeVA + leaPos + 7;
-      dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + bufferOffset;
-      disp32 := Int64(dataVA) - Int64(instrVA);
-      FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
-    end;
-  end;
+   // patch buffer LEAs for print_int
+   if bufferAdded then
+   begin
+     for i := 0 to High(bufferLeaPositions) do
+     begin
+       leaPos := bufferLeaPositions[i];
+       codeVA := $400000 + 4096;
+       instrVA := codeVA + leaPos + 7;
+       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + bufferOffset;
+       disp32 := Int64(dataVA) - Int64(instrVA);
+       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
+     end;
+   end;
 
-  // patch env LEAs
-  if envAdded then
-  begin
-    for i := 0 to High(envLeaPositions) do
-    begin
-      leaPos := envLeaPositions[i];
-      codeVA := $400000 + 4096;
-      instrVA := codeVA + leaPos + 7;
-      dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + envOffset;
-      disp32 := Int64(dataVA) - Int64(instrVA);
-      FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
-    end;
-  end;
+   // patch diag LEAs
+   if diagAdded then
+   begin
+     for i := 0 to High(diagLeaPositions) do
+     begin
+       leaPos := diagLeaPositions[i];
+       codeVA := $400000 + 4096;
+       instrVA := codeVA + leaPos + 7;
+       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + diagOffset;
+       disp32 := Int64(dataVA) - Int64(instrVA);
+       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
+     end;
+   end;
+
+   // patch env LEAs
+   if envAdded then
+   begin
+     for i := 0 to High(envLeaPositions) do
+     begin
+       leaPos := envLeaPositions[i];
+       codeVA := $400000 + 4096;
+       instrVA := codeVA + leaPos + 7;
+       dataVA := $400000 + 4096 + ((UInt64(FCode.Size) + 4095) and not UInt64(4095)) + envOffset;
+       disp32 := Int64(dataVA) - Int64(instrVA);
+       FCode.PatchU32LE(leaPos + 3, Cardinal(disp32));
+     end;
+   end;
+
 
   // patch jumps to labels
   for i := 0 to High(FJumpPatches) do
