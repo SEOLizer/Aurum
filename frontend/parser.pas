@@ -706,6 +706,9 @@ var
   expr: TAstExpr;
   name: string;
   valExpr: TAstExpr;
+  fa: TAstFieldAccess;
+  objExpr: TAstExpr;
+  fieldName: string;
 begin
   expr := ParseExpr;
   // Assignment pattern: ident := expr ;
@@ -720,15 +723,24 @@ begin
     expr.Free;
     Exit(TAstAssign.Create(name, valExpr, valExpr.Span));
   end
-  else if ((expr is TAstFieldAccess) or (expr is TAstIndexAccess)) and Check(tkAssign) then
+  else if (expr is TAstFieldAccess) and Check(tkAssign) then
   begin
-    // TODO: full LValue assignment for field/index access
-    FDiag.Error('field/index assignment not yet supported', expr.Span);
+    // Field assignment: obj.field := value
     Advance; // consume ':='
     valExpr := ParseExpr;
     Expect(tkSemicolon);
-    expr.Free;
-    valExpr.Free;
+    // create field-assign node using the existing field-access AST as target
+    fa := TAstFieldAccess(expr);
+    Exit(TAstFieldAssign.Create(fa, valExpr, valExpr.Span));
+  end
+  else if (expr is TAstIndexAccess) and Check(tkAssign) then
+  begin
+    // TODO: array/index assignment
+    FDiag.Error('index assignment not yet supported', expr.Span);
+    Advance;
+    valExpr := ParseExpr;
+    Expect(tkSemicolon);
+    expr.Free; valExpr.Free;
     Exit(TAstExprStmt.Create(TAstIntLit.Create(0, FCurTok.Span), FCurTok.Span));
   end
   else

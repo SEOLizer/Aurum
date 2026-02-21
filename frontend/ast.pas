@@ -194,13 +194,15 @@ type
   public
     constructor Create(aObj: TAstExpr; const aField: string; aSpan: TSourceSpan);
     destructor Destroy; override;
-    property Obj: TAstExpr read FObj;
-    property Field: string read FField;
     procedure SetFieldOffset(aOffset: Integer);
     procedure SetOwnerName(const aName: string);
+    function DetachObj: TAstExpr; // transfer ownership of the Obj out of this node
+    property Obj: TAstExpr read FObj;
+    property Field: string read FField;
     property FieldOffset: Integer read FFieldOffset;
     property OwnerName: string read FOwnerName;
   end;
+
 
   { Indexzugriff: expr[index] }
   TAstIndexAccess = class(TAstExpr)
@@ -254,6 +256,18 @@ type
       aSpan: TSourceSpan);
     destructor Destroy; override;
     property Name: string read FName;
+    property Value: TAstExpr read FValue;
+  end;
+
+  { Feld-Zuweisung: obj.field := value }
+  TAstFieldAssign = class(TAstStmt)
+  private
+    FTarget: TAstFieldAccess; // the LHS field-access node
+    FValue: TAstExpr;
+  public
+    constructor Create(aTarget: TAstFieldAccess; aValue: TAstExpr; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property Target: TAstFieldAccess read FTarget;
     property Value: TAstExpr read FValue;
   end;
 
@@ -1003,9 +1017,15 @@ begin
   FOwnerName := aName;
 end;
 
+function TAstFieldAccess.DetachObj: TAstExpr;
+begin
+  Result := FObj;
+  FObj := nil;
+end;
+
 destructor TAstFieldAccess.Destroy;
 begin
-  FObj.Free;
+  if Assigned(FObj) then FObj.Free;
   inherited Destroy;
 end;
 
@@ -1119,6 +1139,21 @@ procedure TAstStructDecl.SetLayout(aSize, aAlign: Integer);
 begin
   FSize := aSize;
   FAlign := aAlign;
+end;
+
+constructor TAstFieldAssign.Create(aTarget: TAstFieldAccess; aValue: TAstExpr; aSpan: TSourceSpan);
+begin
+  inherited Create(nkAssign, aSpan);
+  FTarget := aTarget;
+  FValue := aValue;
+end;
+
+
+destructor TAstFieldAssign.Destroy;
+begin
+  if Assigned(FTarget) then FTarget.Free;
+  if Assigned(FValue) then FValue.Free;
+  inherited Destroy;
 end;
 
 // ================================================================

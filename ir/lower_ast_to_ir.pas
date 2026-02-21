@@ -178,6 +178,9 @@ var
   fn: TIRFunction;
   node: TAstNode;
   j: Integer;
+  k: Integer;
+  m: TAstFuncDecl;
+  mangled: string;
   cv: TConstValue;
 begin
   // iterate top-level decls, create functions
@@ -202,13 +205,45 @@ begin
          FLocalConst[j] := nil;
        end;
 
-
-      // lower statements sequentially
-      for j := 0 to High(TAstFuncDecl(node).Body.Stmts) do
+       // lower statements sequentially
+       for j := 0 to High(TAstFuncDecl(node).Body.Stmts) do
+       begin
+         LowerStmt(TAstFuncDecl(node).Body.Stmts[j]);
+       end;
+       FCurrentFunc := nil;
+    end
+    else if node is TAstStructDecl then
+    begin
+      // Lower each method as a top-level mangled function: _L_<Struct>_<Method>
+      for j := 0 to High(TAstStructDecl(node).Methods) do
       begin
-        LowerStmt(TAstFuncDecl(node).Body.Stmts[j]);
+        m := TAstStructDecl(node).Methods[j];
+        mangled := '_L_' + TAstStructDecl(node).Name + '_' + m.Name;
+        // create function
+        fn := FModule.AddFunction(mangled);
+        FCurrentFunc := fn;
+        FLocalMap.Clear;
+        FTempCounter := 0;
+        fn.ParamCount := Length(m.Params) + 1; // first param = self
+        fn.LocalCount := fn.ParamCount;
+        SetLength(FLocalTypes, fn.LocalCount);
+        SetLength(FLocalConst, fn.LocalCount);
+        // implicit self param at index 0
+        FLocalMap.AddObject('self', IntToObj(0));
+        FLocalTypes[0] := atUnresolved; // will be resolved later
+        FLocalConst[0] := nil;
+        // method parameters follow
+        for k := 0 to High(m.Params) do
+        begin
+          FLocalMap.AddObject(m.Params[k].Name, IntToObj(k+1));
+          FLocalTypes[k+1] := m.Params[k].ParamType;
+          FLocalConst[k+1] := nil;
+        end;
+        // lower body
+        for k := 0 to High(m.Body.Stmts) do
+          LowerStmt(m.Body.Stmts[k]);
+        FCurrentFunc := nil;
       end;
-      FCurrentFunc := nil;
     end
     else if node is TAstConDecl then
     begin
@@ -320,22 +355,34 @@ end;
 
 
 function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
-var
-  instr: TIRInstr;
-  loc: Integer;
-  t0, t1, t2: Integer;
-  i: Integer;
-  strIdx: Integer;
-  cv: TConstValue;
-  argCount: Integer;
-  argTemps: array of Integer;
-  fn: TIRFunction;
-  ltype: TAurumType;
-  width: Integer;
-  fldOffset: Integer;
-  ownerName: string;
-  fidx, ii: Integer;
-begin
+  var
+    instr: TIRInstr;
+    loc: Integer;
+    tmp: Integer;
+    condTmp: Integer;
+    t0, t1, t2: Integer;
+    i: Integer;
+    strIdx: Integer;
+    cv: TConstValue;
+    argCount: Integer;
+    argTemps: array of Integer;
+    fn: TIRFunction;
+    ltype: TAurumType;
+    width: Integer;
+    w: Integer;
+    lit: Int64;
+    mask64: UInt64;
+    truncated: UInt64;
+    half: UInt64;
+    signedVal: Int64;
+    cvLocal: TConstValue;
+    vd: TAstVarDecl;
+    items: TAstExprList;
+    elemSize: Integer;
+    fa: TAstFieldAssign;
+    fldOffset: Integer;
+    ownerName: string;
+  begin
   Result := -1;
   if not Assigned(expr) then
     Exit;
@@ -726,6 +773,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     vd: TAstVarDecl;
     items: TAstExprList;
     elemSize: Integer;
+    fa: TAstFieldAssign;
   begin
   instr := Default(TIRInstr);
   Result := True;
@@ -874,41 +922,63 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
    end;
 
 
-  if stmt is TAstAssign then
-  begin
-    loc := ResolveLocal(TAstAssign(stmt).Name);
-    if loc < 0 then
+    if stmt is TAstAssign then
     begin
-      FDiag.Error('assignment to undeclared variable: ' + TAstAssign(stmt).Name, stmt.Span);
-      Exit(False);
-    end;
-    // invalidate any const-folded value for this local
-    if (loc < Length(FLocalConst)) and Assigned(FLocalConst[loc]) then
-    begin
-      FLocalConst[loc].Free;
-      FLocalConst[loc] := nil;
-    end;
-    tmp := LowerExpr(TAstAssign(stmt).Value);
-    // truncate if local has narrower integer width
-    ltype := GetLocalType(loc);
-    if (ltype <> atUnresolved) and (ltype <> atInt64) and (ltype <> atUInt64) then
-    begin
-      width := 64;
-      case ltype of
-        atInt8, atUInt8: width := 8;
-        atInt16, atUInt16: width := 16;
-        atInt32, atUInt32: width := 32;
+      loc := ResolveLocal(TAstAssign(stmt).Name);
+      if loc < 0 then
+      begin
+        FDiag.Error('assignment to undeclared variable: ' + TAstAssign(stmt).Name, stmt.Span);
+        Exit(False);
       end;
-      instr.Op := irTrunc; instr.Dest := NewTemp; instr.Src1 := tmp;
-      instr.ImmInt := width; Emit(instr);
-      tmp := instr.Dest;
+      // invalidate any const-folded value for this local
+      if (loc < Length(FLocalConst)) and Assigned(FLocalConst[loc]) then
+      begin
+        FLocalConst[loc].Free;
+        FLocalConst[loc] := nil;
+      end;
+      tmp := LowerExpr(TAstAssign(stmt).Value);
+      // truncate if local has narrower integer width
+      ltype := GetLocalType(loc);
+      if (ltype <> atUnresolved) and (ltype <> atInt64) and (ltype <> atUInt64) then
+      begin
+        width := 64;
+        case ltype of
+          atInt8, atUInt8: width := 8;
+          atInt16, atUInt16: width := 16;
+          atInt32, atUInt32: width := 32;
+        end;
+        instr.Op := irTrunc; instr.Dest := NewTemp; instr.Src1 := tmp;
+        instr.ImmInt := width; Emit(instr);
+        tmp := instr.Dest;
+      end;
+      instr.Op := irStoreLocal;
+      instr.Dest := loc;
+      instr.Src1 := tmp;
+      Emit(instr);
+      Exit(True);
     end;
-    instr.Op := irStoreLocal;
-    instr.Dest := loc;
-    instr.Src1 := tmp;
-    Emit(instr);
-    Exit(True);
-  end;
+
+    // field assignment: obj.field := value
+      if stmt is TAstFieldAssign then
+    begin
+      fa := TAstFieldAssign(stmt);
+      // target is a TAstFieldAccess node
+      t1 := LowerExpr(fa.Target.Obj);
+      if t1 < 0 then Exit(False);
+      t2 := LowerExpr(fa.Value);
+      if t2 < 0 then Exit(False);
+      instr.Op := irStoreField;
+      instr.Src1 := t1; // base pointer
+      instr.Src2 := t2; // value temp
+      if fa.Target.FieldOffset >= 0 then
+        instr.ImmInt := fa.Target.FieldOffset
+      else
+        instr.LabelName := fa.Target.Field;
+      Emit(instr);
+      Exit(True);
+    end;
+
+
 
   if stmt is TAstExprStmt then
   begin
