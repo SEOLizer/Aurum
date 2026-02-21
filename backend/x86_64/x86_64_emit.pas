@@ -307,4 +307,11 @@ begin
   Exit;
 end;
 
+
+function TX86_64Emitter.GetFunctionOffset(const name: string): Integer;
+begin
+  // stub implementation during merge-repair
+  Result := -1;
+end;
+
 end.
