@@ -37,6 +37,8 @@ type
     function GetCodeBuffer: TByteBuffer;
     function GetDataBuffer: TByteBuffer;
     function GetFunctionOffset(const name: string): Integer;
+    function GetExternalSymbols: TExternalSymbolArray;
+    function GetPLTGOTPatches: TPLTGOTPatchArray;
   end;
 
 implementation
@@ -1708,18 +1710,29 @@ begin
 end;
 
 function TX86_64Emitter.GetFunctionOffset(const name: string): Integer;
-var
-  i: Integer;
+var i: Integer;
 begin
   Result := -1;
   for i := 0 to High(FLabelPositions) do
-  begin
     if FLabelPositions[i].Name = name then
-    begin
-      Result := FLabelPositions[i].Pos;
-      Exit;
-    end;
-  end;
+      Exit(FLabelPositions[i].Pos);
+end;
+
+function TX86_64Emitter.GetExternalSymbols: TExternalSymbolArray;
+var i: Integer;
+begin
+  SetLength(Result, Length(FExternalSymbols));
+  for i := 0 to High(Result) do
+    Result[i] := FExternalSymbols[i];
+end;
+
+function TX86_64Emitter.GetPLTGOTPatches: TPLTGOTPatchArray;
+var i: Integer;
+begin
+  SetLength(Result, Length(FPLTGOTPatches));
+  for i := 0 to High(Result) do
+    Result[i] := FPLTGOTPatches[i];
 end;
 
 end.
+
