@@ -341,8 +341,9 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
    argTemp3: Integer;
    argTemp4: Integer;
    argTemp5: Integer;
-   argTemp6: Integer;
-begin
+    argTemp6: Integer;
+    esz: Integer;
+  begin
   // reset patch arrays
   SetLength(FLeaPositions, 0);
   SetLength(FLeaStrIndex, 0);
