@@ -191,7 +191,6 @@ begin
       Expect(tkFn);
       // reuse ParseFuncDecl for name/params/retType parsing by peeking and backtracking is complex
       // Instead, parse inline here
-      var name: string; params: TAstParamList; retType: TAurumType;
       if Check(tkIdent) then
       begin
         name := FCurTok.Value; Advance;
