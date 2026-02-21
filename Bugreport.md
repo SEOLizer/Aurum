@@ -15,11 +15,8 @@ Die meisten Probleme wurden behoben. Die Test-Suite zeigt deutliche Verbesserung
 - test_time_format: 5/5 ✅
 - test_ir: 2/2 ✅
 - test_sema: 13/13 ✅
-- test_emit_create ✅
-- test_emit_from_lower ✅
-- test_emit_main_args ✅
-- test_emit_run ✅
-- test_codegen_widths: 2/3 ✅ (1 Failure - non-literal truncation)
+- test_codegen_widths: 2/3 ✅
+- test_parser: 14/16 ✅
 
 **Verbleibende Failures (3):**
 - test_parser: 2 Failures (Literal Folding für unäre Operatoren)
@@ -44,12 +41,12 @@ Der Test erwartet, dass beim Laden einer int8-Variable in eine int64-Variable ei
 
 **Kurzbeschreibung:** Das IR-Lowering für Sign-Extension bei nicht-literalen Initialisierungen fehlt.
 
-Erledigte Fixes
---------------
+Erledigte Fixes (2026-02-21)
+---------------------------
 - ✅ Varargs-Support für printf in TSema
 - ✅ IsVarArgs-Flag in TSymbol
 - ✅ printf als Builtin in LowerExpr
 - ✅ ArgTemps für Builtin-Aufrufe
 - ✅ Parser nil-Checks in ParseUnaryExpr, ParseMulExpr, ParseAddExpr, ParseStmt
-- ✅ Duplicate ParseAddExpr entfernt
 - ✅ Integer-Width Truncation funktioniert für Konstanten (2/3 Tests bestanden)
+- ✅ Duplicate ParseAddExpr entfernt
