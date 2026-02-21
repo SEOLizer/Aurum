@@ -25,7 +25,7 @@ type
     // float comparisons
     irFCmpEq, irFCmpNeq, irFCmpLt, irFCmpLe, irFCmpGt, irFCmpGe,
     irNot, irAnd, irOr, irNor, irXor,
-    irLoadLocal, irStoreLocal,
+    irLoadLocal, irStoreLocal, irLoadLocalAddr,
     // width/sign helpers
     irSExt,    // sign-extend Src1 to ImmInt bits -> Dest
     irZExt,    // zero-extend Src1 to ImmInt bits -> Dest

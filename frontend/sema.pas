@@ -43,6 +43,7 @@ type
     procedure ImportUnit(imp: TAstImportDecl);
     function TypeEqual(a, b: TAurumType): Boolean;
     function CheckExpr(expr: TAstExpr): TAurumType;
+    function CheckStructLit(sl: TAstStructLit): TAurumType;
     procedure CheckStmt(stmt: TAstStmt);
   public
     constructor Create(d: TDiagnostics; um: TUnitManager = nil);
@@ -415,6 +416,11 @@ begin
           Result := atype;
         end;
       end;
+    nkStructLit:
+      begin
+        // Struct literal: TypeName { field: value, ... }
+        Result := CheckStructLit(TAstStructLit(expr));
+      end;
     nkBinOp:
       begin
         bin := TAstBinOp(expr);
@@ -591,6 +597,81 @@ begin
   expr.ResolvedType := Result;
 end;
 
+function TSema.CheckStructLit(sl: TAstStructLit): TAurumType;
+var
+  idx, i, fi: Integer;
+  sd: TAstStructDecl;
+  fieldName: string;
+  fieldFound: Boolean;
+  fieldType, valType: TAurumType;
+  usedFields: array of Boolean;
+begin
+  Result := atUnresolved;
+  
+  // Lookup struct type by name
+  if not Assigned(FStructTypes) then
+  begin
+    FDiag.Error('no struct types defined', sl.Span);
+    Exit;
+  end;
+  
+  idx := FStructTypes.IndexOf(sl.TypeName);
+  if idx < 0 then
+  begin
+    FDiag.Error('unknown struct type: ' + sl.TypeName, sl.Span);
+    Exit;
+  end;
+  
+  sd := TAstStructDecl(FStructTypes.Objects[idx]);
+  sl.SetStructDecl(sd);
+  
+  // Track which fields have been initialized
+  SetLength(usedFields, Length(sd.Fields));
+  for i := 0 to High(usedFields) do
+    usedFields[i] := False;
+  
+  // Check each field initializer
+  for i := 0 to High(sl.Fields) do
+  begin
+    fieldName := sl.Fields[i].Name;
+    fieldFound := False;
+    
+    // Find field in struct
+    for fi := 0 to High(sd.Fields) do
+    begin
+      if sd.Fields[fi].Name = fieldName then
+      begin
+        fieldFound := True;
+        
+        // Check for duplicate initialization
+        if usedFields[fi] then
+        begin
+          FDiag.Error('duplicate field initializer: ' + fieldName, sl.Span);
+          Continue;
+        end;
+        usedFields[fi] := True;
+        
+        // Check value type
+        fieldType := sd.Fields[fi].FieldType;
+        valType := CheckExpr(sl.Fields[i].Value);
+        
+        if (fieldType <> atUnresolved) and (not TypeEqual(valType, fieldType)) then
+          FDiag.Error(Format('field %s: expected %s but got %s',
+            [fieldName, AurumTypeToStr(fieldType), AurumTypeToStr(valType)]), sl.Fields[i].Value.Span);
+        
+        Break;
+      end;
+    end;
+    
+    if not fieldFound then
+      FDiag.Error('unknown field in struct literal: ' + fieldName, sl.Span);
+  end;
+  
+  // Note: We don't require all fields to be initialized - missing fields are zero-initialized
+  
+  Result := atUnresolved; // struct types use atUnresolved + TypeName
+end;
+
 procedure TSema.CheckStmt(stmt: TAstStmt);
 var
   vd: TAstVarDecl;
@@ -658,6 +739,38 @@ begin
         vtype := CheckExpr(asg.Value);
         if not TypeEqual(vtype, s.DeclType) then
           FDiag.Error(Format('assignment type mismatch: %s := %s', [AurumTypeToStr(s.DeclType), AurumTypeToStr(vtype)]), stmt.Span);
+      end;
+    nkFieldAssign:
+      begin
+        // field assignment: obj.field := value
+        // CheckExpr on the target annotates FieldOffset etc.
+        CheckExpr(TAstFieldAssign(stmt).Target);
+        vtype := CheckExpr(TAstFieldAssign(stmt).Value);
+        // type check: target field type vs value type (when available)
+        // for now, just accept - full type inference will come later
+      end;
+    nkIndexAssign:
+      begin
+        // index assignment: arr[idx] := value
+        // validate target (array/index access)
+        CheckExpr(TAstIndexAssign(stmt).Target);
+        // validate index is integer
+        if not IsIntegerType(CheckExpr(TAstIndexAssign(stmt).Target.Index)) then
+          FDiag.Error('array index must be integer', TAstIndexAssign(stmt).Target.Index.Span);
+        // validate value
+        vtype := CheckExpr(TAstIndexAssign(stmt).Value);
+        // type check: element type vs value type
+        // for now, just validate types are compatible
+        if TAstIndexAssign(stmt).Target.Obj is TAstIdent then
+        begin
+          s := ResolveSymbol(TAstIdent(TAstIndexAssign(stmt).Target.Obj).Name);
+          if Assigned(s) and (s.ArrayLen <> 0) then
+          begin
+            if not TypeEqual(vtype, s.DeclType) then
+              FDiag.Error(Format('index assignment type mismatch: expected %s but got %s',
+                [AurumTypeToStr(s.DeclType), AurumTypeToStr(vtype)]), stmt.Span);
+          end;
+        end;
       end;
     nkExprStmt:
       begin
@@ -1180,10 +1293,12 @@ begin
         m := TAstStructDecl(node).Methods[j];
         // enter method scope
         PushScope;
-        // implicit self parameter
+        // implicit self parameter - link to the owning struct
         sym := TSymbol.Create('self');
         sym.Kind := symVar;
-        sym.DeclType := atUnresolved; // will be resolved later when type system exists
+        sym.DeclType := atUnresolved; // primitive type is unresolved
+        sym.TypeName := TAstStructDecl(node).Name; // but we know the struct name
+        sym.StructDecl := TAstStructDecl(node); // and the struct declaration
         AddSymbolToCurrent(sym, m.Span);
         // declare method params
         for k := 0 to High(m.Params) do

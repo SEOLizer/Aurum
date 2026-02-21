@@ -20,7 +20,7 @@ type
     tkTry, tkCatch, tkThrow, tkFinally,
     // Operatoren
     tkPlus, tkMinus, tkStar, tkSlash, tkPercent,
-    tkAssign,
+    tkAssign, tkSingleEq,
     tkEq, tkNeq,
     tkLt, tkLe, tkGt, tkGe,
     tkAnd, tkOr, tkNot, tkNor, tkXor,
@@ -123,6 +123,7 @@ begin
     tkSlash:     Result := '/';
     tkPercent:   Result := '%';
     tkAssign:    Result := ':=';
+    tkSingleEq:  Result := '=';
     tkEq:        Result := '==';
     tkNeq:       Result := '!=';
     tkLt:        Result := '<';
@@ -585,9 +586,8 @@ begin
       end
       else
       begin
-        FDiag.Error('unexpected ''='', did you mean '':='' or ''==''?',
-          MakeSpan(startLine, startCol, 1, FFileName));
-        Result := MakeToken(tkError, '=', startLine, startCol, 1);
+        // Single '=' is valid for type declarations: type X = ...
+        Result := MakeToken(tkSingleEq, '=', startLine, startCol, 1);
       end;
     end;
 

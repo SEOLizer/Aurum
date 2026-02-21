@@ -1243,6 +1243,25 @@ begin
             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
             WriteMovMemReg(FCode, RBP, SlotOffset(instr.Dest), RAX);
           end;
+        irLoadLocalAddr:
+          begin
+            // Load address of local variable into temp: dest = &locals[src1]
+            // LEA rax, [rbp + offset]
+            EmitU8(FCode, $48); // REX.W
+            EmitU8(FCode, $8D); // LEA opcode
+            if (SlotOffset(instr.Src1) >= -128) and (SlotOffset(instr.Src1) <= 127) then
+            begin
+              EmitU8(FCode, $45); // ModR/M: [rbp + disp8], reg=rax
+              EmitU8(FCode, Byte(SlotOffset(instr.Src1)));
+            end
+            else
+            begin
+              EmitU8(FCode, $85); // ModR/M: [rbp + disp32], reg=rax
+              EmitU32(FCode, Cardinal(SlotOffset(instr.Src1)));
+            end;
+            // Store result in destination temp slot
+            WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+          end;
         irAdd:
           begin
             // dest = src1 + src2
@@ -1667,6 +1686,53 @@ begin
             
             // Store value at calculated address: [RAX] = RDX
             EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $10);
+          end;
+
+        irLoadField:
+          begin
+            // Load field from struct: Dest = *(Src1 + ImmInt)
+            // Src1 = temp holding struct base address
+            // ImmInt = field offset in bytes
+            // Load struct base address into RAX
+            WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+            // Load field value: mov rcx, [rax + offset]
+            if (instr.ImmInt >= -128) and (instr.ImmInt <= 127) then
+            begin
+              // mov rcx, [rax + disp8]
+              EmitU8(FCode, $48); EmitU8(FCode, $8B); EmitU8(FCode, $48); EmitU8(FCode, Byte(instr.ImmInt));
+            end
+            else
+            begin
+              // mov rcx, [rax + disp32]
+              EmitU8(FCode, $48); EmitU8(FCode, $8B); EmitU8(FCode, $88);
+              EmitU32(FCode, Cardinal(instr.ImmInt));
+            end;
+            // Store result in destination temp slot
+            WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RCX);
+          end;
+
+        irStoreField:
+          begin
+            // Store field into struct: *(Src1 + ImmInt) = Src2
+            // Src1 = temp holding struct base address
+            // Src2 = temp holding value to store
+            // ImmInt = field offset in bytes
+            // Load struct base address into RAX
+            WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+            // Load value to store into RCX
+            WriteMovRegMem(FCode, RCX, RBP, SlotOffset(localCnt + instr.Src2));
+            // Store field value: mov [rax + offset], rcx
+            if (instr.ImmInt >= -128) and (instr.ImmInt <= 127) then
+            begin
+              // mov [rax + disp8], rcx
+              EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $48); EmitU8(FCode, Byte(instr.ImmInt));
+            end
+            else
+            begin
+              // mov [rax + disp32], rcx
+              EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $88);
+              EmitU32(FCode, Cardinal(instr.ImmInt));
+            end;
           end;
       end;
     end;

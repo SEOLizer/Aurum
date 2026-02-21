@@ -36,10 +36,11 @@ type
   TNodeKind = (
     // Ausdrücke
     nkIntLit, nkStrLit, nkBoolLit, nkCharLit, nkIdent,
-    nkBinOp, nkUnaryOp, nkCall, nkArrayLit,
+    nkBinOp, nkUnaryOp, nkCall, nkArrayLit, nkStructLit,
     nkFieldAccess, nkIndexAccess,
     // Statements
-    nkVarDecl, nkAssign, nkIf, nkWhile, nkFor, nkRepeatUntil,
+    nkVarDecl, nkAssign, nkFieldAssign, nkIndexAssign,
+    nkIf, nkWhile, nkFor, nkRepeatUntil,
     nkReturn, nkBreak, nkSwitch,
     nkBlock, nkExprStmt,
     // Top-Level
@@ -53,6 +54,7 @@ type
   TAstNode = class;
   TAstExpr = class;
   TAstStmt = class;
+  TAstStructDecl = class;
 
   { --- Knotenlisten --- }
 
@@ -216,6 +218,28 @@ type
     property Index: TAstExpr read FIndex;
   end;
 
+  { Struct-Literal Feld-Initialisierer: name: expr }
+  TStructFieldInit = record
+    Name: string;
+    Value: TAstExpr;
+  end;
+  TStructFieldInitList = array of TStructFieldInit;
+
+  { Struct-Literal: TypeName { field1: val1, field2: val2 } }
+  TAstStructLit = class(TAstExpr)
+  private
+    FTypeName: string;
+    FFields: TStructFieldInitList;
+    FStructDecl: TAstStructDecl; // set by sema, nil initially
+  public
+    constructor Create(const aTypeName: string; const aFields: TStructFieldInitList; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    procedure SetStructDecl(aDecl: TAstStructDecl);
+    property TypeName: string read FTypeName;
+    property Fields: TStructFieldInitList read FFields;
+    property StructDecl: TAstStructDecl read FStructDecl;
+  end;
+
   // ================================================================
   // Statements
   // ================================================================
@@ -268,6 +292,18 @@ type
     constructor Create(aTarget: TAstFieldAccess; aValue: TAstExpr; aSpan: TSourceSpan);
     destructor Destroy; override;
     property Target: TAstFieldAccess read FTarget;
+    property Value: TAstExpr read FValue;
+  end;
+
+  { Index-Zuweisung: arr[idx] := value }
+  TAstIndexAssign = class(TAstStmt)
+  private
+    FTarget: TAstIndexAccess; // the LHS index-access node
+    FValue: TAstExpr;
+  public
+    constructor Create(aTarget: TAstIndexAccess; aValue: TAstExpr; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property Target: TAstIndexAccess read FTarget;
     property Value: TAstExpr read FValue;
   end;
 
@@ -612,10 +648,13 @@ begin
     nkUnaryOp:     Result := 'UnaryOp';
     nkCall:        Result := 'Call';
     nkArrayLit:    Result := 'ArrayLit';
+    nkStructLit:   Result := 'StructLit';
     nkFieldAccess: Result := 'FieldAccess';
     nkIndexAccess: Result := 'IndexAccess';
     nkVarDecl:     Result := 'VarDecl';
     nkAssign:      Result := 'Assign';
+    nkFieldAssign: Result := 'FieldAssign';
+    nkIndexAssign: Result := 'IndexAssign';
     nkIf:          Result := 'If';
     nkWhile:       Result := 'While';
     nkFor:         Result := 'For';
@@ -1049,6 +1088,35 @@ begin
 end;
 
 // ================================================================
+// TAstStructLit
+// ================================================================
+
+constructor TAstStructLit.Create(const aTypeName: string; const aFields: TStructFieldInitList; aSpan: TSourceSpan);
+begin
+  inherited Create(nkStructLit, aSpan);
+  FTypeName := aTypeName;
+  FFields := aFields;
+  FStructDecl := nil;
+end;
+
+destructor TAstStructLit.Destroy;
+var
+  i: Integer;
+begin
+  for i := 0 to High(FFields) do
+    if Assigned(FFields[i].Value) then
+      FFields[i].Value.Free;
+  FFields := nil;
+  // FStructDecl is not owned by us
+  inherited Destroy;
+end;
+
+procedure TAstStructLit.SetStructDecl(aDecl: TAstStructDecl);
+begin
+  FStructDecl := aDecl;
+end;
+
+// ================================================================
 // TAstFor
 // ================================================================
 
@@ -1143,13 +1211,31 @@ end;
 
 constructor TAstFieldAssign.Create(aTarget: TAstFieldAccess; aValue: TAstExpr; aSpan: TSourceSpan);
 begin
-  inherited Create(nkAssign, aSpan);
+  inherited Create(nkFieldAssign, aSpan);
   FTarget := aTarget;
   FValue := aValue;
 end;
 
 
 destructor TAstFieldAssign.Destroy;
+begin
+  if Assigned(FTarget) then FTarget.Free;
+  if Assigned(FValue) then FValue.Free;
+  inherited Destroy;
+end;
+
+// ================================================================
+// TAstIndexAssign
+// ================================================================
+
+constructor TAstIndexAssign.Create(aTarget: TAstIndexAccess; aValue: TAstExpr; aSpan: TSourceSpan);
+begin
+  inherited Create(nkIndexAssign, aSpan);
+  FTarget := aTarget;
+  FValue := aValue;
+end;
+
+destructor TAstIndexAssign.Destroy;
 begin
   if Assigned(FTarget) then FTarget.Free;
   if Assigned(FValue) then FValue.Free;

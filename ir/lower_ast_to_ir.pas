@@ -25,20 +25,24 @@ type
     FLocalMap: TStringList; // name -> local index (as object integer)
     FLocalTypes: array of TAurumType; // index -> declared local type
     FLocalElemSize: array of Integer; // index -> element size in bytes for dynamic array locals (0 if not array)
+    FLocalIsStruct: array of Boolean; // index -> true if this local is a struct (need address, not value)
     FConstMap: TStringList; // name -> TConstValue (compile-time constants)
     FLocalConst: array of TConstValue; // per-function local constant values (or nil)
     FBreakStack: TStringList; // stack of break labels
+    FStructTypes: TStringList; // struct name -> TAstStructDecl (as object)
 
     function NewTemp: Integer;
     function NewLabel(const prefix: string): string;
     function AllocLocal(const name: string; aType: TAurumType): Integer;
-    function AllocLocalMany(const name: string; aType: TAurumType; count: Integer): Integer;
+    function AllocLocalMany(const name: string; aType: TAurumType; count: Integer; isStruct: Boolean = False): Integer;
     function GetLocalType(idx: Integer): TAurumType;
     function ResolveLocal(const name: string): Integer;
     procedure Emit(instr: TIRInstr);
 
     function LowerStmt(stmt: TAstStmt): Boolean;
     function LowerExpr(expr: TAstExpr): Integer; // returns temp index
+    function LowerStructLit(sl: TAstStructLit): Integer; // returns temp with struct address
+    procedure LowerStructLitIntoLocal(sl: TAstStructLit; baseLoc: Integer; sd: TAstStructDecl);
   public
     constructor Create(modul: TIRModule; diag: TDiagnostics);
     destructor Destroy; override;
@@ -76,8 +80,11 @@ constructor TIRLowering.Create(modul: TIRModule; diag: TDiagnostics);
     FConstMap.Sorted := False;
     FBreakStack := TStringList.Create;
     FBreakStack.Sorted := False;
+    FStructTypes := TStringList.Create;
+    FStructTypes.Sorted := False;
     SetLength(FLocalTypes, 0);
     SetLength(FLocalElemSize, 0);
+    SetLength(FLocalIsStruct, 0);
     SetLength(FLocalConst, 0);
   end;
 
@@ -93,7 +100,10 @@ begin
   for i := 0 to Length(FLocalConst)-1 do
     if Assigned(FLocalConst[i]) then FLocalConst[i].Free;
   SetLength(FLocalConst, 0);
+  SetLength(FLocalIsStruct, 0);
   FBreakStack.Free;
+  // Don't free objects in FStructTypes - they belong to the AST
+  FStructTypes.Free;
   inherited Destroy;
 end;
 
@@ -129,9 +139,12 @@ begin
   // ensure FLocalElemSize has same length and initialize to 0
   SetLength(FLocalElemSize, FCurrentFunc.LocalCount);
   FLocalElemSize[Result] := 0;
+  // ensure FLocalIsStruct has same length and initialize to false
+  SetLength(FLocalIsStruct, FCurrentFunc.LocalCount);
+  FLocalIsStruct[Result] := False;
 end;
 
-function TIRLowering.AllocLocalMany(const name: string; aType: TAurumType; count: Integer): Integer;
+function TIRLowering.AllocLocalMany(const name: string; aType: TAurumType; count: Integer; isStruct: Boolean = False): Integer;
 var
   idx, i, base: Integer;
 begin
@@ -152,6 +165,10 @@ begin
   SetLength(FLocalElemSize, FCurrentFunc.LocalCount);
   for i := 0 to count - 1 do
     FLocalElemSize[base + i] := 0;
+  // ensure FLocalIsStruct has same length
+  SetLength(FLocalIsStruct, FCurrentFunc.LocalCount);
+  for i := 0 to count - 1 do
+    FLocalIsStruct[base + i] := isStruct and (i = 0); // only mark first slot as struct
   Result := base;
 end;
 
@@ -183,6 +200,15 @@ var
   mangled: string;
   cv: TConstValue;
 begin
+  // First pass: collect all struct declarations for size lookups
+  FStructTypes.Clear;
+  for i := 0 to High(prog.Decls) do
+  begin
+    node := prog.Decls[i];
+    if node is TAstStructDecl then
+      FStructTypes.AddObject(TAstStructDecl(node).Name, TObject(node));
+  end;
+
   // iterate top-level decls, create functions
   for i := 0 to High(prog.Decls) do
   begin
@@ -228,16 +254,24 @@ begin
         fn.LocalCount := fn.ParamCount;
         SetLength(FLocalTypes, fn.LocalCount);
         SetLength(FLocalConst, fn.LocalCount);
+        SetLength(FLocalIsStruct, fn.LocalCount);
+        SetLength(FLocalElemSize, fn.LocalCount);
         // implicit self param at index 0
+        // Note: self is a pointer to struct passed by caller, NOT a struct on stack
+        // So we should NOT mark it as FLocalIsStruct - it's already an address
         FLocalMap.AddObject('self', IntToObj(0));
-        FLocalTypes[0] := atUnresolved; // will be resolved later
+        FLocalTypes[0] := atUnresolved;
         FLocalConst[0] := nil;
+        FLocalIsStruct[0] := False; // self holds address, don't use LEA
+        FLocalElemSize[0] := 0;
         // method parameters follow
         for k := 0 to High(m.Params) do
         begin
           FLocalMap.AddObject(m.Params[k].Name, IntToObj(k+1));
           FLocalTypes[k+1] := m.Params[k].ParamType;
           FLocalConst[k+1] := nil;
+          FLocalIsStruct[k+1] := False;
+          FLocalElemSize[k+1] := 0;
         end;
         // lower body
         for k := 0 to High(m.Body.Stmts) do
@@ -488,39 +522,53 @@ function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
           end
           else
           begin
-            // Load local into temp
-            t0 := NewTemp;
-            instr.Op := irLoadLocal;
-            instr.Dest := t0;
-            instr.Src1 := loc;
-            Emit(instr);
-            // If local type is narrower than 64 bits, emit sign- or zero-extend
-            ltype := GetLocalType(loc);
-            if (ltype <> atUnresolved) and (ltype <> atInt64) and (ltype <> atUInt64) then
+            // Check if this local is a struct - if so, load address instead of value
+            if (loc < Length(FLocalIsStruct)) and FLocalIsStruct[loc] then
             begin
-              width := 64;
-              case ltype of
-                atInt8, atUInt8: width := 8;
-                atInt16, atUInt16: width := 16;
-                atInt32, atUInt32: width := 32;
-              end;
-              if ltype in [atInt8, atInt16, atInt32] then
+              // Struct local: load address of the stack slot
+              t0 := NewTemp;
+              instr.Op := irLoadLocalAddr;
+              instr.Dest := t0;
+              instr.Src1 := loc;
+              Emit(instr);
+              Result := t0;
+            end
+            else
+            begin
+              // Load local into temp
+              t0 := NewTemp;
+              instr.Op := irLoadLocal;
+              instr.Dest := t0;
+              instr.Src1 := loc;
+              Emit(instr);
+              // If local type is narrower than 64 bits, emit sign- or zero-extend
+              ltype := GetLocalType(loc);
+              if (ltype <> atUnresolved) and (ltype <> atInt64) and (ltype <> atUInt64) then
               begin
-                instr.Op := irSExt; instr.Dest := NewTemp; instr.Src1 := t0; instr.ImmInt := width; Emit(instr);
-                Result := instr.Dest;
-              end
-              else if ltype in [atUInt8, atUInt16, atUInt32] then
-              begin
-                instr.Op := irZExt; instr.Dest := NewTemp; instr.Src1 := t0; instr.ImmInt := width; Emit(instr);
-                Result := instr.Dest;
+                width := 64;
+                case ltype of
+                  atInt8, atUInt8: width := 8;
+                  atInt16, atUInt16: width := 16;
+                  atInt32, atUInt32: width := 32;
+                end;
+                if ltype in [atInt8, atInt16, atInt32] then
+                begin
+                  instr.Op := irSExt; instr.Dest := NewTemp; instr.Src1 := t0; instr.ImmInt := width; Emit(instr);
+                  Result := instr.Dest;
+                end
+                else if ltype in [atUInt8, atUInt16, atUInt32] then
+                begin
+                  instr.Op := irZExt; instr.Dest := NewTemp; instr.Src1 := t0; instr.ImmInt := width; Emit(instr);
+                  Result := instr.Dest;
+                end
+                else
+                  Result := t0;
               end
               else
                 Result := t0;
-            end
-            else
-              Result := t0;
-          end;
-        end;
+            end; // end else (non-struct local)
+          end; // end else (non-const-folded)
+        end; // end else (local found)
       end;
 
     nkBinOp:
@@ -670,6 +718,7 @@ function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
           instr.Op := irCall;
           instr.Dest := t0;
           instr.ImmStr := TAstCall(expr).Name;
+          instr.ImmInt := argCount; // Backend needs argCount in ImmInt
           instr.CallMode := cmInternal; // Default to internal
           SetLength(instr.ArgTemps, argCount);
           for i := 0 to argCount - 1 do
@@ -738,9 +787,154 @@ function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
           Result := -1;
       end;
 
+    nkStructLit:
+      begin
+        // Struct literal: TypeName { field1: val1, field2: val2, ... }
+        // Allocate stack space for the struct, initialize fields, return address
+        Result := LowerStructLit(TAstStructLit(expr));
+      end;
+
   else
     FDiag.Error('lowering: unsupported expression kind', expr.Span);
     Result := -1;
+  end;
+end;
+
+function TIRLowering.LowerStructLit(sl: TAstStructLit): Integer;
+var
+  instr: TIRInstr;
+  sd: TAstStructDecl;
+  baseLoc, slotsNeeded: Integer;
+  i, fi, fldOffset, valTemp, addrTemp: Integer;
+  fieldName: string;
+  fieldFound: Boolean;
+begin
+  Result := -1;
+  instr := Default(TIRInstr);
+  
+  // Get struct declaration (should have been set by sema)
+  sd := sl.StructDecl;
+  if not Assigned(sd) then
+  begin
+    // Try to look it up
+    fi := FStructTypes.IndexOf(sl.TypeName);
+    if fi < 0 then
+    begin
+      FDiag.Error('unknown struct type in literal: ' + sl.TypeName, sl.Span);
+      Exit;
+    end;
+    sd := TAstStructDecl(FStructTypes.Objects[fi]);
+  end;
+  
+  // Allocate stack slots for the struct
+  slotsNeeded := (sd.Size + 7) div 8;
+  if slotsNeeded < 1 then slotsNeeded := 1;
+  
+  // Use an anonymous name for the temporary struct
+  baseLoc := AllocLocalMany('_structlit_' + IntToStr(FTempCounter), atUnresolved, slotsNeeded, True);
+  
+  // Zero-initialize first slot (other slots will be written to)
+  addrTemp := NewTemp;
+  instr.Op := irConstInt;
+  instr.Dest := addrTemp;
+  instr.ImmInt := 0;
+  Emit(instr);
+  instr.Op := irStoreLocal;
+  instr.Dest := baseLoc;
+  instr.Src1 := addrTemp;
+  Emit(instr);
+  
+  // Get address of the struct
+  addrTemp := NewTemp;
+  instr.Op := irLoadLocalAddr;
+  instr.Dest := addrTemp;
+  instr.Src1 := baseLoc;
+  Emit(instr);
+  
+  // Initialize each field from the literal
+  for i := 0 to High(sl.Fields) do
+  begin
+    fieldName := sl.Fields[i].Name;
+    fieldFound := False;
+    
+    // Find field in struct declaration
+    for fi := 0 to High(sd.Fields) do
+    begin
+      if sd.Fields[fi].Name = fieldName then
+      begin
+        fieldFound := True;
+        fldOffset := sd.FieldOffsets[fi];
+        
+        // Lower the value expression
+        valTemp := LowerExpr(sl.Fields[i].Value);
+        if valTemp < 0 then Continue;
+        
+        // Store value at field offset
+        instr.Op := irStoreField;
+        instr.Src1 := addrTemp;  // base address
+        instr.Src2 := valTemp;   // value
+        instr.ImmInt := fldOffset;
+        Emit(instr);
+        
+        Break;
+      end;
+    end;
+    
+    if not fieldFound then
+      FDiag.Error('unknown field in struct literal: ' + fieldName, sl.Span);
+  end;
+  
+  // Return the address temp
+  Result := addrTemp;
+end;
+
+procedure TIRLowering.LowerStructLitIntoLocal(sl: TAstStructLit; baseLoc: Integer; sd: TAstStructDecl);
+var
+  instr: TIRInstr;
+  i, fi, fldOffset, valTemp, addrTemp: Integer;
+  fieldName: string;
+  fieldFound: Boolean;
+begin
+  instr := Default(TIRInstr);
+  
+  // Get address of the local struct
+  addrTemp := NewTemp;
+  instr.Op := irLoadLocalAddr;
+  instr.Dest := addrTemp;
+  instr.Src1 := baseLoc;
+  Emit(instr);
+  
+  // Initialize each field from the literal
+  for i := 0 to High(sl.Fields) do
+  begin
+    fieldName := sl.Fields[i].Name;
+    fieldFound := False;
+    
+    // Find field in struct declaration
+    for fi := 0 to High(sd.Fields) do
+    begin
+      if sd.Fields[fi].Name = fieldName then
+      begin
+        fieldFound := True;
+        fldOffset := sd.FieldOffsets[fi];
+        
+        // Lower the value expression
+        valTemp := LowerExpr(sl.Fields[i].Value);
+        if valTemp < 0 then Continue;
+        
+        // Store value at field offset
+        instr.Op := irStoreField;
+        instr.Src1 := addrTemp;  // base address
+        instr.Src2 := valTemp;   // value
+        instr.ImmInt := fldOffset;
+        Emit(instr);
+        
+        Break;
+      end;
+    end;
+    
+    if not fieldFound then
+      FDiag.Error('unknown field in struct literal: ' + fieldName, sl.Span);
   end;
 end;
 
@@ -846,6 +1040,37 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
        begin
          tmp := LowerExpr(vd.InitExpr);
          instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := tmp; Emit(instr);
+       end;
+       Exit(True);
+     end
+     else if (vd.DeclTypeName <> '') and (FStructTypes.IndexOf(vd.DeclTypeName) >= 0) then
+     begin
+       // Named struct type: allocate slots for the whole struct
+       // Size is in bytes, each slot is 8 bytes
+       i := FStructTypes.IndexOf(vd.DeclTypeName);
+       if TAstStructDecl(FStructTypes.Objects[i]).Size > 0 then
+       begin
+         loc := AllocLocalMany(vd.Name, atUnresolved, 
+           (TAstStructDecl(FStructTypes.Objects[i]).Size + 7) div 8, True);
+       end
+       else
+       begin
+         // fallback: 1 slot
+         loc := AllocLocal(vd.Name, atUnresolved);
+         FLocalIsStruct[loc] := True;
+       end;
+       // Initialize based on InitExpr type
+       if (vd.InitExpr is TAstIntLit) and (TAstIntLit(vd.InitExpr).Value = 0) then
+       begin
+         // Zero initialization
+         t0 := NewTemp;
+         instr.Op := irConstInt; instr.Dest := t0; instr.ImmInt := 0; Emit(instr);
+         instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := t0; Emit(instr);
+       end
+       else if vd.InitExpr is TAstStructLit then
+       begin
+         // Struct literal: initialize fields directly into the variable's stack slots
+         LowerStructLitIntoLocal(TAstStructLit(vd.InitExpr), loc, TAstStructDecl(FStructTypes.Objects[i]));
        end;
        Exit(True);
      end
@@ -978,7 +1203,40 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
       Exit(True);
     end;
 
+    // index assignment: arr[idx] := value
+    if stmt is TAstIndexAssign then
+    begin
+      // t1 = base array/pointer
+      t1 := LowerExpr(TAstIndexAssign(stmt).Target.Obj);
+      if t1 < 0 then Exit(False);
+      // t2 = index expression
+      t2 := LowerExpr(TAstIndexAssign(stmt).Target.Index);
+      if t2 < 0 then Exit(False);
+      // t0 = value to store
+      t0 := LowerExpr(TAstIndexAssign(stmt).Value);
+      if t0 < 0 then Exit(False);
 
+      // check if index is a constant for static vs dynamic store
+      if TAstIndexAssign(stmt).Target.Index is TAstIntLit then
+      begin
+        // static index: use irStoreElem with ImmInt
+        instr.Op := irStoreElem;
+        instr.Src1 := t1; // array base
+        instr.Src2 := t0; // value
+        instr.ImmInt := TAstIntLit(TAstIndexAssign(stmt).Target.Index).Value; // static index
+        Emit(instr);
+      end
+      else
+      begin
+        // dynamic index: use irStoreElemDyn with 3 sources
+        instr.Op := irStoreElemDyn;
+        instr.Src1 := t1; // array base
+        instr.Src2 := t2; // index temp
+        instr.Src3 := t0; // value temp
+        Emit(instr);
+      end;
+      Exit(True);
+    end;
 
   if stmt is TAstExprStmt then
   begin

@@ -317,8 +317,8 @@ begin
     name := '<anon>';
     FDiag.Error('expected type name', FCurTok.Span);
   end;
-  // '='
-  if Check(tkEq) then
+  // '=' (single equals for type declarations)
+  if Check(tkSingleEq) then
     Advance
   else
   begin
@@ -735,13 +735,12 @@ begin
   end
   else if (expr is TAstIndexAccess) and Check(tkAssign) then
   begin
-    // TODO: array/index assignment
-    FDiag.Error('index assignment not yet supported', expr.Span);
-    Advance;
+    // Index assignment: arr[idx] := value
+    Advance; // consume ':='
     valExpr := ParseExpr;
     Expect(tkSemicolon);
-    expr.Free; valExpr.Free;
-    Exit(TAstExprStmt.Create(TAstIntLit.Create(0, FCurTok.Span), FCurTok.Span));
+    // create index-assign node using the existing index-access AST as target
+    Exit(TAstIndexAssign.Create(TAstIndexAccess(expr), valExpr, valExpr.Span));
   end
   else
   begin
@@ -972,6 +971,9 @@ var
   args: TAstExprList;
   span: TSourceSpan;
   a: TAstExpr;
+  fields: TStructFieldInitList;
+  fld: TStructFieldInit;
+  fldName: string;
 begin
   name := FCurTok.Value;
   span := FCurTok.Span;
@@ -993,6 +995,37 @@ begin
     end;
     Expect(tkRParen);
     Result := ParsePostfix(TAstCall.Create(name, args, span));
+  end
+  else if Accept(tkLBrace) then
+  begin
+    // Struct literal: TypeName { field: value, ... }
+    fields := nil;
+    if not Check(tkRBrace) then
+    begin
+      while True do
+      begin
+        // Parse field initializer: name: expr
+        if Check(tkIdent) then
+        begin
+          fldName := FCurTok.Value;
+          Advance;
+        end
+        else
+        begin
+          fldName := '<anon>';
+          FDiag.Error('expected field name in struct literal', FCurTok.Span);
+        end;
+        Expect(tkColon);
+        fld.Name := fldName;
+        fld.Value := ParseExpr;
+        SetLength(fields, Length(fields) + 1);
+        fields[High(fields)] := fld;
+        if Accept(tkComma) then Continue;
+        Break;
+      end;
+    end;
+    Expect(tkRBrace);
+    Result := ParsePostfix(TAstStructLit.Create(name, fields, span));
   end
   else
     Result := ParsePostfix(TAstIdent.Create(name, span));
