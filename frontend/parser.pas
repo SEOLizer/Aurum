@@ -155,7 +155,11 @@ begin
 end;
 
 function TParser.ParseTopDecl: TAstNode;
-var isExtern: Boolean;
+var
+  isExtern: Boolean;
+  name: string;
+  params: TAstParamList;
+  retType: TAurumType;
 begin
   isExtern := False;
   if Check(tkPub) then
