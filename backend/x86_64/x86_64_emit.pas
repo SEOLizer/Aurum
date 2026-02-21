@@ -1119,7 +1119,7 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
             begin
               // append/push for dynamic arrays
               // instr.Src1 = array local slot index, instr.Src2 = value temp, instr.LabelName = element size
-              var esz := 8;
+              esz := 8;
               if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
               // load array pointer from local
               if instr.Src1 >= 0 then
@@ -1217,7 +1217,7 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
             else if instr.ImmStr = 'pop' then
             begin
               // pop(arrVar) -> returns element
-              var esz := 8;
+              esz := 8;
               if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
               if instr.Src1 >= 0 then
                 WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
@@ -1310,7 +1310,7 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
             else if instr.ImmStr = 'len' then
             begin
               // len(arr) -> returns length
-              var esz := 8;
+              esz := 8;
               if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
               if instr.Src1 >= 0 then
                 WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
@@ -1331,7 +1331,7 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
             else if instr.ImmStr = 'free' then
             begin
               // free(arr): munmap region and set local to 0
-              var esz := 8;
+              esz := 8;
               if instr.LabelName <> '' then esz := StrToIntDef(instr.LabelName, 8);
               if instr.Src1 >= 0 then
                 WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1))
