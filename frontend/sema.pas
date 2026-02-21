@@ -41,7 +41,7 @@ type
     function CheckExpr(expr: TAstExpr): TAurumType;
     procedure CheckStmt(stmt: TAstStmt);
   public
-    constructor Create(d: TDiagnostics; um: TUnitManager);
+    constructor Create(d: TDiagnostics; um: TUnitManager = nil);
     destructor Destroy; override;
     procedure Analyze(prog: TAstProgram);
   end;
@@ -642,7 +642,7 @@ begin
   end;
 end;
 
-constructor TSema.Create(d: TDiagnostics; um: TUnitManager);
+constructor TSema.Create(d: TDiagnostics; um: TUnitManager = nil);
 begin
   inherited Create;
   FDiag := d;
