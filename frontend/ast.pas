@@ -219,16 +219,18 @@ type
   private
     FStorage: TStorageKlass;
     FName: string;
-    FDeclType: TAurumType; // element type for arrays
+    FDeclType: TAurumType; // element type for arrays (primitive) or atUnresolved for named types
+    FDeclTypeName: string; // if named type (struct), store the name here
     FArrayLen: Integer;    // 0 = not array, >0 = static length, -1 = dynamic array ([]) 
     FInitExpr: TAstExpr;
   public
     constructor Create(aStorage: TStorageKlass; const aName: string;
-      aDeclType: TAurumType; aArrayLen: Integer; aInitExpr: TAstExpr; aSpan: TSourceSpan);
+      aDeclType: TAurumType; const aDeclTypeName: string; aArrayLen: Integer; aInitExpr: TAstExpr; aSpan: TSourceSpan);
     destructor Destroy; override;
     property Storage: TStorageKlass read FStorage;
     property Name: string read FName;
     property DeclType: TAurumType read FDeclType;
+    property DeclTypeName: string read FDeclTypeName;
     property ArrayLen: Integer read FArrayLen;
     property InitExpr: TAstExpr read FInitExpr;
   end;
@@ -433,6 +435,7 @@ type
   TStructField = record
     Name: string;
     FieldType: TAurumType;
+    FieldTypeName: string; // if named type
     ArrayLen: Integer; // 0 = scalar, >0 static, -1 dynamic
   end;
   TStructFieldList = array of TStructField;
@@ -761,13 +764,14 @@ end;
 // ================================================================
 
 constructor TAstVarDecl.Create(aStorage: TStorageKlass;
-  const aName: string; aDeclType: TAurumType; aArrayLen: Integer; aInitExpr: TAstExpr;
+  const aName: string; aDeclType: TAurumType; const aDeclTypeName: string; aArrayLen: Integer; aInitExpr: TAstExpr;
   aSpan: TSourceSpan);
 begin
   inherited Create(nkVarDecl, aSpan);
   FStorage := aStorage;
   FName := aName;
   FDeclType := aDeclType;
+  FDeclTypeName := aDeclTypeName;
   FArrayLen := aArrayLen;
   FInitExpr := aInitExpr;
 end;

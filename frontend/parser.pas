@@ -49,7 +49,7 @@ type
     function ParsePostfix(base: TAstExpr): TAstExpr;
 
 
-    function ParseTypeEx(out arrayLen: Integer): TAurumType;
+    function ParseTypeEx(out arrayLen: Integer; out typeName: string): TAurumType;
     function ParseType: TAurumType;
     function ParseParamList: TAstParamList;
   public
@@ -304,6 +304,7 @@ var
   methods: TMethodList;
   fld: TStructField;
   m: TAstFuncDecl;
+  fldTypeName: string;
 begin
   Expect(tkType);
   if Check(tkIdent) then
@@ -349,8 +350,8 @@ begin
         // field: name : Type ;
         fld.Name := FCurTok.Value; Advance;
         Expect(tkColon);
-        fld.FieldType := ParseType;
-        fld.ArrayLen := 0; // ParseType currently handles array suffix in ParseTypeEx; but ParseType returns TAurumType only
+        fld.FieldType := ParseTypeEx(fld.ArrayLen, fldTypeName);
+        fld.FieldTypeName := fldTypeName;
         Expect(tkSemicolon);
         SetLength(fields, Length(fields) + 1);
         fields[High(fields)] := fld;
@@ -624,6 +625,7 @@ var
   storage: TStorageKlass;
   name: string;
   declType: TAurumType;
+  declTypeName: string;
   initExpr: TAstExpr;
   arrayLen: Integer;
 begin
@@ -642,13 +644,13 @@ begin
   end;
 
   Expect(tkColon);
-  declType := ParseTypeEx(arrayLen);
+  declType := ParseTypeEx(arrayLen, declTypeName);
 
   Expect(tkAssign);
   initExpr := ParseExpr;
   Expect(tkSemicolon);
 
-  Result := TAstVarDecl.Create(storage, name, declType, arrayLen, initExpr, initExpr.Span);
+  Result := TAstVarDecl.Create(storage, name, declType, declTypeName, arrayLen, initExpr, initExpr.Span);
 end;
 
 function TParser.ParseForStmt: TAstFor;
@@ -1047,15 +1049,18 @@ begin
   end;
 end;
 
-function TParser.ParseTypeEx(out arrayLen: Integer): TAurumType;
+function TParser.ParseTypeEx(out arrayLen: Integer; out typeName: string): TAurumType;
 var s: string;
 begin
   arrayLen := 0;
+  typeName := '';
   if Check(tkIdent) then
   begin
     s := FCurTok.Value;
     Advance;
     Result := StrToAurumType(s);
+    if Result = atUnresolved then
+      typeName := s;
     // optional array suffix: [N] or []
     if Accept(tkLBracket) then
     begin
@@ -1087,9 +1092,9 @@ begin
 end;
 
 function TParser.ParseType: TAurumType;
-var dummy: Integer;
+var dummy: Integer; dummyName: string;
 begin
-  Result := ParseTypeEx(dummy);
+  Result := ParseTypeEx(dummy, dummyName);
 end;
 
 function TParser.ParseParamList: TAstParamList;
@@ -1097,6 +1102,7 @@ var
   params: TAstParamList;
   name: string;
   typ: TAurumType;
+  typName: string;
   p: TAstParam;
   arrLen: Integer;
 begin
@@ -1120,7 +1126,7 @@ begin
       name := '<anon>'; FDiag.Error('expected parameter name', FCurTok.Span);
     end;
     Expect(tkColon);
-    typ := ParseTypeEx(arrLen);
+    typ := ParseTypeEx(arrLen, typName);
     if arrLen <> 0 then
       FDiag.Error('array parameter types not yet supported', FCurTok.Span);
     p.Name := name; p.ParamType := typ; p.Span := FCurTok.Span;

@@ -14,6 +14,8 @@ type
     Name: string;
     Kind: TSymbolKind;
     DeclType: TAurumType;
+    TypeName: string; // for named types (structs)
+    StructDecl: TAstStructDecl; // if this symbol refers to an instance of a struct type
     ArrayLen: Integer; // 0 = not array, >0 = static length, -1 = dynamic
     // for functions
     ParamTypes: array of TAurumType;
@@ -59,6 +61,8 @@ begin
   Name := AName;
   Kind := symVar;
   DeclType := atUnresolved;
+  TypeName := '';
+  StructDecl := nil;
   ArrayLen := 0;
   ParamCount := 0;
   IsVarArgs := False;
@@ -281,12 +285,19 @@ var
   bin: TAstBinOp;
   un: TAstUnaryOp;
   call: TAstCall;
-    s: TSymbol;
-    i: Integer;
-    lt, rt, ot, atype: TAurumType;
-    qualifier: string;
-    identName: string;
-  begin
+  s: TSymbol;
+  sSym: TSymbol;
+  i, fi: Integer;
+  lt, rt, ot, atype: TAurumType;
+  qualifier: string;
+  identName: string;
+  fName: string;
+  found: Boolean;
+  fldType: TAurumType;
+  recv: TAstExpr;
+  mName: string;
+  mangledName: string;
+begin
   if expr = nil then
   begin
     Result := atUnresolved;
@@ -299,8 +310,38 @@ var
     nkCharLit: Result := atChar;
     nkFieldAccess:
       begin
+        // resolve object expression first
         CheckExpr(TAstFieldAccess(expr).Obj);
-        // field access type resolution is deferred until structs are fully implemented
+        // Attempt to resolve field type statically for simple cases
+        if TAstFieldAccess(expr).Obj is TAstIdent then
+        begin
+          ident := TAstIdent(TAstFieldAccess(expr).Obj);
+          sSym := ResolveSymbol(ident.Name);
+          if Assigned(sSym) and Assigned(sSym.StructDecl) then
+          begin
+            // lookup field in struct decl
+            fName := TAstFieldAccess(expr).Field;
+            found := False;
+            fldType := atUnresolved;
+            for fi := 0 to High(sSym.StructDecl.Fields) do
+            begin
+              if sSym.StructDecl.Fields[fi].Name = fName then
+              begin
+                found := True;
+                fldType := sSym.StructDecl.Fields[fi].FieldType;
+                // if field has named type, we could set more info later
+                Break;
+              end;
+            end;
+            if not found then
+              FDiag.Error('unknown field ' + fName + ' in type ' + sSym.StructDecl.Name, expr.Span)
+            else
+              Result := fldType;
+            expr.ResolvedType := Result;
+            Exit;
+          end;
+        end;
+        // fallback: unresolved
         Result := atUnresolved;
       end;
     nkIndexAccess:
@@ -428,16 +469,51 @@ var
     nkCall:
       begin
         call := TAstCall(expr);
-         s := ResolveSymbol(call.Name);
-         if (s = nil) and (Pos('.', call.Name) > 0) then
-         begin
-           // Handle qualified name (e.g., 'module.function')
-           qualifier := Copy(call.Name, 1, Pos('.', call.Name) - 1);
-           identName := Copy(call.Name, Pos('.', call.Name) + 1, MaxInt);
-           s := ResolveQualifiedName(qualifier, identName, call.Span);
-         end;
+        // Special-case: method call desugared by parser to name '_METHOD_<method>'
+        if (Length(call.Name) > 8) and (Copy(call.Name,1,8) = '_METHOD_') then
+        begin
+          mName := Copy(call.Name, 9, MaxInt);
+          // receiver must be first arg
+          if Length(call.Args) = 0 then
+          begin
+            FDiag.Error('method call without receiver', call.Span);
+            Result := atUnresolved;
+            Exit;
+          end;
+          recv := call.Args[0];
+          sSym := nil;
+          if recv is TAstIdent then
+            sSym := ResolveSymbol(TAstIdent(recv).Name);
+          if (sSym = nil) or (not Assigned(sSym.StructDecl)) then
+          begin
+            FDiag.Error('cannot resolve method receiver type for ' + mName, call.Span);
+            Result := atUnresolved;
+            Exit;
+          end;
+          mangledName := '_L_' + sSym.StructDecl.Name + '_' + mName;
+          s := ResolveSymbol(mangledName);
+          if s = nil then
+          begin
+            // Try qualified lookup in imports
+            // (not implemented yet)
+            FDiag.Error('call to undeclared method: ' + mangledName, call.Span);
+            Result := atUnresolved;
+            Exit;
+          end;
+        end
+        else
+        begin
+          s := ResolveSymbol(call.Name);
+          if (s = nil) and (Pos('.', call.Name) > 0) then
+          begin
+            // Handle qualified name (e.g., 'module.function')
+            qualifier := Copy(call.Name, 1, Pos('.', call.Name) - 1);
+            identName := Copy(call.Name, Pos('.', call.Name) + 1, MaxInt);
+            s := ResolveQualifiedName(qualifier, identName, call.Span);
+          end;
+        end;
 
-         if s = nil then
+        if s = nil then
         begin
           FDiag.Error('call to undeclared function: ' + call.Name, call.Span);
           Result := atUnresolved;
@@ -461,7 +537,7 @@ var
               for i := 0 to s.ParamCount - 1 do
               begin
                 atype := CheckExpr(call.Args[i]);
-                if not TypeEqual(atype, s.ParamTypes[i]) then
+                if (s.ParamTypes[i] <> atUnresolved) and (not TypeEqual(atype, s.ParamTypes[i])) then
                   FDiag.Error(Format('argument %d of %s: expected %s but got %s', [i, call.Name, AurumTypeToStr(s.ParamTypes[i]), AurumTypeToStr(atype)]), call.Args[i].Span);
               end;
               // Check remaining args (varargs)
@@ -477,7 +553,7 @@ var
             for i := 0 to High(call.Args) do
             begin
               atype := CheckExpr(call.Args[i]);
-              if (i < s.ParamCount) and (not TypeEqual(atype, s.ParamTypes[i])) then
+              if (i < s.ParamCount) and (s.ParamTypes[i] <> atUnresolved) and (not TypeEqual(atype, s.ParamTypes[i])) then
                 FDiag.Error(Format('argument %d of %s: expected %s but got %s', [i, call.Name, AurumTypeToStr(s.ParamTypes[i]), AurumTypeToStr(atype)]), call.Args[i].Span);
             end;
           end;
@@ -532,6 +608,14 @@ begin
           sym.DeclType := vtype
         else
           sym.DeclType := vd.DeclType;
+        // record named type if present
+        sym.TypeName := vd.DeclTypeName;
+        if (sym.TypeName <> '') and Assigned(FStructTypes) then
+        begin
+          i := FStructTypes.IndexOf(sym.TypeName);
+          if i >= 0 then
+            sym.StructDecl := TAstStructDecl(FStructTypes.Objects[i]);
+        end;
         // array length metadata
         sym.ArrayLen := vd.ArrayLen;
         AddSymbolToCurrent(sym, vd.Span);
