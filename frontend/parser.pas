@@ -47,11 +47,12 @@ type
     function ParseCallOrIdent: TAstExpr;
     function ParsePostfix(base: TAstExpr): TAstExpr;
 
+    // fields
+    FLastParamListVarArgs: Boolean;
+
     function ParseTypeEx(out arrayLen: Integer): TAurumType;
     function ParseType: TAurumType;
     function ParseParamList: TAstParamList;
-    // tracks whether last parsed param list had varargs (...)
-    FLastParamListVarArgs: Boolean;
   public
     constructor Create(lexer: TLexer; diag: TDiagnostics);
     destructor Destroy; override;
