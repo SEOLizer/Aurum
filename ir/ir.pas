@@ -4,7 +4,7 @@ unit ir;
 interface
 
 uses
-  SysUtils, Classes, ast; // für TLyxType
+  SysUtils, Classes, ast; // für TAurumType
 
 type
   TIRCallMode = (
@@ -65,8 +65,8 @@ type
      ImmStr: string;
      LabelName: string;
      // Cast-specific fields
-     CastFromType: TLyxType;  // source type for cast operations
-     CastToType: TLyxType;    // target type for cast operations
+      CastFromType: TAurumType;  // source type for cast operations
+      CastToType: TAurumType;    // target type for cast operations
      // Call-specific fields
      CallMode: TIRCallMode;   // mode for irCall/irVarCall
      ArgTemps: array of Integer; // argument temp indices for calls (replaces CSV in LabelName)
