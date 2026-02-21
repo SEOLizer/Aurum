@@ -50,6 +50,8 @@ type
     function ParseTypeEx(out arrayLen: Integer): TAurumType;
     function ParseType: TAurumType;
     function ParseParamList: TAstParamList;
+    // tracks whether last parsed param list had varargs (...)
+    FLastParamListVarArgs: Boolean;
   public
     constructor Create(lexer: TLexer; diag: TDiagnostics);
     destructor Destroy; override;
@@ -153,7 +155,9 @@ begin
 end;
 
 function TParser.ParseTopDecl: TAstNode;
+var isExtern: Boolean;
 begin
+  isExtern := False;
   if Check(tkPub) then
   begin
     Advance; // consume 'pub'
@@ -166,6 +170,52 @@ begin
     else
     begin
       FDiag.Error('expected fn, con or type after pub', FCurTok.Span);
+      Exit(nil);
+    end;
+  end;
+  // support 'extern fn ... ;' top-level declarations
+  if Check(tkExtern) then
+  begin
+    isExtern := True;
+    Advance;
+  end;
+  if isExtern then
+  begin
+    if Check(tkFn) then
+    begin
+      // parse function signature without body
+      Expect(tkFn);
+      // reuse ParseFuncDecl for name/params/retType parsing by peeking and backtracking is complex
+      // Instead, parse inline here
+      var name: string; params: TAstParamList; retType: TAurumType;
+      if Check(tkIdent) then
+      begin
+        name := FCurTok.Value; Advance;
+      end
+      else
+      begin
+        name := '<anon>'; FDiag.Error('expected function name', FCurTok.Span);
+      end;
+      Expect(tkLParen);
+      if not Check(tkRParen) then
+        params := ParseParamList
+      else
+        params := nil;
+      Expect(tkRParen);
+      if Accept(tkColon) then
+        retType := ParseType
+      else
+        retType := atVoid;
+      Expect(tkSemicolon);
+      Result := TAstFuncDecl.Create(name, params, retType, nil, FCurTok.Span, False);
+      // mark extern and varargs if parser recorded them
+      TAstFuncDecl(Result).IsExtern := True;
+      TAstFuncDecl(Result).IsVarArgs := FLastParamListVarArgs;
+      Exit(Result);
+    end
+    else
+    begin
+      FDiag.Error('expected fn after extern', FCurTok.Span);
       Exit(nil);
     end;
   end;
@@ -942,8 +992,16 @@ var
   arrLen: Integer;
 begin
   params := nil;
+  FLastParamListVarArgs := False;
   while not Check(tkRParen) and not Check(tkEOF) do
   begin
+    if Check(tkEllipsis) then
+    begin
+      // varargs marker
+      Accept(tkEllipsis);
+      FLastParamListVarArgs := True;
+      Break;
+    end;
     if Check(tkIdent) then
     begin
       name := FCurTok.Value; Advance;
