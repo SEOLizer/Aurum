@@ -326,6 +326,28 @@ begin
   Result := -1;
 end;
 
+function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
+  var
+    instr: TIRInstr;
+    loc: Integer;
+    tmp: Integer;
+    condTmp: Integer;
+    t0, t1, t2: Integer;
+    thenLabel, elseLabel, endLabel: string;
+    whileNode: TAstWhile;
+    startLabel, bodyLabel, exitLabel: string;
+    i: Integer;
+    sw: TAstSwitch;
+    switchTmp: Integer;
+    endLbl, defaultLbl: string;
+    caseLabels: TStringList;
+    lbl: string;
+    caseTmp: Integer;
+    ltype: TAurumType;
+    width: Integer;
+    w: Integer;
+    lit: Int64;
+    mask64: UInt64;
     truncated: UInt64;
     half: UInt64;
     signedVal: Int64;
