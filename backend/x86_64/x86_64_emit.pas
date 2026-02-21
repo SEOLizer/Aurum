@@ -1638,6 +1638,33 @@ begin
     end;
   end;
 
+  // diagnostic: dump emitted bytes per function for failing ABI tests
+  var dumpStart, dumpEnd, dumpLen, di: Integer;
+  var dumpBuf: array of Byte;
+  var fs: TFileStream;
+  var fname: string;
+  // write slice for current function
+  dumpStart := FLabelPositions[High(FLabelPositions)].Pos;
+  dumpEnd := FCode.Size;
+  dumpLen := dumpEnd - dumpStart;
+  if dumpLen > 0 then
+  begin
+    SetLength(dumpBuf, dumpLen);
+    for di := 0 to dumpLen - 1 do
+      dumpBuf[di] := FCode.ReadU8(dumpStart + di);
+    fname := '/tmp/emit_' + module.Functions[i].Name + '.bin';
+    try
+      fs := TFileStream.Create(fname, fmCreate);
+      try
+        fs.WriteBuffer(dumpBuf[0], dumpLen);
+      finally
+        fs.Free;
+      end;
+    except
+      // ignore file write errors
+    end;
+  end;
+
   // patch string LEAs
   for i := 0 to High(FLeaPositions) do
   begin
