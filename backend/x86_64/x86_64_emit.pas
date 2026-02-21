@@ -4,7 +4,7 @@ unit x86_64_emit;
 interface
 
 uses
-  SysUtils, Classes, bytes, ir;
+  SysUtils, Classes, bytes, ir, backend_types;
 
 type
   TLabelPos = record
