@@ -422,6 +422,67 @@ fn main(): int64 {
 }
 ```
 
+## Struct-Methoden & `self` (Phase A)
+
+**Motivation:** Daten und Verhalten gehören zusammen, ohne dass zusätzliche Laufzeitkosten entstehen. Lyx ergänzt `struct`-Typen daher um integrierte Methodenblöcke.
+
+### Syntax
+
+```lyx
+type Player := struct {
+  id: int64;
+  health: int64;
+
+  fn take_damage(amount: int64) {
+    self.health := self.health - amount;
+    if self.health < 0 {
+      self.health := 0;
+    }
+  }
+
+  fn is_alive(): bool {
+    return self.health > 0;
+  }
+};
+```
+
+* Felder und Methoden teilen sich den Block. Reihenfolge spielt keine Rolle.
+* Methoden verwenden dieselbe Blocksyntax wie freie Funktionen.
+* `self` ist als reserviertes Schlüsselwort automatisch verfügbar.
+
+### `self`
+
+* Typ: `*Player` (Pointer auf den umschließenden Struct-Typ).
+* Übergabe: als versteckter erster Parameter, ABI-konform in `RDI` (x86_64 SysV).
+* Mutierbar: Methoden können Felder direkt verändern (`self.health := …`).
+
+### Dot-Notation & Aufrufauflösung
+
+```
+let mut p := Player{ id: 1, health: 42 };
+p.take_damage(20);
+```
+
+* Der Semantik-Pass prüft zuerst den Typ auf der linken Seite (`Player`).
+* Lookup entscheidet zwischen Feldzugriff (`p.health`) und Methodenausdruck (`p.take_damage`).
+* Methodenaufrufe werden in freie Funktionsaufrufe desugart:
+  * `p.take_damage(20)` → `_L_Player_take_damage(&p, 20)`
+  * `p.is_alive()`      → `_L_Player_is_alive(&p)`
+* Das `_L_`-Präfix verhindert Namenskollisionen im ELF-Binary.
+
+### Speicherlayout
+
+* Es gibt **keine** impliziten VMT- oder Header-Pointer.
+* Ein `struct` bleibt byte-identisch zu seiner Feldliste; Methoden existieren nur zur Compilezeit.
+* Damit bleibt „Zero Overhead“ erhalten.
+
+### Export / Import
+
+* `pub type Player := struct { … }` exportiert den Typ sowie alle Methoden in die LUI-Datei.
+* Beim Import stehen Methoden weiterhin über die Dot-Notation zur Verfügung (`game.Player`).
+
+---
+
 ## Anforderungen
 
 # 1) Sprachkern (Syntax & Paradigma)

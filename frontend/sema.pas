@@ -30,6 +30,7 @@ type
     FCurrentReturn: TAurumType;
     FUnitManager: TUnitManager;
     FImportedUnits: TStringList; // Alias -> UnitPath for resolving qualified names
+    FStructTypes: TStringList; // name -> TAstStructDecl as object
     procedure PushScope;
     procedure PopScope;
     procedure AddSymbolToCurrent(sym: TSymbol; span: TSourceSpan);
@@ -849,10 +850,12 @@ end;
 
 procedure TSema.Analyze(prog: TAstProgram);
 var
-  i, j: Integer;
+  i, j, k: Integer;
   node: TAstNode;
   fn: TAstFuncDecl;
   con: TAstConDecl;
+  m: TAstFuncDecl;
+  p: TAstParam;
   s: TSymbol;
   sym: TSymbol;
   itype: TAurumType;
@@ -864,30 +867,61 @@ begin
   for i := 0 to High(prog.Decls) do
   begin
     node := prog.Decls[i];
-    if node is TAstFuncDecl then
-    begin
-      fn := TAstFuncDecl(node);
-      // check duplicates
-      if ResolveSymbol(fn.Name) <> nil then
-      begin
-        FDiag.Error('redeclaration of function: ' + fn.Name, fn.Span);
-        Continue;
-      end;
-      sym := TSymbol.Create(fn.Name);
-      sym.Kind := symFunc;
-      sym.DeclType := fn.ReturnType;
-      sym.ParamCount := Length(fn.Params);
-      SetLength(sym.ParamTypes, sym.ParamCount);
-      for j := 0 to sym.ParamCount - 1 do
-        sym.ParamTypes[j] := fn.Params[j].ParamType;
-      AddSymbolToCurrent(sym, fn.Span);
-    end
-    else if node is TAstTypeDecl then
-    begin
-      // type declarations: register as named types (future work)
-      // for now, skip
-    end
-    else if node is TAstConDecl then
+  if node is TAstFuncDecl then
+     begin
+       fn := TAstFuncDecl(node);
+       // check duplicates
+       if ResolveSymbol(fn.Name) <> nil then
+       begin
+         FDiag.Error('redeclaration of function: ' + fn.Name, fn.Span);
+         Continue;
+       end;
+       sym := TSymbol.Create(fn.Name);
+       sym.Kind := symFunc;
+       sym.DeclType := fn.ReturnType;
+       sym.ParamCount := Length(fn.Params);
+       SetLength(sym.ParamTypes, sym.ParamCount);
+       for j := 0 to sym.ParamCount - 1 do
+         sym.ParamTypes[j] := fn.Params[j].ParamType;
+       AddSymbolToCurrent(sym, fn.Span);
+     end
+     else if node is TAstStructDecl then
+     begin
+       // register struct type and its methods as top-level functions (mangled)
+       if not Assigned(FStructTypes) then
+       begin
+         FStructTypes := TStringList.Create;
+         FStructTypes.Sorted := False;
+       end;
+       if FStructTypes.IndexOf(TAstStructDecl(node).Name) >= 0 then
+       begin
+         FDiag.Error('redeclaration of type: ' + TAstStructDecl(node).Name, node.Span);
+         Continue;
+       end;
+       FStructTypes.AddObject(TAstStructDecl(node).Name, TObject(node));
+       // register methods as functions with mangled names
+       for j := 0 to High(TAstStructDecl(node).Methods) do
+       begin
+         m := TAstStructDecl(node).Methods[j];
+         sym := TSymbol.Create('_L_' + TAstStructDecl(node).Name + '_' + m.Name);
+         sym.Kind := symFunc;
+         sym.DeclType := m.ReturnType;
+         // first param is implicit self (type unresolved for now)
+         sym.ParamCount := Length(m.Params) + 1;
+         SetLength(sym.ParamTypes, sym.ParamCount);
+         sym.ParamTypes[0] := atUnresolved;
+        for k := 0 to High(m.Params) do
+            sym.ParamTypes[k+1] := m.Params[k].ParamType;
+
+         AddSymbolToCurrent(sym, m.Span);
+       end;
+     end
+     else if node is TAstTypeDecl then
+     begin
+       // type declarations: register as named types (future work)
+       // for now, skip
+     end
+     else if node is TAstConDecl then
     begin
       con := TAstConDecl(node);
       if ResolveSymbol(con.Name) <> nil then
@@ -929,6 +963,40 @@ begin
       CheckStmt(fn.Body);
       // leave function scope
       PopScope;
+    end;
+  end;
+
+  // Also process methods defined inside structs
+  for i := 0 to High(prog.Decls) do
+  begin
+    node := prog.Decls[i];
+    if node is TAstStructDecl then
+    begin
+      for j := 0 to High(TAstStructDecl(node).Methods) do
+      begin
+        m := TAstStructDecl(node).Methods[j];
+        // enter method scope
+        PushScope;
+        // implicit self parameter
+        sym := TSymbol.Create('self');
+        sym.Kind := symVar;
+        sym.DeclType := atUnresolved; // will be resolved later when type system exists
+        AddSymbolToCurrent(sym, m.Span);
+        // declare method params
+        for k := 0 to High(m.Params) do
+        begin
+          p := m.Params[k];
+          sym := TSymbol.Create(p.Name);
+          sym.Kind := symVar;
+          sym.DeclType := p.ParamType;
+          AddSymbolToCurrent(sym, p.Span);
+        end;
+        // set return type
+        FCurrentReturn := m.ReturnType;
+        // check body
+        CheckStmt(m.Body);
+        PopScope;
+      end;
     end;
   end;
 end;

@@ -31,7 +31,9 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 
 ### Keywords (reserviert)
 
-`fn var let co con if else while switch case break default return true false extern unit import pub as array`
+`fn var let co con if else while switch case break default return true false extern unit import pub as array struct self`
+
+> Reserviert für kommende Phasen (noch ohne Semantik): `class`, `extends`, `virtual`.
 
 ### Operatoren / Trennzeichen
 
@@ -200,7 +202,10 @@ LetDecl        := 'let' Ident ':' Type ':=' Expr ';' ;
 CoDecl         := 'co'  Ident ':' Type ':=' Expr ';' ;
 
 AssignStmt     := LValue ':=' Expr ';' ;
-LValue         := Ident | FieldAccess | IndexAccess ;
+LValue         := Ident { FieldOrIndexSuffix } ;
+FieldOrIndexSuffix
+               := '.' Ident
+               | '[' Expr ']' ;
 
 IfStmt         := 'if' '(' Expr ')' Stmt [ 'else' Stmt ] ;
 
@@ -238,8 +243,11 @@ PointerType    := '*' Type ;
 ArrayType      := 'array' ;                      // Stack-allokiertes Array
                 | '[' IntLit ']' Type ;          // z.B. [4]f64 (geplant)
 
-StructType     := 'struct' '{' { FieldDecl } '}' ;
+StructType     := 'struct' '{' { StructMember } '}' ;
+StructMember   := FieldDecl | MethodDecl ;
 FieldDecl      := Ident ':' Type ';' ;
+MethodDecl     := 'fn' Ident '(' [ ParamList ] ')' [ ':' RetType ] Block ;
+> Hinweis: Der implizite Parameter `self` ist nicht Teil von `ParamList`.
 ```
 
 ### Struktur- und Array-Literale
@@ -251,15 +259,19 @@ Primary        := IntLit
                | StringLit
                | CharLit
                | Ident
-               | Call
-               | IndexAccess
                | StructLit
                | ArrayLit
                | '(' Expr ')' ;
 
-FloatLit       := [0-9]+ '.' [0-9]+ ;
+PostfixExpr    := Primary { PostfixSuffix } ;
+PostfixSuffix  := '(' [ ArgList ] ')'            // Funktions- oder Methodenaufruf
+               | '[' Expr ']'                   // Indexzugriff
+               | '.' Ident                      // Feldzugriff
+               | '.' Ident '(' [ ArgList ] ')' ;// Methodenaufruf mit implizitem self
 
-IndexAccess    := Primary '[' Expr ']' ;         // arr[i], arr[expr]
+> Beispiel: `player.take_damage(5)` wird als `Primary = Ident` + `PostfixSuffix = '.' Ident '(' ArgList ')'` erkannt.
+
+FloatLit       := [0-9]+ '.' [0-9]+ ;
 
 StructLit      := Type '{' [ FieldInit { ',' FieldInit } ] '}' ;
 FieldInit      := Ident ':' Expr ;
@@ -281,9 +293,8 @@ AddExpr        := MulExpr { ( '+' | '-' ) MulExpr } ;
 MulExpr        := CastExpr { ( '*' | '/' | '%' ) CastExpr } ;
 
 CastExpr       := UnaryExpr [ 'as' Type ] ;
-UnaryExpr      := ( '!' | '-' ) UnaryExpr | Primary ;
+UnaryExpr      := ( '!' | '-' ) UnaryExpr | PostfixExpr ;
 
-Call           := Ident '(' [ ArgList ] ')' ;
 ArgList        := Expr { ',' Expr } ;
 
 BoolLit        := 'true' | 'false' ;
@@ -316,6 +327,13 @@ ConstPrimary   := IntLit | FloatLit | BoolLit | StringLit | CharLit | '(' ConstE
 * Funktionsscope: Parameter + lokale `var/let/co`  
 * Block erzeugt neuen Scope
 * Import-Scope: Importierte Symbole werden in qualifizierten Namespace aufgelöst
+
+### Dot-Notation für Structs
+
+* `expr.field` greift auf ein Datenfeld des Struct-Typs zu (Offset-Berechnung zur Compilezeit).
+* `expr.method(args…)` wird in einen Funktionsaufruf desugart: `_L_<Struct>_<Method>(&expr, args…)`.
+* Der Compiler injiziert den impliziten `self`-Pointer als ersten Parameter; `self` zeigt immer auf die Adresse der Instanz.
+* Methoden sind statisch gebunden – es existiert kein virtuelles Dispatching in Phase A.
 
 ### Zuweisungsregeln
 

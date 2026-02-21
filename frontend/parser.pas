@@ -25,7 +25,7 @@ type
     function ParseTopDecl: TAstNode;
     function ParseFuncDecl(isPub: Boolean): TAstFuncDecl;
     function ParseConDecl(isPub: Boolean): TAstConDecl;
-    function ParseTypeDecl(isPub: Boolean): TAstTypeDecl;
+    function ParseTypeDecl(isPub: Boolean): TAstNode;
     function ParseUnitDecl: TAstUnitDecl;
     function ParseImportDecl: TAstImportDecl;
 
@@ -296,10 +296,14 @@ begin
   Result := TAstConDecl.Create(name, declType, initExpr, FCurTok.Span);
 end;
 
-function TParser.ParseTypeDecl(isPub: Boolean): TAstTypeDecl;
+function TParser.ParseTypeDecl(isPub: Boolean): TAstNode;
 var
   name: string;
   declType: TAurumType;
+  fields: TStructFieldList;
+  methods: TMethodList;
+  fld: TStructField;
+  m: TAstFuncDecl;
 begin
   Expect(tkType);
   if Check(tkIdent) then
@@ -319,9 +323,55 @@ begin
   begin
     FDiag.Error('expected ''='' in type declaration', FCurTok.Span);
   end;
-  declType := ParseType;
-  Expect(tkSemicolon);
-  Result := TAstTypeDecl.Create(name, declType, isPub, FCurTok.Span);
+
+  // struct { ... }  or simple type
+  if Check(tkStruct) then
+  begin
+    // parse inline struct definition
+    Advance; // struct
+    Expect(tkLBrace);
+    fields := nil;
+    methods := nil;
+    while not Check(tkRBrace) and not Check(tkEOF) do
+    begin
+      if Check(tkFn) then
+      begin
+        // parse method declaration; ParseFuncDecl expects 'fn' at current token
+        m := ParseFuncDecl(False);
+        if Assigned(m) then
+        begin
+          SetLength(methods, Length(methods) + 1);
+          methods[High(methods)] := m;
+        end;
+      end
+      else if Check(tkIdent) then
+      begin
+        // field: name : Type ;
+        fld.Name := FCurTok.Value; Advance;
+        Expect(tkColon);
+        fld.FieldType := ParseType;
+        fld.ArrayLen := 0; // ParseType currently handles array suffix in ParseTypeEx; but ParseType returns TAurumType only
+        Expect(tkSemicolon);
+        SetLength(fields, Length(fields) + 1);
+        fields[High(fields)] := fld;
+      end
+      else
+      begin
+        FDiag.Error('unexpected token in struct body', FCurTok.Span);
+        Advance;
+      end;
+    end;
+    Expect(tkRBrace);
+    Expect(tkSemicolon);
+    Result := TAstStructDecl.Create(name, fields, methods, isPub, FCurTok.Span);
+    Exit;
+  end
+  else
+  begin
+    declType := ParseType;
+    Expect(tkSemicolon);
+    Result := TAstTypeDecl.Create(name, declType, isPub, FCurTok.Span);
+  end;
 end;
 
 function TParser.ParseUnitDecl: TAstUnitDecl;
@@ -938,6 +988,10 @@ function TParser.ParsePostfix(base: TAstExpr): TAstExpr;
 var
   fieldName: string;
   indexExpr: TAstExpr;
+  args: TAstExprList;
+  a: TAstExpr;
+  args2: TAstExprList;
+  ii: Integer;
 begin
   Result := base;
   while True do
@@ -948,7 +1002,33 @@ begin
       begin
         fieldName := FCurTok.Value;
         Advance;
-        Result := TAstFieldAccess.Create(Result, fieldName, Result.Span);
+        // Method call syntax: .Ident ( args )
+        if Accept(tkLParen) then
+        begin
+          // parse args
+          args := nil;
+          if not Check(tkRParen) then
+          begin
+            while True do
+            begin
+              a := ParseExpr;
+              SetLength(args, Length(args) + 1);
+              args[High(args)] := a;
+              if Accept(tkComma) then Continue;
+              Break;
+            end;
+          end;
+          Expect(tkRParen);
+          // method call -> desugar to call with implicit receiver as first arg
+          // name format: _METHOD_<methodname>
+          SetLength(args2, Length(args) + 1);
+          args2[0] := Result; // receiver as first arg
+          for ii := 0 to High(args) do
+            args2[ii+1] := args[ii];
+          Result := TAstCall.Create('_METHOD_' + fieldName, args2, Result.Span);
+        end
+        else
+          Result := TAstFieldAccess.Create(Result, fieldName, Result.Span);
       end
       else
       begin

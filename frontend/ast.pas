@@ -43,7 +43,7 @@ type
     nkReturn, nkBreak, nkSwitch,
     nkBlock, nkExprStmt,
     // Top-Level
-    nkFuncDecl, nkConDecl, nkTypeDecl,
+    nkFuncDecl, nkConDecl, nkTypeDecl, nkStructDecl,
     nkUnitDecl, nkImportDecl,
     nkProgram
   );
@@ -429,6 +429,31 @@ type
     property IsPublic: Boolean read FIsPublic;
   end;
 
+  { Struct/Type-Deklaration mit Feldern und Methoden }
+  TStructField = record
+    Name: string;
+    FieldType: TAurumType;
+    ArrayLen: Integer; // 0 = scalar, >0 static, -1 dynamic
+  end;
+  TStructFieldList = array of TStructField;
+  TMethodList = array of TAstFuncDecl;
+
+  TAstStructDecl = class(TAstNode)
+  private
+    FName: string;
+    FFields: TStructFieldList;
+    FMethods: TMethodList; // reuse TAstFuncDecl for method declarations
+    FIsPublic: Boolean;
+  public
+    constructor Create(const aName: string; const aFields: TStructFieldList;
+      const aMethods: TMethodList; aPublic: Boolean; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property Name: string read FName;
+    property Fields: TStructFieldList read FFields;
+    property Methods: TMethodList read FMethods;
+    property IsPublic: Boolean read FIsPublic;
+  end;
+
   { Unit-Deklaration: unit path.to.name; }
   TAstUnitDecl = class(TAstNode)
   private
@@ -569,13 +594,15 @@ begin
     nkFuncDecl:    Result := 'FuncDecl';
     nkConDecl:     Result := 'ConDecl';
     nkTypeDecl:    Result := 'TypeDecl';
-    nkUnitDecl:    Result := 'UnitDecl';
+    nkStructDecl:  Result := 'StructDecl';
+    nkUnitDecl:     Result := 'UnitDecl';
     nkImportDecl:  Result := 'ImportDecl';
     nkProgram:     Result := 'Program';
   end;
-end;
+  end;
 
 // ================================================================
+
 // TAstNode
 // ================================================================
 
@@ -1007,6 +1034,31 @@ begin
   FName := aName;
   FDeclType := aDeclType;
   FIsPublic := aPublic;
+end;
+
+constructor TAstStructDecl.Create(const aName: string; const aFields: TStructFieldList;
+  const aMethods: TMethodList; aPublic: Boolean; aSpan: TSourceSpan);
+var i: Integer;
+begin
+  inherited Create(nkStructDecl, aSpan);
+  FName := aName;
+  FFields := aFields;
+  SetLength(FMethods, Length(aMethods));
+  for i := 0 to High(aMethods) do
+    FMethods[i] := aMethods[i];
+  FIsPublic := aPublic;
+end;
+
+
+destructor TAstStructDecl.Destroy;
+var i: Integer;
+begin
+  for i := 0 to High(FMethods) do
+    if Assigned(FMethods[i]) then
+      FMethods[i].Free;
+  FMethods := nil;
+  SetLength(FFields, 0);
+  inherited Destroy;
 end;
 
 // ================================================================
