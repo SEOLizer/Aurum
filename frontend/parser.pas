@@ -48,8 +48,6 @@ type
     function ParseCallOrIdent: TAstExpr;
     function ParsePostfix(base: TAstExpr): TAstExpr;
 
-    // fields
-    FLastParamListVarArgs: Boolean;
 
     function ParseTypeEx(out arrayLen: Integer): TAurumType;
     function ParseType: TAurumType;
