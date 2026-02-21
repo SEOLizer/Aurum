@@ -27,6 +27,9 @@ type
     FLeaStrIndex: array of Integer;
     FLabelPositions: array of TLabelPos;
     FJumpPatches: array of TJumpPatch;
+    // External symbols recorded for PLT/GOT (name, libname)
+    FExternalSymbols: array of TExternalSymbol;
+    FPLTGOTPatches: array of TPLTGOTPatch;
   public
     constructor Create;
     destructor Destroy; override;
@@ -442,16 +445,28 @@ begin
         totalSlots := 1024;
       end;
 
-      // compute prologue stack adjustment (frame + padding for alignment)
-      frameBytes := totalSlots * 8;
-      framePad := (16 - ((frameBytes + 8) mod 16)) mod 16; // +8 because return address after push rbp
-      EmitU8(FCode, $55); // push rbp
-      EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $E5); // mov rbp,rsp
-      if frameBytes + framePad > 0 then
-      begin
-        EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $EC);
-        EmitU32(FCode, Cardinal(frameBytes + framePad));
-      end;
+       // compute prologue stack adjustment (frame + padding for alignment)
+       frameBytes := totalSlots * 8;
+       // conservative: always save callee-saved registers RBX, R12-R15 (5 regs)
+       savedPushBytes := 8 * 5; // RBX, R12, R13, R14, R15
+       framePad := (16 - ((frameBytes + 8 + savedPushBytes) mod 16)) mod 16; // +8 for return address
+
+       EmitU8(FCode, $55); // push rbp
+       EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $E5); // mov rbp,rsp
+       // push callee-saved regs (conservative)
+       EmitU8(FCode, $53); // push rbx
+       // push r12..r15 need REX.B set for r12-r15 -> push r12 is 0x41 0x54? Actually push r12 = 41 54
+       EmitU8(FCode, $41); EmitU8(FCode, $54); // push r12
+       EmitU8(FCode, $41); EmitU8(FCode, $55); // push r13
+       EmitU8(FCode, $41); EmitU8(FCode, $56); // push r14
+       EmitU8(FCode, $41); EmitU8(FCode, $57); // push r15
+
+       if frameBytes + framePad > 0 then
+       begin
+         EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $EC);
+         EmitU32(FCode, Cardinal(frameBytes + framePad));
+       end;
+
 
       // spill incoming parameters into slots
       if module.Functions[i].ParamCount > 0 then
@@ -1361,6 +1376,14 @@ begin
               end;
             end;
 
+            // restore callee-saved registers (reverse order of pushes)
+            // pop r15..r12, pop rbx
+            EmitU8(FCode, $41); EmitU8(FCode, $5F); // pop r15
+            EmitU8(FCode, $41); EmitU8(FCode, $5E); // pop r14
+            EmitU8(FCode, $41); EmitU8(FCode, $5D); // pop r13
+            EmitU8(FCode, $41); EmitU8(FCode, $5C); // pop r12
+            EmitU8(FCode, $5B); // pop rbx
+
             if isEntryFunction then
             begin
               // sys_exit
@@ -1369,8 +1392,8 @@ begin
             end
             else
             begin
-              // leave; ret
-              EmitU8(FCode, $C9); // leave
+              // pop rbp; ret
+              EmitU8(FCode, $5D); // pop rbp
               EmitU8(FCode, $C3); // ret
             end;
           end;
@@ -1475,31 +1498,50 @@ begin
             end;
 
             // emit call and patch later
-            SetLength(FJumpPatches, Length(FJumpPatches) + 1);
-            FJumpPatches[High(FJumpPatches)].Pos := FCode.Size;
-            FJumpPatches[High(FJumpPatches)].LabelName := instr.ImmStr;
-            FJumpPatches[High(FJumpPatches)].JmpSize := 5; // call rel32
-            EmitU8(FCode, $E8); // call rel32
-            EmitU32(FCode, 0);  // placeholder offset
+             // record external symbols for PLT if needed
+             if instr.CallMode = cmExternal then
+             begin
+               if instr.ImmStr <> '' then
+               begin
+                 // add to FExternalSymbols if not present
+                 var found := False;
+                 for var ei := 0 to High(FExternalSymbols) do
+                   if FExternalSymbols[ei].Name = instr.ImmStr then begin found := True; Break; end;
+                 if not found then
+                 begin
+                   SetLength(FExternalSymbols, Length(FExternalSymbols) + 1);
+                   FExternalSymbols[High(FExternalSymbols)].Name := instr.ImmStr;
+                   FExternalSymbols[High(FExternalSymbols)].LibraryName := '';
+                 end;
+               end;
+             end;
 
-            // restore stack: remove padding + extra pushed args
-            restoreBytes := callPad + pushBytes;
-            if restoreBytes > 0 then
-            begin
-              if restoreBytes <= 127 then
-              begin
-                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $C4); EmitU8(FCode, Byte(restoreBytes));
-              end
-              else
-              begin
-                EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $C4);
-                EmitU32(FCode, Cardinal(restoreBytes));
-              end;
-            end;
+             SetLength(FJumpPatches, Length(FJumpPatches) + 1);
+             FJumpPatches[High(FJumpPatches)].Pos := FCode.Size;
+             FJumpPatches[High(FJumpPatches)].LabelName := instr.ImmStr;
+             FJumpPatches[High(FJumpPatches)].JmpSize := 5; // call rel32
+             EmitU8(FCode, $E8); // call rel32
+             EmitU32(FCode, 0);  // placeholder offset
 
-            // Store result from RAX if there's a destination
-            if instr.Dest >= 0 then
-              WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+             // restore stack: remove padding + extra pushed args
+             restoreBytes := callPad + pushBytes;
+             if restoreBytes > 0 then
+             begin
+               if restoreBytes <= 127 then
+               begin
+                 EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $C4); EmitU8(FCode, Byte(restoreBytes));
+               end
+               else
+               begin
+                 EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $C4);
+                 EmitU32(FCode, Cardinal(restoreBytes));
+               end;
+             end;
+
+             // Store result from RAX if there's a destination
+             if instr.Dest >= 0 then
+               WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+
           end;
         irStackAlloc:
           begin
