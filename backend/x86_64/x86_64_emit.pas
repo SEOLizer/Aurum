@@ -34,6 +34,8 @@ type
     function GetCodeBuffer: TByteBuffer;
     function GetDataBuffer: TByteBuffer;
     function GetFunctionOffset(const name: string): Integer;
+    function GetExternalSymbols: TExternalSymbolArray;
+    function GetPLTGOTPatches: TPLTGOTPatchArray;
   end;
 
 implementation
@@ -312,6 +314,16 @@ function TX86_64Emitter.GetFunctionOffset(const name: string): Integer;
 begin
   // stub implementation during merge-repair
   Result := -1;
+end;
+
+function TX86_64Emitter.GetExternalSymbols: TExternalSymbolArray;
+begin
+  SetLength(Result, 0);
+end;
+
+function TX86_64Emitter.GetPLTGOTPatches: TPLTGOTPatchArray;
+begin
+  SetLength(Result, 0);
 end;
 
 end.
