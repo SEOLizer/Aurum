@@ -49,6 +49,12 @@ type
     destructor Destroy; override;
     procedure Analyze(prog: TAstProgram);
     procedure AnalyzeWithUnits(prog: TAstProgram; um: TUnitManager);
+    // Struct layout
+    procedure ComputeStructLayouts;
+    // AST rewrite helpers
+    function RewriteExpr(expr: TAstExpr): TAstExpr;
+    function RewriteStmt(stmt: TAstStmt): TAstStmt;
+    procedure RewriteAST(prog: TAstProgram);
   end;
 
 implementation
@@ -311,11 +317,13 @@ begin
     nkFieldAccess:
       begin
         // resolve object expression first
-        CheckExpr(TAstFieldAccess(expr).Obj);
+        recv := TAstFieldAccess(expr).Obj;
+        recv := RewriteExpr(recv);
+        CheckExpr(recv);
         // Attempt to resolve field type statically for simple cases
-        if TAstFieldAccess(expr).Obj is TAstIdent then
+        if recv is TAstIdent then
         begin
-          ident := TAstIdent(TAstFieldAccess(expr).Obj);
+          ident := TAstIdent(recv);
           sSym := ResolveSymbol(ident.Name);
           if Assigned(sSym) and Assigned(sSym.StructDecl) then
           begin
@@ -469,6 +477,9 @@ begin
     nkCall:
       begin
         call := TAstCall(expr);
+        // rewrite nested args first (non-method calls too)
+        for i := 0 to High(call.Args) do
+          call.Args[i] := RewriteExpr(call.Args[i]);
         // Special-case: method call desugared by parser to name '_METHOD_<method>'
         if (Length(call.Name) > 8) and (Copy(call.Name,1,8) = '_METHOD_') then
         begin
@@ -500,6 +511,9 @@ begin
             Result := atUnresolved;
             Exit;
           end;
+          // perform in-place rewrite of call node to point to mangled function
+          call.SetName(mangledName);
+          // no change to args (receiver stays as first param)
         end
         else
         begin
@@ -810,6 +824,100 @@ begin
   end;
 end;
 
+procedure TSema.ComputeStructLayouts;
+var
+  i, pass, changed, fldIdx: Integer;
+  sd: TAstStructDecl;
+  totalSize, maxAlign, off, fsize, falign: Integer;
+  f: TStructField;
+  ok: Boolean;
+  idx: Integer;
+  other: TAstStructDecl;
+  // helper
+  function TypeSizeAndAlign(t: TAurumType; out asz, aalign: Integer): Boolean;
+  begin
+    case t of
+      atInt8, atUInt8, atChar, atBool: asz := 1;
+      atInt16, atUInt16: asz := 2;
+      atInt32, atUInt32, atF32: asz := 4;
+      atInt64, atUInt64, atISize, atUSize, atF64, atPChar: asz := 8;
+      else
+        begin
+          asz := 0;
+          aalign := 0;
+          Exit(False);
+        end;
+    end;
+    aalign := asz;
+    Result := True;
+  end;
+begin
+  if not Assigned(FStructTypes) then Exit;
+  // iterative fixed-point: try to compute until no change
+  pass := 0;
+  repeat
+    changed := 0;
+    Inc(pass);
+    for i := 0 to FStructTypes.Count - 1 do
+    begin
+      sd := TAstStructDecl(FStructTypes.Objects[i]);
+      // skip if already computed
+      if sd.Size <> 0 then Continue;
+      // attempt compute
+      totalSize := 0; maxAlign := 1;
+      off := 0;
+        ok := True;
+
+      for fldIdx := 0 to High(sd.Fields) do
+      begin
+        f := sd.Fields[fldIdx];
+        // determine field size/alignment
+        if f.FieldType <> atUnresolved then
+        begin
+          if not TypeSizeAndAlign(f.FieldType, fsize, falign) then begin ok := False; Break; end;
+        end
+        else if f.FieldTypeName <> '' then
+        begin
+            idx := FStructTypes.IndexOf(f.FieldTypeName);
+            if idx < 0 then begin ok := False; Break; end;
+            other := TAstStructDecl(FStructTypes.Objects[idx]);
+            if other.Size = 0 then begin ok := False; Break; end;
+            fsize := other.Size;
+            falign := other.Align;
+
+        end
+        else
+        begin
+          ok := False; Break;
+        end;
+        // align current offset
+        if falign > maxAlign then maxAlign := falign;
+        if (off mod falign) <> 0 then
+          off := ((off + falign - 1) div falign) * falign;
+        sd.FieldOffsets[fldIdx] := off;
+        off := off + fsize;
+      end;
+        if ok then
+        begin
+          // final struct align = maxAlign, size rounded up
+          sd.SetLayout(off, maxAlign);
+          if (off mod sd.Align) <> 0 then
+            off := ((off + sd.Align - 1) div sd.Align) * sd.Align;
+          sd.SetLayout(off, sd.Align);
+          Inc(changed);
+        end;
+
+    end;
+  until (changed = 0) or (pass > 100);
+  // if after iterations some structs remain with Size=0, report error
+  for i := 0 to FStructTypes.Count - 1 do
+  begin
+    sd := TAstStructDecl(FStructTypes.Objects[i]);
+    if sd.Size = 0 then
+      FDiag.Error('cannot compute layout for struct: ' + sd.Name, sd.Span);
+  end;
+end;
+
 procedure TSema.ImportUnit(imp: TAstImportDecl);
 { Importiert eine Unit und registriert ihre Symbole }
 var
@@ -947,7 +1055,7 @@ begin
   // Phase 0: Verarbeite Imports
   ProcessImports(prog);
   
-  // First pass: register top-level functions and constants
+  // First pass: register top-level functions, constants and struct types
   for i := 0 to High(prog.Decls) do
   begin
     node := prog.Decls[i];
@@ -1024,6 +1132,9 @@ begin
     end;
   end;
 
+  // After registration pass, compute struct layouts before checking bodies
+  ComputeStructLayouts;
+
   // Second pass: check function bodies
   for i := 0 to High(prog.Decls) do
   begin
@@ -1089,6 +1200,62 @@ procedure TSema.AnalyzeWithUnits(prog: TAstProgram; um: TUnitManager);
 begin
   FUnitManager := um;
   Analyze(prog);
+end;
+
+// ---------------------------------------------------------------
+// AST rewrite helpers
+// ---------------------------------------------------------------
+
+function TSema.RewriteExpr(expr: TAstExpr): TAstExpr;
+var call: TAstCall; i: Integer;
+begin
+  if expr = nil then Exit(nil);
+  // Only handle call-args rewriting for now
+  if expr is TAstCall then
+  begin
+    call := TAstCall(expr);
+    for i := 0 to High(call.Args) do
+      call.Args[i] := RewriteExpr(call.Args[i]);
+  end;
+  Result := expr;
+end;
+
+function TSema.RewriteStmt(stmt: TAstStmt): TAstStmt;
+var newExpr: TAstExpr; newStmt: TAstExprStmt;
+begin
+  // For now, only rewrite expression statements
+  if stmt = nil then Exit(nil);
+  if stmt is TAstExprStmt then
+  begin
+    newExpr := RewriteExpr(TAstExprStmt(stmt).Expr);
+    if newExpr <> TAstExprStmt(stmt).Expr then
+    begin
+      newStmt := TAstExprStmt.Create(newExpr, stmt.Span);
+      stmt.Free;
+      Exit(newStmt);
+    end;
+  end;
+  Result := stmt;
+end;
+
+procedure TSema.RewriteAST(prog: TAstProgram);
+var i, j: Integer; fn: TAstFuncDecl;
+begin
+  if not Assigned(prog) then Exit;
+  for i := 0 to High(prog.Decls) do
+  begin
+    if prog.Decls[i] is TAstFuncDecl then
+    begin
+      // rewrite statements in function body
+      // naive approach: iterate statements and call RewriteStmt
+      fn := TAstFuncDecl(prog.Decls[i]);
+      if Assigned(fn.Body) then
+      begin
+        for j := 0 to High(fn.Body.Stmts) do
+          fn.Body.Stmts[j] := RewriteStmt(fn.Body.Stmts[j]);
+      end;
+    end;
+  end;
 end;
 
 end.

@@ -59,6 +59,7 @@ type
   TAstNodeList = array of TAstNode;
   TAstExprList = array of TAstExpr;
   TAstStmtList = array of TAstStmt;
+  TIntArray = array of Integer;
 
   { --- Basisklasse --- }
 
@@ -158,6 +159,8 @@ type
     constructor Create(const aName: string; const aArgs: TAstExprList;
       aSpan: TSourceSpan);
     destructor Destroy; override;
+    procedure SetName(const aName: string);
+    procedure SetArgs(const aArgs: TAstExprList);
     property Name: string read FName;
     property Args: TAstExprList read FArgs;
   end;
@@ -447,6 +450,10 @@ type
     FFields: TStructFieldList;
     FMethods: TMethodList; // reuse TAstFuncDecl for method declarations
     FIsPublic: Boolean;
+    // layout info (bytes)
+    FFieldOffsets: array of Integer; // offset per field
+    FSize: Integer; // total size in bytes
+    FAlign: Integer; // alignment in bytes
   public
     constructor Create(const aName: string; const aFields: TStructFieldList;
       const aMethods: TMethodList; aPublic: Boolean; aSpan: TSourceSpan);
@@ -455,6 +462,10 @@ type
     property Fields: TStructFieldList read FFields;
     property Methods: TMethodList read FMethods;
     property IsPublic: Boolean read FIsPublic;
+    property FieldOffsets: TIntArray read FFieldOffsets;
+    property Size: Integer read FSize;
+    property Align: Integer read FAlign;
+    procedure SetLayout(aSize, aAlign: Integer);
   end;
 
   { Unit-Deklaration: unit path.to.name; }
@@ -716,11 +727,24 @@ end;
 // TAstCall
 // ================================================================
 
-constructor TAstCall.Create(const aName: string;
-  const aArgs: TAstExprList; aSpan: TSourceSpan);
+constructor TAstCall.Create(const aName: string; const aArgs: TAstExprList; aSpan: TSourceSpan);
 begin
   inherited Create(nkCall, aSpan);
   FName := aName;
+  FArgs := aArgs;
+end;
+
+procedure TAstCall.SetName(const aName: string);
+begin
+  FName := aName;
+end;
+
+procedure TAstCall.SetArgs(const aArgs: TAstExprList);
+var i: Integer;
+begin
+  // free previous args
+  for i := 0 to High(FArgs) do
+    FArgs[i].Free;
   FArgs := aArgs;
 end;
 
@@ -733,6 +757,7 @@ begin
   FArgs := nil;
   inherited Destroy;
 end;
+
 
   constructor TAstArrayLit.Create(const aItems: TAstExprList; aSpan: TSourceSpan);
 begin
@@ -1051,6 +1076,12 @@ begin
   for i := 0 to High(aMethods) do
     FMethods[i] := aMethods[i];
   FIsPublic := aPublic;
+  // default layout unknown
+  FSize := 0;
+  FAlign := 0;
+  SetLength(FFieldOffsets, Length(FFields));
+  for i := 0 to High(FFieldOffsets) do
+    FFieldOffsets[i] := -1;
 end;
 
 
@@ -1062,7 +1093,14 @@ begin
       FMethods[i].Free;
   FMethods := nil;
   SetLength(FFields, 0);
+  SetLength(FFieldOffsets, 0);
   inherited Destroy;
+end;
+
+procedure TAstStructDecl.SetLayout(aSize, aAlign: Integer);
+begin
+  FSize := aSize;
+  FAlign := aAlign;
 end;
 
 // ================================================================
