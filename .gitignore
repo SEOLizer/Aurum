@@ -67,3 +67,7 @@ tests/ppas.sh
 tests/scratch/*
 !tests/scratch/README.md
 
+# Local temporary helper files created during debugging/tests
+tmp_parse_unary_test.pas
+tmp_token_dump.pas
+tests/test_sema_debug
