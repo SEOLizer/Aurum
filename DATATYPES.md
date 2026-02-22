@@ -122,7 +122,7 @@ Die aktuellen Änderungen haben folgende Lücken geschlossen und Features hinzug
 - Integer‑Primitiven (int8..int64, uint8..uint64)
 - Boolean (`bool`)
 - Char‑Literale und Escape‑Sequenzen
-- String‑Literale (`pchar`/`string`) in Kombination mit Builtins (z.B. print_str)
+- String‑Literale (`pchar`/`string`) in Kombination mit Builtins (z.B. PrintStr)
 - Float‑Literals (f32, f64) — Parsing, Sema, Basiscodierung
 - Array‑Literal‑Parsing und elementare Load/Store im Backend
 

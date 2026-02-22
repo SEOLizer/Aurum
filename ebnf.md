@@ -98,12 +98,12 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 Builtins werden vom Compiler als Spezialfälle behandelt (kein normales Linking nötig):
 
 * `exit(code: int64): void`
-* `print_str(s: pchar): void`  - druckt bis `\0` (implizites `strlen`/Loop in Runtime-Snippet)
-* `print_int(x: int64): void`  - int->ascii (Runtime-Snippet) + `write`
+* `PrintStr(s: pchar): void`  - druckt bis `\0` (implizites `strlen`/Loop in Runtime-Snippet)
+* `PrintInt(x: int64): void`  - int->ascii (Runtime-Snippet) + `write`
 
-Minimaler Bootstrap (falls du `print_int` erst später willst):
+Minimaler Bootstrap (falls du `PrintInt` erst später willst):
 
-* v0.0.1 kann nur `print_str` + `exit`
+* v0.0.1 kann nur `PrintStr` + `exit`
 
 ---
 
@@ -160,7 +160,7 @@ Semantik-Intention:
 * **Kein globaler Namespace**: Zugriff auf fremde Symbole nur über `import`.
 * `import std.io;` macht Symbole als `std.io.<Name>` verfügbar.
 * `import std.io as io;` macht Symbole als `io.<Name>` verfügbar.
-* `import std.io { print_str as ps, exit };` importiert selektiv als lokale Namen (`ps`, `exit`).
+* `import std.io { PrintStr as ps, exit };` importiert selektiv als lokale Namen (`ps`, `exit`).
 
 ### Top-Level Deklarationen
 
@@ -403,8 +403,8 @@ ConstPrimary   := IntLit | FloatLit | BoolLit | StringLit | CharLit | '(' ConstE
 
 ### Runtime-Snippets (eingebettet)
 
-* `print_str`: strlen-loop + write
-* `print_int`: itoa + write
+* `PrintStr`: strlen-loop + write
+* `PrintInt`: itoa + write
 
 ---
 
@@ -414,7 +414,7 @@ ConstPrimary   := IntLit | FloatLit | BoolLit | StringLit | CharLit | '(' ConstE
 
 ```lyx
 fn main(): int64 {
-  print_str("Hello Lyx\n");
+  PrintStr("Hello Lyx\n");
   return 0;
 }
 ```
@@ -427,8 +427,8 @@ con LIMIT: int64 := 5;
 fn main(): int64 {
   var i: int64 := 0;
   while (i < LIMIT) {
-    print_int(i);
-    print_str("\n");
+    PrintInt(i);
+    PrintStr("\n");
     
     // Type-Casting Beispiel
     var f: f64 := i as f64;
@@ -437,9 +437,9 @@ fn main(): int64 {
     
     // String-Konvertierung
     var str_val: pchar := int_to_str(i);
-    print_str("String: ");
-    print_str(str_val);
-    print_str("\n");
+    PrintStr("String: ");
+    PrintStr(str_val);
+    PrintStr("\n");
     
     i := i + 1;
   }

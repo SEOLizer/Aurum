@@ -22,7 +22,7 @@ Kurzbeschreibung der Scopes
 - keyword.control.lyx          : fn, if, else, while, return, extern, true, false
 - storage.modifier.lyx         : var, let, co, con
 - storage.type.lyx             : int64, bool, void, pchar
-- support.function.builtin.lyx : print_str, print_int, exit
+- support.function.builtin.lyx : PrintStr, PrintInt, exit
 - entity.name.function.lyx     : function names after 'fn'
 - keyword.operator.lyx         : :=, ==, !=, <=, >=, &&, ||, +, -, *, /, %
 

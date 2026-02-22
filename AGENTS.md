@@ -154,7 +154,7 @@ Vollständige Spezifikation: siehe `ebnf.md`.
 
 **Typen**: `int64`, `bool`, `void`, `pchar`
 **Speicherklassen**: `var` (mutable) · `let` (immutable) · `co` (readonly runtime) · `con` (compile-time)
-**Builtins**: `exit(code)` · `print_str(s)` · `print_int(x)`
+**Builtins**: `exit(code)` · `PrintStr(s)` · `PrintInt(x)`
 **Keywords**: `fn var let co con if else while return true false extern`
 **Zuweisung**: `:=` (nicht `=`)
 **Blöcke**: `{ }` (nicht begin/end)
@@ -165,7 +165,7 @@ Vollständige Spezifikation: siehe `ebnf.md`.
 2. **IR als Stabilitätsanker**: AST → IR → Maschinencode. Nie AST direkt zu Bytes
 3. **ELF64 ohne libc**: `_start` ruft `main()`, dann `sys_exit`. Kein Linking gegen libc
 4. **SysV ABI**: Parameter in RDI, RSI, RDX, RCX, R8, R9 · Return in RAX
-5. **Builtins sind Spezialfälle**: Runtime-Snippets (print_str, print_int) werden eingebettet
+5. **Builtins sind Spezialfälle**: Runtime-Snippets (PrintStr, PrintInt) werden eingebettet
 6. **Jedes Token trägt SourceSpan**: Zeile + Spalte für Fehlermeldungen
 
 ## Git-Konventionen

@@ -33,7 +33,7 @@ Wichtig: Das IR ist *dein* Stabilitätsanker. Wenn du zu früh “AST direkt nac
 Lyx kann genau das:
 
 ```
-print_int(1 + 2*3);
+PrintInt(1 + 2*3);
 exit(0);
 ```
 
@@ -60,7 +60,7 @@ Ein IR, das du später in jedes Target übersetzen kannst, z.B.:
 
 - `ConstInt`
 - `Add/Sub/Mul/Div`
-- `Call builtin_print_int`
+- `Call BuiltinPrintInt`
 - `Exit`
 - später: `Load/Store`, `Br`, `Cmp`, `Phi` (wenn du SSA willst)
 
@@ -130,7 +130,7 @@ Das ist klein genug zum Bauen, aber nicht so klein, dass du dich später hasst.
 
 ### B) x86_64-Minimum-Encoder
 
-Du brauchst für Syscall-only “Hello/print_int” am Anfang überraschend wenig:
+Du brauchst für Syscall-only “Hello/PrintInt” am Anfang überraschend wenig:
 
 - `mov rax, imm64`
 - `mov rdi, imm64`
@@ -139,10 +139,10 @@ Du brauchst für Syscall-only “Hello/print_int” am Anfang überraschend weni
 - `syscall`
 - `ret` (optional, wenn du Funktionen später hast)
 
-Für `print_int` brauchst du zusätzlich eine Routine `itoa` oder erstmal **nur Stringliteral printen** (noch einfacher). Der *realistische* Minimalstart ist:
+Für `PrintInt` brauchst du zusätzlich eine Routine `itoa` oder erstmal **nur Stringliteral printen** (noch einfacher). Der *realistische* Minimalstart ist:
 
 ```
-print_str("hi\n");
+PrintStr("hi\n");
 exit(0);
 ```
 
@@ -164,12 +164,12 @@ Später kannst du das in zwei Segmente splitten (RX / RW).
 
 ### v0.0.1
 
-- `print_str("...")`, `exit(n)`
+- `PrintStr("...")`, `exit(n)`
 - ELF64 läuft
 
 ### v0.0.2
 
-- Integer-Ausdrücke + `print_int(expr)`
+- Integer-Ausdrücke + `PrintInt(expr)`
 - Minimal-itoa in mitgeliefertem Code (Runtime-Snippet, aber in dein Binary eingebettet)
 
 ### v0.1.2
@@ -188,7 +188,7 @@ Später kannst du das in zwei Segmente splitten (RX / RW).
 
 - ✅ **Module System**: Vollständige Import/Export Funktionalität
 - ✅ **Cross-Unit Symbol Resolution**: TSema.AnalyzeWithUnits() Integration
-- ✅ **Standard Library**: std/math.lyx mit pub fn abs64, min64, max64, times_two
+- ✅ **Standard Library**: std/math.lyx mit pub fn Abs64, Min64, Max64, TimesTwo
 - ✅ **Parser Robustheit**: While/If-Statements, Unary-Expressions, Function-Context
 - ✅ **Dynamic ELF**: SO-Library Integration, PLT/GOT Mechanik für externe Symbole
 - ✅ **Extern Declarations**: `extern fn` mit Varargs (`...`) Support
@@ -336,7 +336,7 @@ Deliverables
 
 ✅ syscall-wrapper layer im Backend/stdlib
 
-✅ print_str implementiert über write(1,...) (kein Spezialfall mehr)
+✅ PrintStr implementiert über write(1,...) (kein Spezialfall mehr)
 
 0.3.1 — “std.fs Basis: stat, mkdir, unlink, rename”
 
@@ -665,8 +665,8 @@ Du brauchst eine minimale Basis — auch ohne „Runtime".
 Typische Builtins:
 
 - `exit(code)`
-- `print_str(ptr, len)` oder `print_str("...")`
-- später `print_int`
+- `PrintStr(ptr, len)` oder `PrintStr("...")`
+- später `PrintInt`
 
 Wichtig:
 
@@ -715,7 +715,7 @@ Wenn du wirklich schnell ein funktionierendes Lyx-Binary sehen willst, würde ic
 - `while (cond) { ... }`
 - `return expr;`
 - Builtins:
-    - `print_str("...")`
+    - `PrintStr("...")`
     - `exit(n)`
 
 Keine:
@@ -871,7 +871,7 @@ fn main(): int64 {
   var i: int64 := start;
 
   while (i < LIMIT) {
-    print_str(MSG);
+    PrintStr(MSG);
     i := i + 1;
   }
 
@@ -889,7 +889,7 @@ fn main(): int64 {
   var l: int64 := strlen(s);     // -> 5
   
   var pi: f64 := 3.14159;
-  print_float(pi);               // Ausgabe: ? (Placeholder)
+  PrintFloat(pi);               // Ausgabe: ? (Placeholder)
   
   return 0;
 }

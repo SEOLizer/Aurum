@@ -25,7 +25,7 @@
 - ✅ `examples/for_loop.lyx`: While-Schleifen (Output: 15, 15)
 - ✅ `examples/use_math.lyx`: Module Import mit dynamischem ELF
 - ✅ `std/math.lyx`: Standard Library kompiliert erfolgreich
-- ✅ Complex Functions: `abs64()`, `min64()`, `max64()` Implementierungen
+- ✅ Complex Functions: `Abs64()`, `Min64()`, `Max64()` Implementierungen
 - ✅ Cross-File Compilation: Multi-Unit Projekte funktionieren
 
 ### 🎯 **Standard Library (std/)**
@@ -33,9 +33,9 @@
 import std.math;
 
 fn main(): int64 {
-    let x: int64 := abs64(-42);      // 42
-    let smaller: int64 := min64(x, 100);  // 42
-    print_int(times_two(smaller));   // 84
+    let x: int64 := Abs64(-42);      // 42
+    let smaller: int64 := Min64(x, 100);  // 42
+    PrintInt(times_two(smaller));   // 84
     return 0;
 }
 ```
