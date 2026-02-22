@@ -16,6 +16,8 @@ type
     DeclType: TAurumType;
     TypeName: string; // for named types (structs)
     StructDecl: TAstStructDecl; // if this symbol refers to an instance of a struct type
+    ReturnTypeName: string; // for functions: name of return type if struct
+    ReturnStructDecl: TAstStructDecl; // for functions: struct decl if returns struct
     ArrayLen: Integer; // 0 = not array, >0 = static length, -1 = dynamic
     // for functions
     ParamTypes: array of TAurumType;
@@ -70,6 +72,8 @@ begin
   DeclType := atUnresolved;
   TypeName := '';
   StructDecl := nil;
+  ReturnTypeName := '';
+  ReturnStructDecl := nil;
   ArrayLen := 0;
   ParamCount := 0;
   IsVarArgs := False;
@@ -1147,6 +1151,7 @@ begin
         sym := TSymbol.Create(fn.Name);
         sym.Kind := symFunc;
         sym.DeclType := fn.ReturnType;
+        sym.ReturnTypeName := fn.ReturnTypeName;
         sym.ParamCount := Length(fn.Params);
         SetLength(sym.ParamTypes, sym.ParamCount);
         for j := 0 to sym.ParamCount - 1 do
@@ -1211,7 +1216,7 @@ end;
 
 procedure TSema.Analyze(prog: TAstProgram);
 var
-  i, j, k: Integer;
+  i, j, k, fi: Integer;
   node: TAstNode;
   fn: TAstFuncDecl;
   con: TAstConDecl;
@@ -1240,6 +1245,14 @@ begin
        sym := TSymbol.Create(fn.Name);
        sym.Kind := symFunc;
        sym.DeclType := fn.ReturnType;
+       sym.ReturnTypeName := fn.ReturnTypeName;
+       // If return type is a struct, look up and store the struct decl
+       if (fn.ReturnTypeName <> '') and Assigned(FStructTypes) then
+       begin
+         fi := FStructTypes.IndexOf(fn.ReturnTypeName);
+         if fi >= 0 then
+           sym.ReturnStructDecl := TAstStructDecl(FStructTypes.Objects[fi]);
+       end;
        sym.ParamCount := Length(fn.Params);
        SetLength(sym.ParamTypes, sym.ParamCount);
        for j := 0 to sym.ParamCount - 1 do
@@ -1264,10 +1277,23 @@ begin
        for j := 0 to High(TAstStructDecl(node).Methods) do
        begin
          m := TAstStructDecl(node).Methods[j];
-         
-         sym := TSymbol.Create('_L_' + TAstStructDecl(node).Name + '_' + m.Name);
-         sym.Kind := symFunc;
-         sym.DeclType := m.ReturnType;
+          
+          sym := TSymbol.Create('_L_' + TAstStructDecl(node).Name + '_' + m.Name);
+          sym.Kind := symFunc;
+          sym.DeclType := m.ReturnType;
+          sym.ReturnTypeName := m.ReturnTypeName;
+          // Handle 'Self' return type
+          if (m.ReturnTypeName = 'Self') or (m.ReturnTypeName = 'self') then
+          begin
+            sym.ReturnTypeName := TAstStructDecl(node).Name;
+            sym.ReturnStructDecl := TAstStructDecl(node);
+          end
+          else if (m.ReturnTypeName <> '') and Assigned(FStructTypes) then
+          begin
+            fi := FStructTypes.IndexOf(m.ReturnTypeName);
+            if fi >= 0 then
+              sym.ReturnStructDecl := TAstStructDecl(FStructTypes.Objects[fi]);
+          end;
          
          if m.IsStatic then
          begin

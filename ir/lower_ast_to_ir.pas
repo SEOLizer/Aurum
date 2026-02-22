@@ -19,6 +19,7 @@ type
   private
     FModule: TIRModule;
     FCurrentFunc: TIRFunction;
+    FCurrentFuncDecl: TAstFuncDecl;  // current AST function being lowered (for return type info)
     FDiag: TDiagnostics;
     FTempCounter: Integer;
     FLabelCounter: Integer;
@@ -43,6 +44,7 @@ type
     function LowerExpr(expr: TAstExpr): Integer; // returns temp index
     function LowerStructLit(sl: TAstStructLit): Integer; // returns temp with struct address
     procedure LowerStructLitIntoLocal(sl: TAstStructLit; baseLoc: Integer; sd: TAstStructDecl);
+    function GetReturnStructDecl: TAstStructDecl; // get struct decl for current func's return type
   public
     constructor Create(modul: TIRModule; diag: TDiagnostics);
     destructor Destroy; override;
@@ -72,6 +74,7 @@ constructor TIRLowering.Create(modul: TIRModule; diag: TDiagnostics);
     inherited Create;
     FModule := modul;
     FDiag := diag;
+    FCurrentFuncDecl := nil;
     FTempCounter := 0;
     FLabelCounter := 0;
     FLocalMap := TStringList.Create;
@@ -218,6 +221,7 @@ begin
        fn := FModule.AddFunction(TAstFuncDecl(node).Name);
        // Lower function body
        FCurrentFunc := fn;
+       FCurrentFuncDecl := TAstFuncDecl(node);
        FLocalMap.Clear;
        FTempCounter := 0;
        fn.ParamCount := Length(TAstFuncDecl(node).Params);
@@ -237,6 +241,7 @@ begin
          LowerStmt(TAstFuncDecl(node).Body.Stmts[j]);
        end;
        FCurrentFunc := nil;
+       FCurrentFuncDecl := nil;
     end
     else if node is TAstStructDecl then
     begin
@@ -248,6 +253,7 @@ begin
         // create function
         fn := FModule.AddFunction(mangled);
         FCurrentFunc := fn;
+        FCurrentFuncDecl := m;  // set current func decl for return type info
         FLocalMap.Clear;
         FTempCounter := 0;
         
@@ -302,6 +308,7 @@ begin
         for k := 0 to High(m.Body.Stmts) do
           LowerStmt(m.Body.Stmts[k]);
         FCurrentFunc := nil;
+        FCurrentFuncDecl := nil;
       end;
     end
     else if node is TAstConDecl then
@@ -373,6 +380,7 @@ begin
         begin
           fn := FModule.AddFunction(TAstFuncDecl(node).Name);
           FCurrentFunc := fn;
+          FCurrentFuncDecl := TAstFuncDecl(node);
           FLocalMap.Clear;
           FTempCounter := 0;
           fn.ParamCount := Length(TAstFuncDecl(node).Params);
@@ -393,6 +401,7 @@ begin
               LowerStmt(TAstFuncDecl(node).Body.Stmts[k]);
 
           FCurrentFunc := nil;
+          FCurrentFuncDecl := nil;
         end;
       end;
     end;
@@ -400,6 +409,29 @@ begin
 end;
 
 { Lowering helpers }
+
+// Returns struct decl for current function's return type, or nil if not a struct
+function TIRLowering.GetReturnStructDecl: TAstStructDecl;
+var
+  idx: Integer;
+  typeName: string;
+begin
+  Result := nil;
+  if not Assigned(FCurrentFuncDecl) then
+    Exit;
+  
+  typeName := FCurrentFuncDecl.ReturnTypeName;
+  if typeName = '' then
+    Exit;
+  
+  // Handle 'Self' (should already be resolved in sema, but just in case)
+  if (typeName = 'Self') or (typeName = 'self') then
+    Exit; // Can't resolve without struct context here
+  
+  idx := FStructTypes.IndexOf(typeName);
+  if idx >= 0 then
+    Result := TAstStructDecl(FStructTypes.Objects[idx]);
+end;
 
 function TIRLowering.ResolveLocal(const name: string): Integer;
 var
@@ -993,6 +1025,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     items: TAstExprList;
     elemSize: Integer;
     fa: TAstFieldAssign;
+    retStructDecl: TAstStructDecl;
   begin
   instr := Default(TIRInstr);
   Result := True;
@@ -1092,13 +1125,27 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
          instr.Op := irConstInt; instr.Dest := t0; instr.ImmInt := 0; Emit(instr);
          instr.Op := irStoreLocal; instr.Dest := loc; instr.Src1 := t0; Emit(instr);
        end
-       else if vd.InitExpr is TAstStructLit then
-       begin
-         // Struct literal: initialize fields directly into the variable's stack slots
-         LowerStructLitIntoLocal(TAstStructLit(vd.InitExpr), loc, TAstStructDecl(FStructTypes.Objects[i]));
-       end;
-       Exit(True);
-     end
+      else if vd.InitExpr is TAstStructLit then
+        begin
+          // Struct literal: initialize fields directly into the variable's stack slots
+          LowerStructLitIntoLocal(TAstStructLit(vd.InitExpr), loc, TAstStructDecl(FStructTypes.Objects[i]));
+        end
+        else if vd.InitExpr is TAstCall then
+        begin
+          // Call returning struct: call function and store result(s) into local
+          // For small structs (<=8 bytes), result is in RAX
+          // For medium structs (9-16 bytes), result is in RAX:RDX
+          // Call expression returns temp that holds the value
+          t0 := LowerExpr(vd.InitExpr);
+          // Now t0 holds the returned struct value (for <=8 bytes it's the actual value)
+          // Store into the struct variable's slot
+          instr.Op := irStoreLocal;
+          instr.Dest := loc;
+          instr.Src1 := t0;
+          Emit(instr);
+        end;
+        Exit(True);
+      end
      else
      begin
        // scalar local
@@ -1273,10 +1320,25 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
   begin
     if Assigned(TAstReturn(stmt).Value) then
     begin
-      tmp := LowerExpr(TAstReturn(stmt).Value);
-      instr.Op := irReturn;
-      instr.Src1 := tmp;
-      Emit(instr);
+      retStructDecl := GetReturnStructDecl;
+      if Assigned(retStructDecl) then
+      begin
+        // Struct return - use irReturnStruct with size info
+        tmp := LowerExpr(TAstReturn(stmt).Value);
+        instr.Op := irReturnStruct;
+        instr.Src1 := tmp;
+        instr.StructSize := retStructDecl.Size;
+        instr.StructAlign := retStructDecl.Align;
+        Emit(instr);
+      end
+      else
+      begin
+        // Scalar return
+        tmp := LowerExpr(TAstReturn(stmt).Value);
+        instr.Op := irReturn;
+        instr.Src1 := tmp;
+        Emit(instr);
+      end;
     end
     else
     begin

@@ -39,6 +39,7 @@ type
     irJmp, irBrTrue, irBrFalse,
     irLabel,
     irReturn,
+    irReturnStruct,  // return struct by value (uses StructSize for ABI decision)
      // array operations
      irStackAlloc,  // allocate space on stack for array
      irStoreElem,   // store element at array[index] (static index in ImmInt)
@@ -70,6 +71,9 @@ type
      // Call-specific fields
      CallMode: TIRCallMode;   // mode for irCall/irVarCall
      ArgTemps: array of Integer; // argument temp indices for calls (replaces CSV in LabelName)
+     // Struct return fields (for irReturnStruct)
+     StructSize: Integer;   // size of struct in bytes (determines ABI: RAX, RAX+RDX, or hidden ptr)
+     StructAlign: Integer;  // alignment of struct
   end;
 
    TIRInstructionList = array of TIRInstr;
@@ -187,6 +191,8 @@ begin
   instr.CastToType := atVoid;
   instr.CallMode := cmInternal;
   SetLength(instr.ArgTemps, 0);
+  instr.StructSize := 0;
+  instr.StructAlign := 0;
 end;
 
 function EmptyInstr: TIRInstr;

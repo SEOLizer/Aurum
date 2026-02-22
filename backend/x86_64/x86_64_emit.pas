@@ -1445,6 +1445,70 @@ begin
               EmitU8(FCode, $C3); // ret
             end;
           end;
+        irReturnStruct:
+          begin
+            // Return struct by value according to SysV ABI:
+            // <= 8 bytes: load value into RAX
+            // 9-16 bytes: load first 8 bytes into RAX, next into RDX
+            // > 16 bytes: hidden pointer was passed, copy to it and return pointer in RAX
+            
+            if instr.StructSize <= 8 then
+            begin
+              // Small struct: Src1 holds address of struct on stack
+              // Load the value directly into RAX
+              WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+              // Now RAX has the address, we need to dereference it
+              // mov rax, [rax]
+              EmitRex(FCode, 1, 0, 0, 0); // REX.W
+              EmitU8(FCode, $8B); // mov r64, r/m64
+              EmitU8(FCode, $00); // modrm: mod=00, reg=RAX, rm=RAX (no disp)
+            end
+            else if instr.StructSize <= 16 then
+            begin
+              // Medium struct: Src1 holds address of struct
+              // Load first 8 bytes into RAX, next 8 into RDX
+              WriteMovRegMem(FCode, R11, RBP, SlotOffset(localCnt + instr.Src1)); // R11 = struct addr
+              // mov rax, [r11]
+              EmitRex(FCode, 1, 0, 0, 1); // REX.WB (R11 is extended)
+              EmitU8(FCode, $8B); // mov r64, r/m64  
+              EmitU8(FCode, $03); // modrm: mod=00, reg=RAX(0), rm=R11(3)
+              // mov rdx, [r11+8]
+              EmitRex(FCode, 1, 0, 0, 1); // REX.WB
+              EmitU8(FCode, $8B); // mov r64, r/m64
+              EmitU8(FCode, $53); // modrm: mod=01, reg=RDX(2), rm=R11(3)
+              EmitU8(FCode, $08); // disp8 = 8
+            end
+            else
+            begin
+              // Large struct: hidden pointer mechanism
+              // TODO: Implement hidden pointer return for structs > 16 bytes
+              // For now, just return the address (caller must handle)
+              WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
+            end;
+
+            // Epilogue (same as irReturn)
+            if frameBytes + framePad > 0 then
+            begin
+              if frameBytes + framePad <= 127 then
+              begin
+                EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $C4); EmitU8(FCode, Byte(frameBytes + framePad));
+              end
+              else
+              begin
+                EmitU8(FCode, $48); EmitU8(FCode, $81); EmitU8(FCode, $C4);
+                EmitU32(FCode, Cardinal(frameBytes + framePad));
+              end;
+            end;
+            // restore callee-saved registers
+            EmitU8(FCode, $41); EmitU8(FCode, $5F); // pop r15
+            EmitU8(FCode, $41); EmitU8(FCode, $5E); // pop r14
+            EmitU8(FCode, $41); EmitU8(FCode, $5D); // pop r13
+            EmitU8(FCode, $41); EmitU8(FCode, $5C); // pop r12
+            EmitU8(FCode, $5B); // pop rbx
+            // pop rbp; ret
+            EmitU8(FCode, $5D);
+            EmitU8(FCode, $C3);
+          end;
         irLabel:
           begin
             // Record current position for this label
