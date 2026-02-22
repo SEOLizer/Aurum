@@ -202,7 +202,9 @@ var
   m: TAstFuncDecl;
   mangled: string;
   cv: TConstValue;
+  instr: TIRInstr;
 begin
+  instr := Default(TIRInstr);
   // First pass: collect all struct declarations for size lookups
   FStructTypes.Clear;
   for i := 0 to High(prog.Decls) do
@@ -240,6 +242,16 @@ begin
        begin
          LowerStmt(TAstFuncDecl(node).Body.Stmts[j]);
        end;
+       
+       // Emit implicit return for void functions if last statement wasn't a return
+       if (Length(FCurrentFunc.Instructions) = 0) or 
+          (FCurrentFunc.Instructions[High(FCurrentFunc.Instructions)].Op <> irReturn) then
+       begin
+         instr.Op := irReturn;
+         instr.Src1 := -1;
+         Emit(instr);
+       end;
+       
        FCurrentFunc := nil;
        FCurrentFuncDecl := nil;
     end
@@ -307,6 +319,16 @@ begin
         // lower body
         for k := 0 to High(m.Body.Stmts) do
           LowerStmt(m.Body.Stmts[k]);
+        
+        // Emit implicit return for void methods if last statement wasn't a return
+        if (Length(FCurrentFunc.Instructions) = 0) or 
+           (FCurrentFunc.Instructions[High(FCurrentFunc.Instructions)].Op <> irReturn) then
+        begin
+          instr.Op := irReturn;
+          instr.Src1 := -1;
+          Emit(instr);
+        end;
+        
         FCurrentFunc := nil;
         FCurrentFuncDecl := nil;
       end;
