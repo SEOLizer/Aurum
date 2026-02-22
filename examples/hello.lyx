@@ -1,4 +1,4 @@
 fn main(): int64 {
-  print_str("Hello Lyx\n");
+  PrintStr("Hello Lyx\n");
   return 0;
 }

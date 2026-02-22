@@ -90,13 +90,13 @@ pub con SEEK_END: int64 := 2;  // Vom Dateiende
 // ============================================================================
 
 // Prüft ob ein File Descriptor gültig ist
-pub fn is_valid_fd(f: fd): bool {
+pub fn IsValidFd(f: fd): bool {
   return f >= 0;
 }
 
 // Liest kompletten Dateiinhalt in Buffer (max max_len Bytes)
 // Returns: Anzahl gelesener Bytes oder -1 bei Fehler
-pub fn read_file(path: pchar, buf: pchar, max_len: int64): int64 {
+pub fn ReadFile(path: pchar, buf: pchar, max_len: int64): int64 {
   var f: fd := open(path, O_RDONLY, 0);
   if (f < 0) {
     return -1;
@@ -123,7 +123,7 @@ pub fn read_file(path: pchar, buf: pchar, max_len: int64): int64 {
 
 // Schreibt Buffer in Datei (überschreibt existierende Datei)
 // Returns: Anzahl geschriebener Bytes oder -1 bei Fehler
-pub fn write_file(path: pchar, buf: pchar, len: int64): int64 {
+pub fn WriteFile(path: pchar, buf: pchar, len: int64): int64 {
   var f: fd := open(path, O_WRONLY | O_CREAT | O_TRUNC, DEFAULT_MODE);
   if (f < 0) {
     return -1;
@@ -150,7 +150,7 @@ pub fn write_file(path: pchar, buf: pchar, len: int64): int64 {
 
 // An Datei anhängen
 // Returns: Anzahl geschriebener Bytes oder -1 bei Fehler
-pub fn append_file(path: pchar, buf: pchar, len: int64): int64 {
+pub fn AppendFile(path: pchar, buf: pchar, len: int64): int64 {
   var f: fd := open(path, O_WRONLY | O_CREAT | O_APPEND, DEFAULT_MODE);
   if (f < 0) {
     return -1;
@@ -162,13 +162,13 @@ pub fn append_file(path: pchar, buf: pchar, len: int64): int64 {
 }
 
 // Datei löschen (Wrapper)
-pub fn delete_file(path: pchar): bool {
+pub fn DeleteFile(path: pchar): bool {
   return unlink(path) == 0;
 }
 
 // Datei existiert?
 // Returns: true wenn lesbar, false sonst
-pub fn file_exists(path: pchar): bool {
+pub fn FileExists(path: pchar): bool {
   var f: fd := open(path, O_RDONLY, 0);
   if (f < 0) {
     return false;
@@ -181,7 +181,7 @@ pub fn file_exists(path: pchar): bool {
 // Dateigröße ermitteln
 // ============================================================================
 
-pub fn file_size(path: pchar): int64 {
+pub fn FileSize(path: pchar): int64 {
   var f: fd := open(path, O_RDONLY, 0);
   if (f < 0) {
     return -1;
@@ -198,17 +198,17 @@ pub fn file_size(path: pchar): int64 {
 // ============================================================================
 
 // Text auf stdout ausgeben (low-level)
-pub fn stdout_write(buf: pchar, len: int64): int64 {
+pub fn StdoutWrite(buf: pchar, len: int64): int64 {
   return write(STDOUT_FILENO, buf, len);
 }
 
 // Text auf stderr ausgeben
-pub fn stderr_write(buf: pchar, len: int64): int64 {
+pub fn StderrWrite(buf: pchar, len: int64): int64 {
   return write(STDERR_FILENO, buf, len);
 }
 
 // Ein Zeichen ausgeben
-pub fn putchar(c: int64): int64 {
+pub fn PutChar(c: int64): int64 {
   var chbuf: pchar := " ";
   // chbuf[0] = c;  // TODO: Array-Index-Zuweisung in Lyx
   // Workaround: Nur Leerzeichen für jetzt

@@ -1,36 +1,36 @@
-// Float arithmetic and print_float test
+// Float arithmetic and PrintFloat test
 fn main(): int64 {
     // Test 1: Basic addition
     var x: f64 := 3.14;
     var y: f64 := 2.0;
     var z: f64 := x + y;
-    print_str("5.14 = ");
-    print_float(z);
-    print_str("\n");
+    PrintStr("5.14 = ");
+    PrintFloat(z);
+    PrintStr("\n");
 
     // Test 2: Zero
     var zero: f64 := 0.0;
-    print_str("0.000000 = ");
-    print_float(zero);
-    print_str("\n");
+    PrintStr("0.000000 = ");
+    PrintFloat(zero);
+    PrintStr("\n");
 
     // Test 3: Small fractional
     var small: f64 := 0.001;
-    print_str("0.001000 = ");
-    print_float(small);
-    print_str("\n");
+    PrintStr("0.001000 = ");
+    PrintFloat(small);
+    PrintStr("\n");
 
     // Test 4: Negative literal (direct)
     var neg: f64 := -42.5;
-    print_str("-42.500000 = ");
-    print_float(neg);
-    print_str("\n");
+    PrintStr("-42.500000 = ");
+    PrintFloat(neg);
+    PrintStr("\n");
 
     // Test 5: Large number
     var big: f64 := 12345.6789;
-    print_str("12345.678900 = ");
-    print_float(big);
-    print_str("\n");
+    PrintStr("12345.678900 = ");
+    PrintFloat(big);
+    PrintStr("\n");
 
     return 0;
 }

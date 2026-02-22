@@ -4,7 +4,7 @@
 
 // ============================================================================
 // CORE FUNCTIONS (using builtins - no wrapper needed, builtins sind bereits verfügbar)
-// str_length, str_compare, str_char_at, str_set_char, str_copy_builtin
+// StrLength, str_compare, StrCharAt, StrSetChar, str_copy_builtin
 // Diese sind bereits als Builtins registriert und können direkt verwendet werden
 // ============================================================================
 
@@ -21,8 +21,8 @@ pub fn strcpy(dest: pchar, src: pchar): pchar {
   return dest;
 }
 
-// Wrapper für str_copy mit return value
-pub fn str_copy(dest: pchar, src: pchar): pchar {
+// Wrapper für StrCopy mit return value
+pub fn StrCopy(dest: pchar, src: pchar): pchar {
   str_copy_builtin(dest, src);
   return dest;
 }
@@ -31,11 +31,11 @@ pub fn str_copy(dest: pchar, src: pchar): pchar {
 // UTILITY FUNCTIONS (built on top of builtins)
 // ============================================================================
 
-pub fn str_find(haystack: pchar, needle: pchar): int64 {
+pub fn StrFind(haystack: pchar, needle: pchar): int64 {
   // Findet erste Occurrence von needle in haystack
   // Return: Index oder -1 wenn nicht gefunden
-  var hay_len: int64 := str_length(haystack);
-  var needle_len: int64 := str_length(needle);
+  var hay_len: int64 := StrLength(haystack);
+  var needle_len: int64 := StrLength(needle);
   
   if (needle_len == 0) { return 0; }  // empty needle matches at start
   if (needle_len > hay_len) { return -1; }
@@ -46,7 +46,7 @@ pub fn str_find(haystack: pchar, needle: pchar): int64 {
     var j: int64 := 0;
     
     while (j < needle_len && match) {
-      if (str_char_at(haystack, i + j) != str_char_at(needle, j)) {
+      if (StrCharAt(haystack, i + j) != StrCharAt(needle, j)) {
         match := false;
       }
       j := j + 1;
@@ -58,19 +58,19 @@ pub fn str_find(haystack: pchar, needle: pchar): int64 {
   return -1;
 }
 
-pub fn str_safe_char_at(s: pchar, index: int64): int64 {
+pub fn StrSafeCharAt(s: pchar, index: int64): int64 {
   // Sicherer Character-Zugriff mit Bounds-Check
   // Return: Character-Code oder -1 wenn Index außerhalb
-  var len: int64 := str_length(s);
+  var len: int64 := StrLength(s);
   if (index < 0 || index >= len) { return -1; }
-  return str_char_at(s, index);
+  return StrCharAt(s, index);
 }
 
 // ============================================================================
 // CASE CONVERSION
 // ============================================================================
 
-pub fn char_to_lower(c: int64): int64 {
+pub fn CharToLower(c: int64): int64 {
   // Konvertiert einzelnes Character zu lowercase
   if (c >= 65 && c <= 90) {  // 'A' bis 'Z'
     return c + 32;  // zu 'a' bis 'z'  
@@ -78,7 +78,7 @@ pub fn char_to_lower(c: int64): int64 {
   return c;
 }
 
-pub fn char_to_upper(c: int64): int64 {
+pub fn CharToUpper(c: int64): int64 {
   // Konvertiert einzelnes Character zu uppercase
   if (c >= 97 && c <= 122) {  // 'a' bis 'z'
     return c - 32;  // zu 'A' bis 'Z'
@@ -86,27 +86,27 @@ pub fn char_to_upper(c: int64): int64 {
   return c;
 }
 
-pub fn str_to_lower(dest: pchar, src: pchar): pchar {
+pub fn StrToLower(dest: pchar, src: pchar): pchar {
   // Konvertiert String zu lowercase (dest kann == src sein)
-  var len: int64 := str_length(src);
+  var len: int64 := StrLength(src);
   var i: int64 := 0;
   while (i < len) {
-    str_set_char(dest, i, char_to_lower(str_char_at(src, i)));
+    StrSetChar(dest, i, CharToLower(StrCharAt(src, i)));
     i := i + 1;
   }
-  str_set_char(dest, len, 0);  // null-terminator
+  StrSetChar(dest, len, 0);  // null-terminator
   return dest;
 }
 
-pub fn str_to_upper(dest: pchar, src: pchar): pchar {
+pub fn StrToUpper(dest: pchar, src: pchar): pchar {
   // Konvertiert String zu uppercase (dest kann == src sein)
-  var len: int64 := str_length(src);
+  var len: int64 := StrLength(src);
   var i: int64 := 0;
   while (i < len) {
-    str_set_char(dest, i, char_to_upper(str_char_at(src, i)));
+    StrSetChar(dest, i, CharToUpper(StrCharAt(src, i)));
     i := i + 1;
   }
-  str_set_char(dest, len, 0);  // null-terminator
+  StrSetChar(dest, len, 0);  // null-terminator
   return dest;
 }
 
@@ -114,43 +114,43 @@ pub fn str_to_upper(dest: pchar, src: pchar): pchar {
 // BOOLEAN STRING TESTS
 // ============================================================================
 
-pub fn str_equals(s1: pchar, s2: pchar): bool {
+pub fn StrEquals(s1: pchar, s2: pchar): bool {
   // Prüft String-Gleichheit (convenience function)
   return str_compare(s1, s2) == 0;
 }
 
-pub fn str_starts_with(s: pchar, prefix: pchar): bool {
+pub fn StrStartsWith(s: pchar, prefix: pchar): bool {
   // Prüft ob String mit Prefix beginnt
-  var prefix_len: int64 := str_length(prefix);
-  var s_len: int64 := str_length(s);
+  var prefix_len: int64 := StrLength(prefix);
+  var s_len: int64 := StrLength(s);
   
   if (prefix_len > s_len) { return false; }
   
   var i: int64 := 0;
   while (i < prefix_len) {
-    if (str_char_at(s, i) != str_char_at(prefix, i)) { return false; }
+    if (StrCharAt(s, i) != StrCharAt(prefix, i)) { return false; }
     i := i + 1;
   }
   return true;
 }
 
-pub fn str_ends_with(s: pchar, suffix: pchar): bool {
+pub fn StrEndsWith(s: pchar, suffix: pchar): bool {
   // Prüft ob String mit Suffix endet
-  var suffix_len: int64 := str_length(suffix);
-  var s_len: int64 := str_length(s);
+  var suffix_len: int64 := StrLength(suffix);
+  var s_len: int64 := StrLength(s);
   
   if (suffix_len > s_len) { return false; }
   
   var start: int64 := s_len - suffix_len;
   var i: int64 := 0;
   while (i < suffix_len) {
-    if (str_char_at(s, start + i) != str_char_at(suffix, i)) { return false; }
+    if (StrCharAt(s, start + i) != StrCharAt(suffix, i)) { return false; }
     i := i + 1;
   }
   return true;
 }
 
-pub fn is_whitespace(c: int64): bool {
+pub fn IsWhitespace(c: int64): bool {
   // Prüft ob Character Whitespace ist
   return (c == 32 || c == 9 || c == 10 || c == 13);  // ' ', '\t', '\n', '\r'
 }
@@ -159,62 +159,62 @@ pub fn is_whitespace(c: int64): bool {
 // STRING MODIFICATION FUNCTIONS
 // ============================================================================
 
-pub fn str_concat(dest: pchar, s1: pchar, s2: pchar): pchar {
+pub fn StrConcat(dest: pchar, s1: pchar, s2: pchar): pchar {
   // Konkateniert s1 + s2 nach dest
-  // dest muss genügend Platz haben (str_length(s1) + str_length(s2) + 1)
+  // dest muss genügend Platz haben (StrLength(s1) + StrLength(s2) + 1)
   str_copy_builtin(dest, s1);
-  var s1_len: int64 := str_length(s1);
-  var s2_len: int64 := str_length(s2);
+  var s1_len: int64 := StrLength(s1);
+  var s2_len: int64 := StrLength(s2);
   
   var i: int64 := 0;
   while (i < s2_len) {
-    str_set_char(dest, s1_len + i, str_char_at(s2, i));
+    StrSetChar(dest, s1_len + i, StrCharAt(s2, i));
     i := i + 1;
   }
-  str_set_char(dest, s1_len + s2_len, 0);  // null-terminator
+  StrSetChar(dest, s1_len + s2_len, 0);  // null-terminator
   return dest;
 }
 
-pub fn str_reverse(s: pchar): pchar {
+pub fn StrReverse(s: pchar): pchar {
   // Kehrt String in-place um
-  var len: int64 := str_length(s);
+  var len: int64 := StrLength(s);
   var i: int64 := 0;
   var j: int64 := len - 1;
   
   while (i < j) {
-    var temp: int64 := str_char_at(s, i);
-    str_set_char(s, i, str_char_at(s, j));
-    str_set_char(s, j, temp);
+    var temp: int64 := StrCharAt(s, i);
+    StrSetChar(s, i, StrCharAt(s, j));
+    StrSetChar(s, j, temp);
     i := i + 1;
     j := j - 1;
   }
   return s;
 }
 
-pub fn str_trim_whitespace(dest: pchar, src: pchar): pchar {
+pub fn StrTrimWhitespace(dest: pchar, src: pchar): pchar {
   // Entfernt führende und nachfolgende Whitespace
-  var len: int64 := str_length(src);
+  var len: int64 := StrLength(src);
   
   // Führende Whitespace finden
   var start: int64 := 0;
-  while (start < len && is_whitespace(str_char_at(src, start))) {
+  while (start < len && IsWhitespace(StrCharAt(src, start))) {
     start := start + 1;
   }
   
   // Nachfolgende Whitespace finden
   var end: int64 := len - 1;
-  while (end >= start && is_whitespace(str_char_at(src, end))) {
+  while (end >= start && IsWhitespace(StrCharAt(src, end))) {
     end := end - 1;
   }
   
   // String kopieren
   var i: int64 := 0;
   while (start <= end) {
-    str_set_char(dest, i, str_char_at(src, start));
+    StrSetChar(dest, i, StrCharAt(src, start));
     start := start + 1;
     i := i + 1;
   }
-  str_set_char(dest, i, 0);  // null-terminator
+  StrSetChar(dest, i, 0);  // null-terminator
   
   return dest;
 }

@@ -19,7 +19,7 @@ fn main(): int64 {
   var hour: int64 := hour_from_time(current_time);
   
   // Millisekunden
-  var ms: int64 := now_ms();
+  var ms: int64 := NowMs();
   
   // Wir können keine printf verwenden (std/io Bug), 
   // aber wir können den exit code für Tests nutzen

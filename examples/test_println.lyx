@@ -1,26 +1,26 @@
 // examples/test_println.lyx
-// Demonstriert die neuen println-Überladungen und printf
+// Demonstriert die neuen PrintLn-Überladungen und printf
 
 import std.io;
 import std.string;
 
 fn main(): int64 {
-  // println für String
-  println("Hello World");
+  // PrintLn für String
+  PrintLn("Hello World");
 
-  // println für int
-  println(42);
+  // PrintLn für int
+  PrintLn(42);
 
-  // println für float
-  println(3.1415 as f64);
+  // PrintLn für float
+  PrintLn(3.1415 as f64);
 
-  // println für bool
-  println(true);
-  println(false);
+  // PrintLn für bool
+  PrintLn(true);
+  PrintLn(false);
 
   // printf (pure-Lyx) - %s, %d, %f, %% supported (up to 4 placeholders)
-  var s_num: pchar := int_to_str(42);
-  var s_pi: pchar := float_to_str(3.1415 as f64, 6);
+  var s_num: pchar := IntToStr(42);
+  var s_pi: pchar := FloatToStr(3.1415 as f64, 6);
   printf("Formatted: %s = %s, pi=%s\n", "answer", s_num, s_pi);
 
   return 0;

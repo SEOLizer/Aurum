@@ -540,7 +540,7 @@ begin
           end;
         irCallBuiltin:
           begin
-            if instr.ImmStr = 'print_str' then
+            if instr.ImmStr = 'PrintStr' then
             begin
               // load pointer from slot into RSI
               WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + instr.Src1));
@@ -570,7 +570,7 @@ begin
               WriteMovRegImm64(FCode, RDI, 1);
               WriteSyscall(FCode);
             end
-            else if instr.ImmStr = 'print_int' then
+            else if instr.ImmStr = 'PrintInt' then
             begin
               if not bufferAdded then
               begin

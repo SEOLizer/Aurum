@@ -153,8 +153,8 @@ procedure TSema.DeclareBuiltinFunctions;
 var
   s: TSymbol;
 begin
-  // print_str(pchar) -> void
-  s := TSymbol.Create('print_str');
+  // PrintStr(pchar) -> void
+  s := TSymbol.Create('PrintStr');
   s.Kind := symFunc;
   s.DeclType := atVoid;
   s.ParamCount := 1;
@@ -162,8 +162,8 @@ begin
   s.ParamTypes[0] := atPChar;
   AddSymbolToCurrent(s, NullSpan);
 
-  // print_int(int64) -> void
-  s := TSymbol.Create('print_int');
+  // PrintInt(int64) -> void
+  s := TSymbol.Create('PrintInt');
   s.Kind := symFunc;
   s.DeclType := atVoid;
   s.ParamCount := 1;
@@ -171,7 +171,7 @@ begin
   s.ParamTypes[0] := atInt64;
   AddSymbolToCurrent(s, NullSpan);
 
-  // printf(pchar, ...) -> void (varargs)
+  // printf(pchar, ...) -> void (varargs) - libc function, keep lowercase
   s := TSymbol.Create('printf');
   s.Kind := symFunc;
   s.DeclType := atVoid;
@@ -181,7 +181,7 @@ begin
   s.IsVarArgs := True;
   AddSymbolToCurrent(s, NullSpan);
 
-  // exit(int64) -> void
+  // exit(int64) -> void - libc function, keep lowercase
   s := TSymbol.Create('exit');
   s.Kind := symFunc;
   s.DeclType := atVoid;

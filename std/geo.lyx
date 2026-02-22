@@ -8,45 +8,45 @@ import std.string;
 // Parsing: String -> Microdegrees
 // ============================================================================
 
-pub fn parse_lat(s: pchar): int64 {
-  return parse_coord(s);
+pub fn ParseLat(s: pchar): int64 {
+  return ParseCoord(s);
 }
 
-pub fn parse_lon(s: pchar): int64 {
-  return parse_coord(s);
+pub fn ParseLon(s: pchar): int64 {
+  return ParseCoord(s);
 }
 
 // Parse decimal degrees (ddd.dddd) to microdegrees
-fn parse_coord(s: pchar): int64 {
+fn ParseCoord(s: pchar): int64 {
   var i: int64 := 0;
   var sign: int64 := 1;
-  var first_char: int64 := str_char_at(s, 0);
+  var first_char: int64 := StrCharAt(s, 0);
   if (first_char == 45) { // '-'
     sign := -1;
     i := 1;
   }
   var whole: int64 := 0;
-  var ch: int64 := str_char_at(s, i);
+  var ch: int64 := StrCharAt(s, i);
   while (ch >= 48 && ch <= 57) { // '0' to '9'
     whole := whole * 10 + (ch - 48);
     i := i + 1;
-    ch := str_char_at(s, i);
+    ch := StrCharAt(s, i);
   }
   var frac: int64 := 0;
   var frac_len: int64 := 0;
   if (ch == 46) { // '.'
     i := i + 1;
-    ch := str_char_at(s, i);
+    ch := StrCharAt(s, i);
     while (ch >= 48 && ch <= 57 && frac_len < 6) {
       frac := frac * 10 + (ch - 48);
       frac_len := frac_len + 1;
       i := i + 1;
-      ch := str_char_at(s, i);
+      ch := StrCharAt(s, i);
     }
     // skip remaining fractional digits
     while (ch >= 48 && ch <= 57) {
       i := i + 1;
-      ch := str_char_at(s, i);
+      ch := StrCharAt(s, i);
     }
   }
   // scale frac to 6 digits
@@ -62,7 +62,7 @@ fn parse_coord(s: pchar): int64 {
 // Formatting: Microdegrees -> String
 // ============================================================================
 
-pub fn format_decimal(coord: int64): pchar {
+pub fn FormatDecimal(coord: int64): pchar {
   var sign: int64 := 1;
   if (coord < 0) {
     sign := -1;
@@ -73,49 +73,49 @@ pub fn format_decimal(coord: int64): pchar {
   var buf: pchar := "                               ";
   var pos: int64 := 0;
   if (sign < 0) {
-    str_set_char(buf, 0, 45);
+    StrSetChar(buf, 0, 45);
     pos := 1;
   }
-  var deg_str: pchar := int_to_str(deg);
+  var deg_str: pchar := IntToStr(deg);
   var i: int64 := 0;
-  var deg_len: int64 := str_length(deg_str);
+  var deg_len: int64 := StrLength(deg_str);
   while (i < deg_len) {
-    str_set_char(buf, pos + i, str_char_at(deg_str, i));
+    StrSetChar(buf, pos + i, StrCharAt(deg_str, i));
     i := i + 1;
   }
   pos := pos + deg_len;
-  str_set_char(buf, pos, 46); // '.'
+  StrSetChar(buf, pos, 46); // '.'
   pos := pos + 1;
   // Pad fraction to 6 digits
   if (frac < 100000) {
-    str_set_char(buf, pos, 48);
+    StrSetChar(buf, pos, 48);
     pos := pos + 1;
   }
   if (frac < 10000) {
-    str_set_char(buf, pos, 48);
+    StrSetChar(buf, pos, 48);
     pos := pos + 1;
   }
   if (frac < 1000) {
-    str_set_char(buf, pos, 48);
+    StrSetChar(buf, pos, 48);
     pos := pos + 1;
   }
   if (frac < 100) {
-    str_set_char(buf, pos, 48);
+    StrSetChar(buf, pos, 48);
     pos := pos + 1;
   }
   if (frac < 10) {
-    str_set_char(buf, pos, 48);
+    StrSetChar(buf, pos, 48);
     pos := pos + 1;
   }
-  var frac_str: pchar := int_to_str(frac);
+  var frac_str: pchar := IntToStr(frac);
   i := 0;
-  var frac_len: int64 := str_length(frac_str);
+  var frac_len: int64 := StrLength(frac_str);
   while (i < frac_len) {
-    str_set_char(buf, pos + i, str_char_at(frac_str, i));
+    StrSetChar(buf, pos + i, StrCharAt(frac_str, i));
     i := i + 1;
   }
   pos := pos + frac_len;
-  str_set_char(buf, pos, 0);
+  StrSetChar(buf, pos, 0);
   return buf;
 }
 
@@ -123,12 +123,12 @@ pub fn format_decimal(coord: int64): pchar {
 // Validation
 // ============================================================================
 
-pub fn is_valid_lat(lat: int64): bool {
+pub fn IsValidLat(lat: int64): bool {
   // Valid: -90.0 to +90.0 degrees (-90000000 to 90000000 microdegrees)
   return (lat >= -90000000) && (lat <= 90000000);
 }
 
-pub fn is_valid_lon(lon: int64): bool {
+pub fn IsValidLon(lon: int64): bool {
   // Valid: -180.0 to +180.0 degrees (-180000000 to 180000000 microdegrees)
   return (lon >= -180000000) && (lon <= 180000000);
 }
@@ -141,7 +141,7 @@ pub fn is_valid_lon(lon: int64): bool {
 con EARTH_RADIUS_METERS: int64 := 6371000;
 
 // Calculate approximate distance in meters
-pub fn distance_m(lat1: int64, lon1: int64, lat2: int64, lon2: int64): int64 {
+pub fn DistanceM(lat1: int64, lon1: int64, lat2: int64, lon2: int64): int64 {
   var dlon: int64 := lon2 - lon1;
   var dlat: int64 := lat2 - lat1;
   
@@ -167,19 +167,19 @@ pub fn distance_m(lat1: int64, lon1: int64, lat2: int64, lon2: int64): int64 {
 }
 
 // Distance in kilometers
-pub fn distance_km(lat1: int64, lon1: int64, lat2: int64, lon2: int64): int64 {
-  return distance_m(lat1, lon1, lat2, lon2) / 1000;
+pub fn DistanceKm(lat1: int64, lon1: int64, lat2: int64, lon2: int64): int64 {
+  return DistanceM(lat1, lon1, lat2, lon2) / 1000;
 }
 
 // ============================================================================
 // Midpoint Calculation
 // ============================================================================
 
-pub fn midpoint_lat(lat1: int64, lat2: int64): int64 {
+pub fn MidpointLat(lat1: int64, lat2: int64): int64 {
   return (lat1 + lat2) / 2;
 }
 
-pub fn midpoint_lon(lon1: int64, lon2: int64): int64 {
+pub fn MidpointLon(lon1: int64, lon2: int64): int64 {
   var diff: int64 := lon2 - lon1;
   if (diff > 180000000) {
     diff := diff - 360000000;

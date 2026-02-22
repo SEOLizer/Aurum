@@ -7,7 +7,7 @@ import std.string;
 fn main(): int64 {
   // Full substitution (4 args)
   var a1: pchar := "one";
-  var a2: pchar := int_to_str(2);
+  var a2: pchar := IntToStr(2);
   var a3: pchar := float_to_str(3.14 as f64, 6);
   var a4: pchar := "four";
   printf("A:%s B:%d C:%f D:%s\n", a1, a2, a3, a4);
@@ -15,7 +15,7 @@ fn main(): int64 {
   // Missing argument: second placeholder should be empty
   printf("X:%s Y:%d\n", "onlyone");
 
-  // Unsupported specifier should print '%q'
+  // Unsupported specifier should Print '%q'
   printf("unknown:%q\n");
 
   // Escaped percent

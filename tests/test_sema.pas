@@ -123,7 +123,7 @@ procedure TSemaTest.TestCallArgTypeCheck;
 var
   d: TDiagnostics;
 begin
-  d := AnalyzeSource('fn main(): int64 { print_int(42); print_str("hi"); print_int(true); return 0; }');
+  d := AnalyzeSource('fn main(): int64 { PrintInt(42); PrintStr("hi"); PrintInt(true); return 0; }');
   try
     AssertTrue(d.ErrorCount >= 1);
   finally
@@ -137,7 +137,7 @@ procedure TSemaTest.TestForLoopValid;
 var
   d: TDiagnostics;
 begin
-  d := AnalyzeSource('fn main(): int64 { for i := 0 to 5 do print_int(i); return 0; }');
+  d := AnalyzeSource('fn main(): int64 { for i := 0 to 5 do PrintInt(i); return 0; }');
   try
     AssertEquals(0, d.ErrorCount);
   finally
@@ -150,7 +150,7 @@ var
   d: TDiagnostics;
 begin
   // For loop requires int64 for start/end expressions
-  d := AnalyzeSource('fn main(): int64 { for i := true to 5 do print_int(i); return 0; }');
+  d := AnalyzeSource('fn main(): int64 { for i := true to 5 do PrintInt(i); return 0; }');
   try
     AssertTrue(d.ErrorCount >= 1);
   finally

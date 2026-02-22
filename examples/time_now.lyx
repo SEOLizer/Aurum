@@ -5,7 +5,7 @@
 import std.time;
 
 fn main(): int64 {
-  print("=== Systemzeit Demo ===\n\n");
+  Print("=== Systemzeit Demo ===\n\n");
   
   // Aktuelle Zeit holen
   var current: datetime := now();
@@ -15,23 +15,23 @@ fn main(): int64 {
   var days: int64 := current / 86400;
   var today: date := days;
   printf("Heute ist Tag %d seit 1970-01-01\n", today);
-  printf("Das entspricht dem Jahr: %d\n", year_from_date(today));
+  printf("Das entspricht dem Jahr: %d\n", YearFromDate(today));
   
   // Zeitkomponente extrahieren (Sekunden seit Mitternacht UTC)
   var sec_of_day: int64 := current % 86400;
   var current_time: time := sec_of_day;
   printf("\nAktuelle Uhrzeit (UTC):\n");
-  printf("  Stunde: %d\n", hour_from_time(current_time));
-  printf("  Minute: %d\n", minute_from_time(current_time));
-  printf("  Sekunde: %d\n", second_from_time(current_time));
+  printf("  Stunde: %d\n", HourFromTime(current_time));
+  printf("  Minute: %d\n", MinuteFromTime(current_time));
+  printf("  Sekunde: %d\n", SecondFromTime(current_time));
   
   // Millisekunden-Präzision
-  var ms: int64 := now_ms();
+  var ms: int64 := NowMs();
   printf("\nAktuelle Zeit in Millisekunden: %d\n", ms);
   
   // Zeitmessung
-  print("\nZeitmessung:\n");
-  var start: int64 := now_ms();
+  Print("\nZeitmessung:\n");
+  var start: int64 := NowMs();
   
   // Einfache Schleife als "Arbeit"
   var i: int64 := 0;
@@ -39,10 +39,10 @@ fn main(): int64 {
     i := i + 1;
   }
   
-  var ende: int64 := now_ms();
+  var ende: int64 := NowMs();
   var dauer: int64 := ende - start;
   printf("Schleife dauerte: %d ms\n", dauer);
   
-  print("\n=== Demo beendet ===\n");
+  Print("\n=== Demo beendet ===\n");
   return 0;
 }

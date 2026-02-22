@@ -64,35 +64,35 @@ pub proc bg_sequence(c: crt_color): pchar {
 
 // Setzt nur Vordergrundfarbe
 pub proc text_color(c: crt_color): void {
-  print_str(fg_sequence(c));
+  PrintStr(fg_sequence(c));
 }
 
 // Setzt nur Hintergrundfarbe
 pub proc text_background(c: crt_color): void {
-  print_str(bg_sequence(c));
+  PrintStr(bg_sequence(c));
 }
 
 // Setzt Vorder- und Hintergrund zusammen
 pub proc text_attr(fg: crt_color, bg: crt_color): void {
-  print_str(fg_sequence(fg));
-  print_str(bg_sequence(bg));
+  PrintStr(fg_sequence(fg));
+  PrintStr(bg_sequence(bg));
 }
 
 // Reset aller Attribute
 pub proc reset_attr(): void {
-  print_str("\x1b[0m");
+  PrintStr("\x1b[0m");
 }
 
 // Bildschirm und Cursor
 pub proc clrscr(): void {
   // ESC[2J = clear screen; ESC[H = cursor home
-  print_str("\x1b[2J");
-  print_str("\x1b[H");
+  PrintStr("\x1b[2J");
+  PrintStr("\x1b[H");
 }
 
 pub proc clreol(): void {
   // ESC[K clears from cursor to end of line
-  print_str("\x1b[K");
+  PrintStr("\x1b[K");
 }
 
 // gotoxy: col (1-based), row (1-based)
@@ -101,25 +101,25 @@ pub proc gotoxy(col: int64, row: int64): void {
   // Wir bauen eine kleine Formatierung: "\x1b[%d;%dH"
   // Da printf/format nicht im Baseline garantiert ist, verwenden wir einfachen Ansatz mit Int->String
   var buf1: pchar := "\x1b[";
-  print_str(buf1);
-  print_int(row);
-  print_str(";");
-  print_int(col);
-  print_str("H");
+  PrintStr(buf1);
+  PrintInt(row);
+  PrintStr(";");
+  PrintInt(col);
+  PrintStr("H");
 }
 
 pub proc hide_cursor(): void {
-  print_str("\x1b[?25l");
+  PrintStr("\x1b[?25l");
 }
 
 pub proc show_cursor(): void {
-  print_str("\x1b[?25h");
+  PrintStr("\x1b[?25h");
 }
 
 // Schreibfunktionen
 pub proc write_str_at(col: int64, row: int64, s: pchar): void {
   gotoxy(col, row);
-  print_str(s);
+  PrintStr(s);
 }
 
 // Blocking read (kanonisch). Liefert ASCII-Code oder -1 bei EOF.
@@ -141,4 +141,4 @@ pub func read_char(): int64 {
 
 // Export-Beispiele (in README oder examples):
 // import std.crt;
-// text_color(red); text_background(black); gotoxy(10,5); print_str("Hello world"); reset_attr();
+// text_color(red); text_background(black); gotoxy(10,5); PrintStr("Hello world"); reset_attr();

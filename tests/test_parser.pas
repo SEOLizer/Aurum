@@ -61,7 +61,7 @@ var
   exprStmt: TAstExprStmt;
   call: TAstCall;
 begin
-  prog := ParseProgramFromSource('fn main(): int64 { print_str("Hello"); return 0; }');
+  prog := ParseProgramFromSource('fn main(): int64 { PrintStr("Hello"); return 0; }');
   try
     AssertEquals(1, Length(prog.Decls));
     AssertTrue(prog.Decls[0] is TAstFuncDecl);
@@ -76,7 +76,7 @@ begin
     exprStmt := TAstExprStmt(stmt);
     AssertTrue(exprStmt.Expr is TAstCall);
     call := TAstCall(exprStmt.Expr);
-    AssertEquals('print_str', call.Name);
+    AssertEquals('PrintStr', call.Name);
     AssertEquals(1, Length(call.Args));
     AssertTrue(call.Args[0] is TAstStrLit);
     AssertEquals('Hello', TAstStrLit(call.Args[0]).Value);
@@ -234,7 +234,7 @@ var
   forStmt: TAstFor;
   blk: TAstBlock;
 begin
-  prog := ParseProgramFromSource('fn main(): int64 { for i := 0 to 5 do { print_int(i); } return 0; }');
+  prog := ParseProgramFromSource('fn main(): int64 { for i := 0 to 5 do { PrintInt(i); } return 0; }');
   try
     f := TAstFuncDecl(prog.Decls[0]);
     blk := f.Body;
@@ -257,7 +257,7 @@ var
   forStmt: TAstFor;
   blk: TAstBlock;
 begin
-  prog := ParseProgramFromSource('fn main(): int64 { for i := 10 downto 1 do print_int(i); return 0; }');
+  prog := ParseProgramFromSource('fn main(): int64 { for i := 10 downto 1 do PrintInt(i); return 0; }');
   try
     f := TAstFuncDecl(prog.Decls[0]);
     blk := f.Body;
@@ -321,7 +321,7 @@ var
   blk: TAstBlock;
   ident: TAstIdent;
 begin
-  prog := ParseProgramFromSource('fn main(): int64 { print_int(obj.field); return 0; }');
+  prog := ParseProgramFromSource('fn main(): int64 { PrintInt(obj.field); return 0; }');
   try
     f := TAstFuncDecl(prog.Decls[0]);
     blk := f.Body;
@@ -349,7 +349,7 @@ var
   blk: TAstBlock;
   ident: TAstIdent;
 begin
-  prog := ParseProgramFromSource('fn main(): int64 { print_int(arr[0]); return 0; }');
+  prog := ParseProgramFromSource('fn main(): int64 { PrintInt(arr[0]); return 0; }');
   try
     f := TAstFuncDecl(prog.Decls[0]);
     blk := f.Body;

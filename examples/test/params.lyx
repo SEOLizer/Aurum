@@ -3,9 +3,9 @@
 unit test.params;
 
 pub fn test(a: int64, b: int64): int64 {
-    print_int(a);  // Should print 10
+    print_int(a);  // Should Print 10
     print_str("\n");
-    print_int(b);  // Should print 5
+    print_int(b);  // Should Print 5
     print_str("\n");
     return a;
 }

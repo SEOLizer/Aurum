@@ -5,52 +5,52 @@ import std.io;
 import std.time;
 
 fn main(): int64 {
-  print("=== Zeittypen Demo ===\n\n");
+  Print("=== Zeittypen Demo ===\n\n");
   
   // 1. DATE - Tage seit Epoch (1970-01-01)
-  print("1. DATE Typ (Tage seit 1970-01-01):\n");
-  var d: date := date_from_ymd(2026, 2, 19);
+  Print("1. DATE Typ (Tage seit 1970-01-01):\n");
+  var d: date := DateFromYmd(2026, 2, 19);
   printf("   Heute: %d (Tage seit Epoch)\n", d);
-  printf("   Jahr: %d\n", year_from_date(d));
-  printf("   Monat: %d\n", month_from_date(d));
-  printf("   Tag: %d\n\n", day_from_date(d));
+  printf("   Jahr: %d\n", YearFromDate(d));
+  printf("   Monat: %d\n", MonthFromDate(d));
+  printf("   Tag: %d\n\n", DayFromDate(d));
   
   // 2. TIME - Sekunden seit Mitternacht
-  print("2. TIME Typ (Sekunden seit Mitternacht):\n");
-  var t: time := time_from_hms(14, 30, 0);
+  Print("2. TIME Typ (Sekunden seit Mitternacht):\n");
+  var t: time := TimeFromHms(14, 30, 0);
   printf("   Zeit: %d Sekunden\n", t);
-  printf("   Stunde: %d\n", hour_from_time(t));
-  printf("   Minute: %d\n", minute_from_time(t));
-  printf("   Sekunde: %d\n\n", second_from_time(t));
+  printf("   Stunde: %d\n", HourFromTime(t));
+  printf("   Minute: %d\n", MinuteFromTime(t));
+  printf("   Sekunde: %d\n\n", SecondFromTime(t));
   
   // 3. DATETIME - Sekunden seit Epoch
-  print("3. DATETIME Typ (Sekunden seit Epoch):\n");
-  var dt: datetime := datetime_from_unix_seconds(1700000000);
+  Print("3. DATETIME Typ (Sekunden seit Epoch):\n");
+  var dt: datetime := DatetimeFromUnixSeconds(1700000000);
   printf("   Timestamp: %d Sekunden\n", dt);
-  var dt_back: int64 := datetime_to_unix_seconds(dt);
+  var dt_back: int64 := DatetimeToUnixSeconds(dt);
   printf("   Zurueck zu int64: %d\n\n", dt_back);
   
   // 4. TIMESTAMP - Mikrosekunden seit Epoch
-  print("4. TIMESTAMP Typ (Mikrosekunden seit Epoch):\n");
-  var ts: timestamp := timestamp_from_unix_seconds(1700000000);
+  Print("4. TIMESTAMP Typ (Mikrosekunden seit Epoch):\n");
+  var ts: timestamp := TimestampFromUnixSeconds(1700000000);
   printf("   Timestamp: %d Mikrosekunden\n", ts);
-  var ts_sec: int64 := unix_seconds_from_timestamp(ts);
+  var ts_sec: int64 := UnixSecondsFromTimestamp(ts);
   printf("   Sekunden-Anteil: %d\n\n", ts_sec);
   
   // 5. Cast-Operationen
-  print("5. Cast-Operationen zwischen Zeittypen und int64:\n");
+  Print("5. Cast-Operationen zwischen Zeittypen und int64:\n");
   var d_int: int64 := d;
   var d_back: date := d_int;
   printf("   date -> int64 -> date: %d -> %d\n", d_int, d_back);
   
   // 6. Arithmetik (via Cast zu int64)
-  print("\n6. Arithmetik (via Cast zu int64):\n");
+  Print("\n6. Arithmetik (via Cast zu int64):\n");
   var d_as_int: int64 := d;
   var morgen: date := d_as_int + 1;
   printf("   Heute + 1 Tag: %d\n", morgen);
   printf("   (Jahr: %d, Monat: %d, Tag: %d)\n", 
-         year_from_date(morgen), month_from_date(morgen), day_from_date(morgen));
+         YearFromDate(morgen), MonthFromDate(morgen), DayFromDate(morgen));
   
-  print("\n=== Demo beendet ===\n");
+  Print("\n=== Demo beendet ===\n");
   return 0;
 }

@@ -23,7 +23,7 @@ begin
     // return temp2
     instr.Op := irReturn; instr.Src1 := 2; fadd.Emit(instr);
 
-    // function main(): int64 { var tmp := add(2,3); print_int(tmp); return 0 }
+    // function main(): int64 { var tmp := add(2,3); PrintInt(tmp); return 0 }
     fmain := m.AddFunction('main');
     fmain.LocalCount := 1; // one local slot for tmp
     // const 2 -> temp0
@@ -36,8 +36,8 @@ begin
     instr.Op := irStoreLocal; instr.Dest := 0; instr.Src1 := 2; fmain.Emit(instr);
     // load local0 into temp3
     instr.Op := irLoadLocal; instr.Dest := 3; instr.Src1 := 0; fmain.Emit(instr);
-    // call builtin print_int with src1=temp3
-    instr.Op := irCallBuiltin; instr.ImmStr := 'print_int'; instr.Src1 := 3; fmain.Emit(instr);
+    // call builtin PrintInt with src1=temp3
+    instr.Op := irCallBuiltin; instr.ImmStr := 'PrintInt'; instr.Src1 := 3; fmain.Emit(instr);
     // return 0 (call exit or return)
     instr.Op := irConstInt; instr.Dest := 4; instr.ImmInt := 0; fmain.Emit(instr);
     instr.Op := irReturn; instr.Src1 := 4; fmain.Emit(instr);

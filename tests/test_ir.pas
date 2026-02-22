@@ -28,7 +28,7 @@ var
 begin
   d := TDiagnostics.Create;
   try
-    l := TLexer.Create('fn main(): int64 { var i: int64 := 0; i := 1 + 2 * 3; print_str("hi\n"); return 0; }', 'test.lyx', d);
+    l := TLexer.Create('fn main(): int64 { var i: int64 := 0; i := 1 + 2 * 3; PrintStr("hi\n"); return 0; }', 'test.lyx', d);
     p := TParser.Create(l, d);
     prog := p.ParseProgram;
     s := TSema.Create(d);

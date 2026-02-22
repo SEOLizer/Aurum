@@ -1,64 +1,64 @@
 // Simple test for Math builtins (integer only)
 fn main(): int64 {
-  print_str("=== Simple Math Builtin Tests ===\n");
+  PrintStr("=== Simple Math Builtin Tests ===\n");
   
   // Test 1: Integer absolute value
-  print_str("Test 1: abs() function\n");
+  PrintStr("Test 1: abs() function\n");
   var neg_val: int64 := -42;
   var pos_val: int64 := 37;
   var zero_val: int64 := 0;
   
-  print_str("abs(-42) = ");
-  print_int(abs(neg_val));
-  print_str("\n");
+  PrintStr("abs(-42) = ");
+  PrintInt(abs(neg_val));
+  PrintStr("\n");
   
-  print_str("abs(37) = ");
-  print_int(abs(pos_val));
-  print_str("\n");
+  PrintStr("abs(37) = ");
+  PrintInt(abs(pos_val));
+  PrintStr("\n");
   
-  print_str("abs(0) = ");
-  print_int(abs(zero_val));
-  print_str("\n\n");
+  PrintStr("abs(0) = ");
+  PrintInt(abs(zero_val));
+  PrintStr("\n\n");
   
   // Test 2: Odd/Even test
-  print_str("Test 2: odd() function\n");
+  PrintStr("Test 2: odd() function\n");
   var even_num: int64 := 42;
   var odd_num: int64 := 37;
   var zero_num: int64 := 0;
   
-  print_str("odd(42) = ");
-  if (odd(even_num)) { print_str("true"); } else { print_str("false"); }
-  print_str("\n");
+  PrintStr("odd(42) = ");
+  if (odd(even_num)) { PrintStr("true"); } else { PrintStr("false"); }
+  PrintStr("\n");
   
-  print_str("odd(37) = ");
-  if (odd(odd_num)) { print_str("true"); } else { print_str("false"); }
-  print_str("\n");
+  PrintStr("odd(37) = ");
+  if (odd(odd_num)) { PrintStr("true"); } else { PrintStr("false"); }
+  PrintStr("\n");
   
-  print_str("odd(0) = ");
-  if (odd(zero_num)) { print_str("true"); } else { print_str("false"); }
-  print_str("\n\n");
+  PrintStr("odd(0) = ");
+  if (odd(zero_num)) { PrintStr("true"); } else { PrintStr("false"); }
+  PrintStr("\n\n");
   
   // Test 3: Bit operations
-  print_str("Test 3: Bit operations\n");
+  PrintStr("Test 3: Bit operations\n");
   var test_val: int64 := 123456;
   
-  print_str("Original value: ");
-  print_int(test_val);
-  print_str("\n");
+  PrintStr("Original value: ");
+  PrintInt(test_val);
+  PrintStr("\n");
   
-  print_str("hi(123456) = ");
-  print_int(hi(test_val));
-  print_str("\n");
+  PrintStr("hi(123456) = ");
+  PrintInt(hi(test_val));
+  PrintStr("\n");
   
-  print_str("lo(123456) = ");
-  print_int(lo(test_val));
-  print_str("\n");
+  PrintStr("lo(123456) = ");
+  PrintInt(lo(test_val));
+  PrintStr("\n");
   
-  print_str("swap(123456) = ");
-  print_int(swap(test_val));
-  print_str("\n\n");
+  PrintStr("swap(123456) = ");
+  PrintInt(swap(test_val));
+  PrintStr("\n\n");
   
-  print_str("=== Simple Math tests completed! ===\n");
+  PrintStr("=== Simple Math tests completed! ===\n");
   
   return 0;
 }

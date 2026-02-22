@@ -17,7 +17,7 @@ fn main(): int64 {
   var neg_float: f64 := -3.14;
   var abs_result: f64 := fabs(neg_float);
   print_str("fabs(-3.14) = ");
-  print_float(abs_result);
+  PrintFloat(abs_result);
   print_str("\n\n");
   
   // Test 3: Square root and square
@@ -26,9 +26,9 @@ fn main(): int64 {
   var sqrt_result: f64 := sqrt(val);
   var sqr_result: f64 := sqr(val);
   print_str("sqrt(4.0) = ");
-  print_float(sqrt_result);
+  PrintFloat(sqrt_result);
   print_str("\nsqr(4.0) = ");
-  print_float(sqr_result);
+  PrintFloat(sqr_result);
   print_str("\n\n");
   
   // Test 4: Rounding and truncation
@@ -47,14 +47,14 @@ fn main(): int64 {
   var frac_val: f64 := 5.25;
   var frac_result: f64 := frac(frac_val);
   print_str("frac(5.25) = ");
-  print_float(frac_result);
+  PrintFloat(frac_result);
   print_str("\n\n");
   
   // Test 6: Pi constant
   print_str("Test 6: Pi constant\n");
   var pi_val: f64 := pi();
   print_str("pi() = ");
-  print_float(pi_val);
+  PrintFloat(pi_val);
   print_str("\n\n");
   
   // Test 7: Bit operations
@@ -87,7 +87,7 @@ fn main(): int64 {
   print_str("Test 9: Random number\n");
   var rand_val: f64 := random();
   print_str("random() = ");
-  print_float(rand_val);
+  PrintFloat(rand_val);
   print_str("\n\n");
   
   // Test 10: Trigonometric functions (simplified)
@@ -96,9 +96,9 @@ fn main(): int64 {
   var sin_result: f64 := sin(angle);
   var cos_result: f64 := cos(angle);
   print_str("sin(1.0) = ");
-  print_float(sin_result);
+  PrintFloat(sin_result);
   print_str("\ncos(1.0) = ");
-  print_float(cos_result);
+  PrintFloat(cos_result);
   print_str("\n");
   
   print_str("=== All Math tests completed! ===\n");

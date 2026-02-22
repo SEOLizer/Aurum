@@ -1,19 +1,19 @@
 // Einfacher Test für String-Builtins
 fn main(): int64 {
-  // Test 1: str_length
-  var len: int64 := str_length("Hello");
-  print_str("Length: ");
-  print_int(len);
-  print_str("\n");
+  // Test 1: StrLength
+  var len: int64 := StrLength("Hello");
+  PrintStr("Length: ");
+  PrintInt(len);
+  PrintStr("\n");
   
-  // Test 2: str_char_at 
-  var c1: int64 := str_char_at("Hello", 0);
-  var c2: int64 := str_char_at("Hello", 1);
-  print_str("First char: ");
-  print_int(c1);
-  print_str(", Second char: ");
-  print_int(c2);
-  print_str("\n");
+  // Test 2: StrCharAt 
+  var c1: int64 := StrCharAt("Hello", 0);
+  var c2: int64 := StrCharAt("Hello", 1);
+  PrintStr("First char: ");
+  PrintInt(c1);
+  PrintStr(", Second char: ");
+  PrintInt(c2);
+  PrintStr("\n");
   
   return 0;
 }

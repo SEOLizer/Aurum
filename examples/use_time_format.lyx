@@ -8,22 +8,22 @@ fn main(argc: int64, argv: pchar): int64 {
   let d: int64 := 15;
 
   // Berechnungen
-  let days: int64 := days_from_civil(y, m, d);
+  let days: int64 := DaysFromCivil(y, m, d);
   let doy: int64 := day_of_year(y, m, d);
   let w: int64 := weekday(y, m, d); // 0=Mon
 
-  print_str("Date info:\n");
-  print_str("year: "); print_int(y); print_str("\n");
-  print_str("month: "); print_int(m); print_str("\n");
-  print_str("day: "); print_int(d); print_str("\n");
-  print_str("days since epoch: "); print_int(days); print_str("\n");
-  print_str("day of year: "); print_int(doy); print_str("\n");
-  print_str("weekday (0=Mon): "); print_int(w); print_str("\n");
+  PrintStr("Date info:\n");
+  PrintStr("year: "); PrintInt(y); PrintStr("\n");
+  PrintStr("month: "); PrintInt(m); PrintStr("\n");
+  PrintStr("day: "); PrintInt(d); PrintStr("\n");
+  PrintStr("days since epoch: "); PrintInt(days); PrintStr("\n");
+  PrintStr("day of year: "); PrintInt(doy); PrintStr("\n");
+  PrintStr("weekday (0=Mon): "); PrintInt(w); PrintStr("\n");
 
   // Demo: format current epoch times
   let ts0: int64 := 0; // 1970-01-01T00:00:00Z
   let s: pchar := format_unix(ts0, "%Y-%m-%d %H:%i:%s", 0);
-  print_str("formatted ts0: "); print_str(s); print_str("\n");
+  PrintStr("formatted ts0: "); PrintStr(s); PrintStr("\n");
 
   return 0;
 }

@@ -8,15 +8,15 @@ fn main(): int64 {
   print_int(str_length("Test"));
   print_str("\n");
   
-  // Test 2: str_char_at
-  print_str("\nTest 2: str_char_at\n");
+  // Test 2: StrCharAt
+  print_str("\nTest 2: StrCharAt\n");
   var test_str: pchar := "Hello";
   print_str("Characters of 'Hello': ");
-  print_int(str_char_at(test_str, 0)); print_str(" ");
-  print_int(str_char_at(test_str, 1)); print_str(" ");
-  print_int(str_char_at(test_str, 2)); print_str(" ");
-  print_int(str_char_at(test_str, 3)); print_str(" ");
-  print_int(str_char_at(test_str, 4)); print_str("\n");
+  print_int(StrCharAt(test_str, 0)); print_str(" ");
+  print_int(StrCharAt(test_str, 1)); print_str(" ");
+  print_int(StrCharAt(test_str, 2)); print_str(" ");
+  print_int(StrCharAt(test_str, 3)); print_str(" ");
+  print_int(StrCharAt(test_str, 4)); print_str("\n");
   print_str("Should be: 72 101 108 108 111 (H e l l o)\n");
   
   // Test 3: str_compare (simplified version - always returns 0)

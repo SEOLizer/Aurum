@@ -87,7 +87,7 @@ begin
     // Bedingung: x > 5 -> BinOp mit Op = tkGt
     AssertTrue(if1.Cond is TAstBinOp);
     AssertTrue(TAstBinOp(if1.Cond).Op = tkGt);
-    // ThenBranch sollte ein Block mit einem Call print_str
+    // ThenBranch sollte ein Block mit einem Call PrintStr
     AssertTrue(if1.ThenBranch is TAstBlock);
 
     // Zweite If (Position 2) prüft &&

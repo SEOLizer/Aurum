@@ -2,7 +2,7 @@
 // Vereinfachte Zeitfunktionen mit korrekter Lyx-Syntax
 
 // Tage seit 1970-01-01 (Unix epoch) berechnen
-pub fn days_from_civil(year: int64, month: int64, day: int64): int64 {
+pub fn DaysFromCivil(year: int64, month: int64, day: int64): int64 {
   var y: int64 := year;
   var m: int64 := month;
   var d: int64 := day;
@@ -27,7 +27,7 @@ pub fn days_from_civil(year: int64, month: int64, day: int64): int64 {
 }
 
 // Jahr aus Tagen seit Epoch extrahieren
-pub fn civil_year_from_days(days: int64): int64 {
+pub fn CivilYearFromDays(days: int64): int64 {
   var z: int64 := days + 719468;
   var era: int64 := z / 146097;
   if (z < 0) {
@@ -41,7 +41,7 @@ pub fn civil_year_from_days(days: int64): int64 {
 }
 
 // Monat aus Tagen seit Epoch extrahieren
-pub fn civil_month_from_days(days: int64): int64 {
+pub fn CivilMonthFromDays(days: int64): int64 {
   var z: int64 := days + 719468;
   var era: int64 := z / 146097;
   if (z < 0) {
@@ -62,7 +62,7 @@ pub fn civil_month_from_days(days: int64): int64 {
 }
 
 // Tag aus Tagen seit Epoch extrahieren
-pub fn civil_day_from_days(days: int64): int64 {
+pub fn CivilDayFromDays(days: int64): int64 {
   var z: int64 := days + 719468;
   var era: int64 := z / 146097;
   if (z < 0) {
@@ -79,7 +79,7 @@ pub fn civil_day_from_days(days: int64): int64 {
 }
 
 // Schaltjahr prüfen
-pub fn is_leap_year(y: int64): bool {
+pub fn IsLeapYear(y: int64): bool {
   if ((y % 4) != 0) {
     return false;
   }
@@ -94,52 +94,52 @@ pub fn is_leap_year(y: int64): bool {
 
 // --- Native Zeittypen APIs ---
 
-pub fn date_from_ymd(year: int64, month: int64, day: int64): date {
-  var d: int64 := days_from_civil(year, month, day);
+pub fn DateFromYmd(year: int64, month: int64, day: int64): date {
+  var d: int64 := DaysFromCivil(year, month, day);
   return d;
 }
 
-pub fn year_from_date(d: date): int64 {
-  return civil_year_from_days(d);
+pub fn YearFromDate(d: date): int64 {
+  return CivilYearFromDays(d);
 }
 
-pub fn month_from_date(d: date): int64 {
-  return civil_month_from_days(d);
+pub fn MonthFromDate(d: date): int64 {
+  return CivilMonthFromDays(d);
 }
 
-pub fn day_from_date(d: date): int64 {
-  return civil_day_from_days(d);
+pub fn DayFromDate(d: date): int64 {
+  return CivilDayFromDays(d);
 }
 
-pub fn time_from_hms(hour: int64, minute: int64, second: int64): time {
+pub fn TimeFromHms(hour: int64, minute: int64, second: int64): time {
   return hour * 3600 + minute * 60 + second;
 }
 
-pub fn hour_from_time(t: time): int64 {
+pub fn HourFromTime(t: time): int64 {
   return t / 3600;
 }
 
-pub fn minute_from_time(t: time): int64 {
+pub fn MinuteFromTime(t: time): int64 {
   return (t % 3600) / 60;
 }
 
-pub fn second_from_time(t: time): int64 {
+pub fn SecondFromTime(t: time): int64 {
   return t % 60;
 }
 
-pub fn datetime_from_unix_seconds(sec: int64): datetime {
+pub fn DatetimeFromUnixSeconds(sec: int64): datetime {
   return sec;
 }
 
-pub fn datetime_to_unix_seconds(dt: datetime): int64 {
+pub fn DatetimeToUnixSeconds(dt: datetime): int64 {
   return dt;
 }
 
-pub fn timestamp_from_unix_seconds(sec: int64): timestamp {
+pub fn TimestampFromUnixSeconds(sec: int64): timestamp {
   return sec * 1000000;
 }
 
-pub fn unix_seconds_from_timestamp(ts: timestamp): int64 {
+pub fn UnixSecondsFromTimestamp(ts: timestamp): int64 {
   return ts / 1000000;
 }
 
@@ -155,13 +155,13 @@ pub fn now(): datetime {
 }
 
 // Aktuelle Zeit als timestamp (Mikrosekunden seit Epoch)
-pub fn now_us(): timestamp {
+pub fn NowUs(): timestamp {
   var sec: int64 := now_unix();
   return sec * 1000000;
 }
 
 // Aktuelle Zeit als Millisekunden seit Epoch
-pub fn now_ms(): int64 {
+pub fn NowMs(): int64 {
   return now_unix_ms();
 }
 

@@ -1,52 +1,52 @@
 // std/io.lyx
-// I/O-Utilities: print/println overloads and a pure-Lyx printf with automatic conversion
+// I/O-Utilities: Print/PrintLn overloads and a pure-Lyx printf with automatic conversion
 // Supported argument types for auto-wrappers: pchar, int64, f64, bool
 // printf supports %s, %d, %f, %% and up to 4 placeholders
 
 import std.string;
 
-pub fn print(s: pchar): void {
-  print_str(s);
+pub fn Print(s: pchar): void {
+  PrintStr(s);
 }
 
-pub fn println(s: pchar): void {
-  print_str(s);
-  print_str("\n");
+pub fn PrintLn(s: pchar): void {
+  PrintStr(s);
+  PrintStr("\n");
 }
 
-// Überladene Varianten für println
-pub fn println(x: int64): void {
-  print_int(x);
-  print_str("\n");
+// Überladene Varianten für PrintLn
+pub fn PrintLn(x: int64): void {
+  PrintInt(x);
+  PrintStr("\n");
 }
 
-pub fn println(x: f64): void {
-  print_float(x);
-  print_str("\n");
+pub fn PrintLn(x: f64): void {
+  PrintFloat(x);
+  PrintStr("\n");
 }
 
-pub fn println(b: bool): void {
-  if (b) { print_str("true"); } else { print_str("false"); }
-  print_str("\n");
+pub fn PrintLn(b: bool): void {
+  if (b) { PrintStr("true"); } else { PrintStr("false"); }
+  PrintStr("\n");
 }
 
-pub fn print_intln(x: int64): void {
-  print_int(x);
-  print_str("\n");
+pub fn PrintIntLn(x: int64): void {
+  PrintInt(x);
+  PrintStr("\n");
 }
 
-pub fn exit_proc(code: int64): void {
+pub fn ExitProc(code: int64): void {
   exit(code);
 }
 
 // Helper: convert bool to pchar literal
-pub fn bool_to_str(b: bool): pchar {
+pub fn BoolToStr(b: bool): pchar {
   if (b) { return "true"; }
   return "false";
 }
 
-// float_to_str: einfache Konvertierung f64 -> pchar mit fester Präzision
-pub fn float_to_str(val: f64, prec: int64): pchar {
+// FloatToStr: einfache Konvertierung f64 -> pchar mit fester Präzision
+pub fn FloatToStr(val: f64, prec: int64): pchar {
   var neg: bool := False;
   var v: f64 := val;
   if (v < 0.0) { neg := True; v := -v; }
@@ -57,41 +57,41 @@ pub fn float_to_str(val: f64, prec: int64): pchar {
   while (i < prec) { scale := scale * 10; i := i + 1; }
   var frac_scaled: int64 := round(frac * scale);
 
-  var s_ip: pchar := int_to_str(ip);
-  var s_frac: pchar := int_to_str(frac_scaled);
+  var s_ip: pchar := IntToStr(ip);
+  var s_frac: pchar := IntToStr(frac_scaled);
 
   // buffers
   var buf1: pchar := "                                        "; // 40 chars
   var buf2: pchar := "                                        ";
 
   // buf1 = s_ip + "."
-  str_concat(buf1, s_ip, ".");
+  StrConcat(buf1, s_ip, ".");
   // buf2 = buf1 + s_frac
-  str_concat(buf2, buf1, s_frac);
+  StrConcat(buf2, buf1, s_frac);
   if (neg) {
-    str_concat(buf1, "-", buf2);
+    StrConcat(buf1, "-", buf2);
     return buf1;
   }
   return buf2;
 }
 
 // Core printf: unterstützt bis zu 4 bereits-formatierte pchar-Argumente
-pub fn printf_core(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: pchar): int64 {
+pub fn PrintfCore(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: pchar): int64 {
   var i: int64 := 0;
-  var n: int64 := str_length(fmt);
+  var n: int64 := StrLength(fmt);
   var printed: int64 := 0;
   var chbuf: pchar := " ";
   var argIndex: int64 := 1; // next argument to consume (1..4)
   while (i < n) {
-    var c: int64 := str_char_at(fmt, i);
+    var c: int64 := StrCharAt(fmt, i);
     if (c == 37) { // '%'
       // next char
       i := i + 1;
       if (i < n) {
-        var spec: int64 := str_char_at(fmt, i);
+        var spec: int64 := StrCharAt(fmt, i);
       if (spec == 37) { // '%%' -> '%'
-        str_set_char(chbuf, 0, 37);
-        print_str(chbuf);
+        StrSetChar(chbuf, 0, 37);
+        PrintStr(chbuf);
         printed := printed + 1;
       } else if (spec == 115) { // 's'
         // select argument by index
@@ -104,7 +104,7 @@ pub fn printf_core(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: pchar): int6
         else { arg := ""; }
         // increment argIndex for next placeholder
         argIndex := argIndex + 1;
-        if (arg != "") { print_str(arg); printed := printed + str_length(arg); }
+        if (arg != "") { PrintStr(arg); printed := printed + StrLength(arg); }
       } else if (spec == 100) { // 'd'
         var selIdx: int64 := argIndex;
         var arg: pchar := "";
@@ -114,7 +114,7 @@ pub fn printf_core(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: pchar): int6
         else if (selIdx == 4) { arg := a4; }
         else { arg := ""; }
         argIndex := argIndex + 1;
-        if (arg != "") { print_str(arg); printed := printed + str_length(arg); }
+        if (arg != "") { PrintStr(arg); printed := printed + StrLength(arg); }
       } else if (spec == 102) { // 'f'
         var selIdx: int64 := argIndex;
         var arg: pchar := "";
@@ -124,19 +124,19 @@ pub fn printf_core(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: pchar): int6
         else if (selIdx == 4) { arg := a4; }
         else { arg := ""; }
         argIndex := argIndex + 1;
-        if (arg != "") { print_str(arg); printed := printed + str_length(arg); }
+        if (arg != "") { PrintStr(arg); printed := printed + StrLength(arg); }
       } else {
-        // unknown specifier: print as is (both % and char)
-        str_set_char(chbuf, 0, 37);
-        print_str(chbuf);
-        str_set_char(chbuf, 0, spec);
-        print_str(chbuf);
+        // unknown specifier: Print as is (both % and char)
+        StrSetChar(chbuf, 0, 37);
+        PrintStr(chbuf);
+        StrSetChar(chbuf, 0, spec);
+        PrintStr(chbuf);
         printed := printed + 2;
       }
       } // Ende von if (i < n)
     } else {
-      str_set_char(chbuf, 0, c);
-      print_str(chbuf);
+      StrSetChar(chbuf, 0, c);
+      PrintStr(chbuf);
       printed := printed + 1;
     }
     i := i + 1;
@@ -149,159 +149,159 @@ pub fn printf_core(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: pchar): int6
 // We generate explicit overloads for every combination for arity 1..4.
 
 // Arity 0
-pub fn printf(fmt: pchar): int64 { return printf_core(fmt, "", "", "", ""); }
+pub fn printf(fmt: pchar): int64 { return PrintfCore(fmt, "", "", "", ""); }
 
 // Arity 1 (4 overloads)
-pub fn printf(fmt: pchar, a1: pchar): int64 { return printf_core(fmt, a1, "", "", ""); }
-pub fn printf(fmt: pchar, a1: int64): int64 { var s1: pchar := int_to_str(a1); return printf_core(fmt, s1, "", "", ""); }
-pub fn printf(fmt: pchar, a1: f64): int64 { var s1: pchar := float_to_str(a1, 6); return printf_core(fmt, s1, "", "", ""); }
-pub fn printf(fmt: pchar, a1: bool): int64 { var s1: pchar := bool_to_str(a1); return printf_core(fmt, s1, "", "", ""); }
+pub fn printf(fmt: pchar, a1: pchar): int64 { return PrintfCore(fmt, a1, "", "", ""); }
+pub fn printf(fmt: pchar, a1: int64): int64 { var s1: pchar := IntToStr(a1); return PrintfCore(fmt, s1, "", "", ""); }
+pub fn printf(fmt: pchar, a1: f64): int64 { var s1: pchar := FloatToStr(a1, 6); return PrintfCore(fmt, s1, "", "", ""); }
+pub fn printf(fmt: pchar, a1: bool): int64 { var s1: pchar := BoolToStr(a1); return PrintfCore(fmt, s1, "", "", ""); }
 
 // Arity 2 (16 overloads)
 // pchar, pchar
-pub fn printf(fmt: pchar, a1: pchar, a2: pchar): int64 { return printf_core(fmt, a1, a2, "", ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: pchar): int64 { return PrintfCore(fmt, a1, a2, "", ""); }
 // pchar, int64
-pub fn printf(fmt: pchar, a1: pchar, a2: int64): int64 { var s2: pchar := int_to_str(a2); return printf_core(fmt, a1, s2, "", ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: int64): int64 { var s2: pchar := IntToStr(a2); return PrintfCore(fmt, a1, s2, "", ""); }
 // pchar, f64
-pub fn printf(fmt: pchar, a1: pchar, a2: f64): int64 { var s2: pchar := float_to_str(a2, 6); return printf_core(fmt, a1, s2, "", ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: f64): int64 { var s2: pchar := FloatToStr(a2, 6); return PrintfCore(fmt, a1, s2, "", ""); }
 // pchar, bool
-pub fn printf(fmt: pchar, a1: pchar, a2: bool): int64 { var s2: pchar := bool_to_str(a2); return printf_core(fmt, a1, s2, "", ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: bool): int64 { var s2: pchar := BoolToStr(a2); return PrintfCore(fmt, a1, s2, "", ""); }
 
 // int64, pchar
-pub fn printf(fmt: pchar, a1: int64, a2: pchar): int64 { var s1: pchar := int_to_str(a1); return printf_core(fmt, s1, a2, "", ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: pchar): int64 { var s1: pchar := IntToStr(a1); return PrintfCore(fmt, s1, a2, "", ""); }
 // int64, int64
-pub fn printf(fmt: pchar, a1: int64, a2: int64): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := int_to_str(a2); return printf_core(fmt, s1, s2, "", ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: int64): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := IntToStr(a2); return PrintfCore(fmt, s1, s2, "", ""); }
 // int64, f64
-pub fn printf(fmt: pchar, a1: int64, a2: f64): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := float_to_str(a2, 6); return printf_core(fmt, s1, s2, "", ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: f64): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := FloatToStr(a2, 6); return PrintfCore(fmt, s1, s2, "", ""); }
 // int64, bool
-pub fn printf(fmt: pchar, a1: int64, a2: bool): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := bool_to_str(a2); return printf_core(fmt, s1, s2, "", ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: bool): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := BoolToStr(a2); return PrintfCore(fmt, s1, s2, "", ""); }
 
 // f64, pchar
-pub fn printf(fmt: pchar, a1: f64, a2: pchar): int64 { var s1: pchar := float_to_str(a1, 6); return printf_core(fmt, s1, a2, "", ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: pchar): int64 { var s1: pchar := FloatToStr(a1, 6); return PrintfCore(fmt, s1, a2, "", ""); }
 // f64, int64
-pub fn printf(fmt: pchar, a1: f64, a2: int64): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := int_to_str(a2); return printf_core(fmt, s1, s2, "", ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: int64): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := IntToStr(a2); return PrintfCore(fmt, s1, s2, "", ""); }
 // f64, f64
-pub fn printf(fmt: pchar, a1: f64, a2: f64): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := float_to_str(a2, 6); return printf_core(fmt, s1, s2, "", ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: f64): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := FloatToStr(a2, 6); return PrintfCore(fmt, s1, s2, "", ""); }
 // f64, bool
-pub fn printf(fmt: pchar, a1: f64, a2: bool): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := bool_to_str(a2); return printf_core(fmt, s1, s2, "", ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: bool): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := BoolToStr(a2); return PrintfCore(fmt, s1, s2, "", ""); }
 
 // bool, pchar
-pub fn printf(fmt: pchar, a1: bool, a2: pchar): int64 { var s1: pchar := bool_to_str(a1); return printf_core(fmt, s1, a2, "", ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: pchar): int64 { var s1: pchar := BoolToStr(a1); return PrintfCore(fmt, s1, a2, "", ""); }
 // bool, int64
-pub fn printf(fmt: pchar, a1: bool, a2: int64): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := int_to_str(a2); return printf_core(fmt, s1, s2, "", ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: int64): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := IntToStr(a2); return PrintfCore(fmt, s1, s2, "", ""); }
 // bool, f64
-pub fn printf(fmt: pchar, a1: bool, a2: f64): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := float_to_str(a2, 6); return printf_core(fmt, s1, s2, "", ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: f64): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := FloatToStr(a2, 6); return PrintfCore(fmt, s1, s2, "", ""); }
 // bool, bool
-pub fn printf(fmt: pchar, a1: bool, a2: bool): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := bool_to_str(a2); return printf_core(fmt, s1, s2, "", ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: bool): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := BoolToStr(a2); return PrintfCore(fmt, s1, s2, "", ""); }
 
 // Arity 3 (64 variants) - first 16 where a1=pchar
-pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: pchar): int64 { return printf_core(fmt, a1, a2, a3, ""); }
-pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: int64): int64 { var s3: pchar := int_to_str(a3); return printf_core(fmt, a1, a2, s3, ""); }
-pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: f64): int64 { var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, a1, a2, s3, ""); }
-pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: bool): int64 { var s3: pchar := bool_to_str(a3); return printf_core(fmt, a1, a2, s3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: pchar): int64 { return PrintfCore(fmt, a1, a2, a3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: int64): int64 { var s3: pchar := IntToStr(a3); return PrintfCore(fmt, a1, a2, s3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: f64): int64 { var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, a1, a2, s3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: bool): int64 { var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, a1, a2, s3, ""); }
 
-pub fn printf(fmt: pchar, a1: pchar, a2: int64, a3: pchar): int64 { var s2: pchar := int_to_str(a2); return printf_core(fmt, a1, s2, a3, ""); }
-pub fn printf(fmt: pchar, a1: pchar, a2: int64, a3: int64): int64 { var s2: pchar := int_to_str(a2); var s3: pchar := int_to_str(a3); return printf_core(fmt, a1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: pchar, a2: int64, a3: f64): int64 { var s2: pchar := int_to_str(a2); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, a1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: pchar, a2: int64, a3: bool): int64 { var s2: pchar := int_to_str(a2); var s3: pchar := bool_to_str(a3); return printf_core(fmt, a1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: int64, a3: pchar): int64 { var s2: pchar := IntToStr(a2); return PrintfCore(fmt, a1, s2, a3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: int64, a3: int64): int64 { var s2: pchar := IntToStr(a2); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, a1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: int64, a3: f64): int64 { var s2: pchar := IntToStr(a2); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, a1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: int64, a3: bool): int64 { var s2: pchar := IntToStr(a2); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, a1, s2, s3, ""); }
 
-pub fn printf(fmt: pchar, a1: pchar, a2: f64, a3: pchar): int64 { var s2: pchar := float_to_str(a2, 6); return printf_core(fmt, a1, s2, a3, ""); }
-pub fn printf(fmt: pchar, a1: pchar, a2: f64, a3: int64): int64 { var s2: pchar := float_to_str(a2, 6); var s3: pchar := int_to_str(a3); return printf_core(fmt, a1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: pchar, a2: f64, a3: f64): int64 { var s2: pchar := float_to_str(a2, 6); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, a1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: pchar, a2: f64, a3: bool): int64 { var s2: pchar := float_to_str(a2, 6); var s3: pchar := bool_to_str(a3); return printf_core(fmt, a1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: f64, a3: pchar): int64 { var s2: pchar := FloatToStr(a2, 6); return PrintfCore(fmt, a1, s2, a3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: f64, a3: int64): int64 { var s2: pchar := FloatToStr(a2, 6); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, a1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: f64, a3: f64): int64 { var s2: pchar := FloatToStr(a2, 6); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, a1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: f64, a3: bool): int64 { var s2: pchar := FloatToStr(a2, 6); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, a1, s2, s3, ""); }
 
-pub fn printf(fmt: pchar, a1: pchar, a2: bool, a3: pchar): int64 { var s2: pchar := bool_to_str(a2); return printf_core(fmt, a1, s2, a3, ""); }
-pub fn printf(fmt: pchar, a1: pchar, a2: bool, a3: int64): int64 { var s2: pchar := bool_to_str(a2); var s3: pchar := int_to_str(a3); return printf_core(fmt, a1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: pchar, a2: bool, a3: f64): int64 { var s2: pchar := bool_to_str(a2); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, a1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: pchar, a2: bool, a3: bool): int64 { var s2: pchar := bool_to_str(a2); var s3: pchar := bool_to_str(a3); return printf_core(fmt, a1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: bool, a3: pchar): int64 { var s2: pchar := BoolToStr(a2); return PrintfCore(fmt, a1, s2, a3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: bool, a3: int64): int64 { var s2: pchar := BoolToStr(a2); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, a1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: bool, a3: f64): int64 { var s2: pchar := BoolToStr(a2); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, a1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: pchar, a2: bool, a3: bool): int64 { var s2: pchar := BoolToStr(a2); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, a1, s2, s3, ""); }
 
 // a1 = int64 (first 16 of 64)
-pub fn printf(fmt: pchar, a1: int64, a2: pchar, a3: pchar): int64 { var s1: pchar := int_to_str(a1); return printf_core(fmt, s1, a2, a3, ""); }
-pub fn printf(fmt: pchar, a1: int64, a2: pchar, a3: int64): int64 { var s1: pchar := int_to_str(a1); var s3: pchar := int_to_str(a3); return printf_core(fmt, s1, a2, s3, ""); }
-pub fn printf(fmt: pchar, a1: int64, a2: pchar, a3: f64): int64 { var s1: pchar := int_to_str(a1); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, s1, a2, s3, ""); }
-pub fn printf(fmt: pchar, a1: int64, a2: pchar, a3: bool): int64 { var s1: pchar := int_to_str(a1); var s3: pchar := bool_to_str(a3); return printf_core(fmt, s1, a2, s3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: pchar, a3: pchar): int64 { var s1: pchar := IntToStr(a1); return PrintfCore(fmt, s1, a2, a3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: pchar, a3: int64): int64 { var s1: pchar := IntToStr(a1); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, s1, a2, s3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: pchar, a3: f64): int64 { var s1: pchar := IntToStr(a1); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, s1, a2, s3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: pchar, a3: bool): int64 { var s1: pchar := IntToStr(a1); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, s1, a2, s3, ""); }
 
-pub fn printf(fmt: pchar, a1: int64, a2: int64, a3: pchar): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := int_to_str(a2); return printf_core(fmt, s1, s2, a3, ""); }
-pub fn printf(fmt: pchar, a1: int64, a2: int64, a3: int64): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := int_to_str(a2); var s3: pchar := int_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: int64, a2: int64, a3: f64): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := int_to_str(a2); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: int64, a2: int64, a3: bool): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := int_to_str(a2); var s3: pchar := bool_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: int64, a3: pchar): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := IntToStr(a2); return PrintfCore(fmt, s1, s2, a3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: int64, a3: int64): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := IntToStr(a2); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: int64, a3: f64): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := IntToStr(a2); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: int64, a3: bool): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := IntToStr(a2); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
 
-pub fn printf(fmt: pchar, a1: int64, a2: f64, a3: pchar): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := float_to_str(a2, 6); return printf_core(fmt, s1, s2, a3, ""); }
-pub fn printf(fmt: pchar, a1: int64, a2: f64, a3: int64): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := float_to_str(a2, 6); var s3: pchar := int_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: int64, a2: f64, a3: f64): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := float_to_str(a2, 6); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: int64, a2: f64, a3: bool): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := float_to_str(a2, 6); var s3: pchar := bool_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: f64, a3: pchar): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := FloatToStr(a2, 6); return PrintfCore(fmt, s1, s2, a3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: f64, a3: int64): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := FloatToStr(a2, 6); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: f64, a3: f64): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := FloatToStr(a2, 6); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: f64, a3: bool): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := FloatToStr(a2, 6); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
 
 // Continue with remaining a1=int64 combinations (a2=bool)
-pub fn printf(fmt: pchar, a1: int64, a2: bool, a3: pchar): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := bool_to_str(a2); return printf_core(fmt, s1, s2, a3, ""); }
-pub fn printf(fmt: pchar, a1: int64, a2: bool, a3: int64): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := bool_to_str(a2); var s3: pchar := int_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: int64, a2: bool, a3: f64): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := bool_to_str(a2); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: int64, a2: bool, a3: bool): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := bool_to_str(a2); var s3: pchar := bool_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: bool, a3: pchar): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := BoolToStr(a2); return PrintfCore(fmt, s1, s2, a3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: bool, a3: int64): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := BoolToStr(a2); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: bool, a3: f64): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := BoolToStr(a2); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: int64, a2: bool, a3: bool): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := BoolToStr(a2); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
 
 // a1 = f64 (first 16 of 64)
-pub fn printf(fmt: pchar, a1: f64, a2: pchar, a3: pchar): int64 { var s1: pchar := float_to_str(a1, 6); return printf_core(fmt, s1, a2, a3, ""); }
-pub fn printf(fmt: pchar, a1: f64, a2: pchar, a3: int64): int64 { var s1: pchar := float_to_str(a1, 6); var s3: pchar := int_to_str(a3); return printf_core(fmt, s1, a2, s3, ""); }
-pub fn printf(fmt: pchar, a1: f64, a2: pchar, a3: f64): int64 { var s1: pchar := float_to_str(a1, 6); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, s1, a2, s3, ""); }
-pub fn printf(fmt: pchar, a1: f64, a2: pchar, a3: bool): int64 { var s1: pchar := float_to_str(a1, 6); var s3: pchar := bool_to_str(a3); return printf_core(fmt, s1, a2, s3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: pchar, a3: pchar): int64 { var s1: pchar := FloatToStr(a1, 6); return PrintfCore(fmt, s1, a2, a3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: pchar, a3: int64): int64 { var s1: pchar := FloatToStr(a1, 6); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, s1, a2, s3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: pchar, a3: f64): int64 { var s1: pchar := FloatToStr(a1, 6); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, s1, a2, s3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: pchar, a3: bool): int64 { var s1: pchar := FloatToStr(a1, 6); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, s1, a2, s3, ""); }
 
-pub fn printf(fmt: pchar, a1: f64, a2: int64, a3: pchar): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := int_to_str(a2); return printf_core(fmt, s1, s2, a3, ""); }
-pub fn printf(fmt: pchar, a1: f64, a2: int64, a3: int64): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := int_to_str(a2); var s3: pchar := int_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: f64, a2: int64, a3: f64): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := int_to_str(a2); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: f64, a2: int64, a3: bool): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := int_to_str(a2); var s3: pchar := bool_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: int64, a3: pchar): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := IntToStr(a2); return PrintfCore(fmt, s1, s2, a3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: int64, a3: int64): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := IntToStr(a2); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: int64, a3: f64): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := IntToStr(a2); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: int64, a3: bool): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := IntToStr(a2); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
 
-pub fn printf(fmt: pchar, a1: f64, a2: f64, a3: pchar): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := float_to_str(a2, 6); return printf_core(fmt, s1, s2, a3, ""); }
-pub fn printf(fmt: pchar, a1: f64, a2: f64, a3: int64): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := float_to_str(a2, 6); var s3: pchar := int_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: f64, a2: f64, a3: f64): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := float_to_str(a2, 6); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: f64, a2: f64, a3: bool): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := float_to_str(a2, 6); var s3: pchar := bool_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: f64, a3: pchar): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := FloatToStr(a2, 6); return PrintfCore(fmt, s1, s2, a3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: f64, a3: int64): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := FloatToStr(a2, 6); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: f64, a3: f64): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := FloatToStr(a2, 6); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: f64, a3: bool): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := FloatToStr(a2, 6); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
 
-pub fn printf(fmt: pchar, a1: f64, a2: bool, a3: pchar): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := bool_to_str(a2); return printf_core(fmt, s1, s2, a3, ""); }
-pub fn printf(fmt: pchar, a1: f64, a2: bool, a3: int64): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := bool_to_str(a2); var s3: pchar := int_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: f64, a2: bool, a3: f64): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := bool_to_str(a2); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: f64, a2: bool, a3: bool): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := bool_to_str(a2); var s3: pchar := bool_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: bool, a3: pchar): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := BoolToStr(a2); return PrintfCore(fmt, s1, s2, a3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: bool, a3: int64): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := BoolToStr(a2); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: bool, a3: f64): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := BoolToStr(a2); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: f64, a2: bool, a3: bool): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := BoolToStr(a2); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
 
 // a1 = bool (first 16 of 64)
-pub fn printf(fmt: pchar, a1: bool, a2: pchar, a3: pchar): int64 { var s1: pchar := bool_to_str(a1); return printf_core(fmt, s1, a2, a3, ""); }
-pub fn printf(fmt: pchar, a1: bool, a2: pchar, a3: int64): int64 { var s1: pchar := bool_to_str(a1); var s3: pchar := int_to_str(a3); return printf_core(fmt, s1, a2, s3, ""); }
-pub fn printf(fmt: pchar, a1: bool, a2: pchar, a3: f64): int64 { var s1: pchar := bool_to_str(a1); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, s1, a2, s3, ""); }
-pub fn printf(fmt: pchar, a1: bool, a2: pchar, a3: bool): int64 { var s1: pchar := bool_to_str(a1); var s3: pchar := bool_to_str(a3); return printf_core(fmt, s1, a2, s3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: pchar, a3: pchar): int64 { var s1: pchar := BoolToStr(a1); return PrintfCore(fmt, s1, a2, a3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: pchar, a3: int64): int64 { var s1: pchar := BoolToStr(a1); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, s1, a2, s3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: pchar, a3: f64): int64 { var s1: pchar := BoolToStr(a1); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, s1, a2, s3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: pchar, a3: bool): int64 { var s1: pchar := BoolToStr(a1); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, s1, a2, s3, ""); }
 
-pub fn printf(fmt: pchar, a1: bool, a2: int64, a3: pchar): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := int_to_str(a2); return printf_core(fmt, s1, s2, a3, ""); }
-pub fn printf(fmt: pchar, a1: bool, a2: int64, a3: int64): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := int_to_str(a2); var s3: pchar := int_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: bool, a2: int64, a3: f64): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := int_to_str(a2); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: bool, a2: int64, a3: bool): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := int_to_str(a2); var s3: pchar := bool_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: int64, a3: pchar): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := IntToStr(a2); return PrintfCore(fmt, s1, s2, a3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: int64, a3: int64): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := IntToStr(a2); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: int64, a3: f64): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := IntToStr(a2); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: int64, a3: bool): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := IntToStr(a2); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
 
-pub fn printf(fmt: pchar, a1: bool, a2: f64, a3: pchar): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := float_to_str(a2, 6); return printf_core(fmt, s1, s2, a3, ""); }
-pub fn printf(fmt: pchar, a1: bool, a2: f64, a3: int64): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := float_to_str(a2, 6); var s3: pchar := int_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: bool, a2: f64, a3: f64): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := float_to_str(a2, 6); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: bool, a2: f64, a3: bool): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := float_to_str(a2, 6); var s3: pchar := bool_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: f64, a3: pchar): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := FloatToStr(a2, 6); return PrintfCore(fmt, s1, s2, a3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: f64, a3: int64): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := FloatToStr(a2, 6); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: f64, a3: f64): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := FloatToStr(a2, 6); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: f64, a3: bool): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := FloatToStr(a2, 6); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
 
-pub fn printf(fmt: pchar, a1: bool, a2: bool, a3: pchar): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := bool_to_str(a2); return printf_core(fmt, s1, s2, a3, ""); }
-pub fn printf(fmt: pchar, a1: bool, a2: bool, a3: int64): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := bool_to_str(a2); var s3: pchar := int_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: bool, a2: bool, a3: f64): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := bool_to_str(a2); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, s1, s2, s3, ""); }
-pub fn printf(fmt: pchar, a1: bool, a2: bool, a3: bool): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := bool_to_str(a2); var s3: pchar := bool_to_str(a3); return printf_core(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: bool, a3: pchar): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := BoolToStr(a2); return PrintfCore(fmt, s1, s2, a3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: bool, a3: int64): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := BoolToStr(a2); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: bool, a3: f64): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := BoolToStr(a2); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, s1, s2, s3, ""); }
+pub fn printf(fmt: pchar, a1: bool, a2: bool, a3: bool): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := BoolToStr(a2); var s3: pchar := BoolToStr(a3); return PrintfCore(fmt, s1, s2, s3, ""); }
 
 // Arity 4 (256 overloads) - key combinations
 // pchar x 4
-pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: pchar): int64 { return printf_core(fmt, a1, a2, a3, a4); }
-pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: int64): int64 { var s4: pchar := int_to_str(a4); return printf_core(fmt, a1, a2, a3, s4); }
-pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: f64): int64 { var s4: pchar := float_to_str(a4, 6); return printf_core(fmt, a1, a2, a3, s4); }
-pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: bool): int64 { var s4: pchar := bool_to_str(a4); return printf_core(fmt, a1, a2, a3, s4); }
+pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: pchar): int64 { return PrintfCore(fmt, a1, a2, a3, a4); }
+pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: int64): int64 { var s4: pchar := IntToStr(a4); return PrintfCore(fmt, a1, a2, a3, s4); }
+pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: f64): int64 { var s4: pchar := FloatToStr(a4, 6); return PrintfCore(fmt, a1, a2, a3, s4); }
+pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: pchar, a4: bool): int64 { var s4: pchar := BoolToStr(a4); return PrintfCore(fmt, a1, a2, a3, s4); }
 
 // Additional arity-4 overloads for common use cases (mixed types)
-pub fn printf(fmt: pchar, a1: pchar, a2: int64, a3: pchar, a4: pchar): int64 { var s2: pchar := int_to_str(a2); return printf_core(fmt, a1, s2, a3, a4); }
-pub fn printf(fmt: pchar, a1: int64, a2: pchar, a3: pchar, a4: pchar): int64 { var s1: pchar := int_to_str(a1); return printf_core(fmt, s1, a2, a3, a4); }
-pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: int64, a4: pchar): int64 { var s3: pchar := int_to_str(a3); return printf_core(fmt, a1, a2, s3, a4); }
-pub fn printf(fmt: pchar, a1: pchar, a2: int64, a3: int64, a4: pchar): int64 { var s2: pchar := int_to_str(a2); var s3: pchar := int_to_str(a3); return printf_core(fmt, a1, s2, s3, a4); }
+pub fn printf(fmt: pchar, a1: pchar, a2: int64, a3: pchar, a4: pchar): int64 { var s2: pchar := IntToStr(a2); return PrintfCore(fmt, a1, s2, a3, a4); }
+pub fn printf(fmt: pchar, a1: int64, a2: pchar, a3: pchar, a4: pchar): int64 { var s1: pchar := IntToStr(a1); return PrintfCore(fmt, s1, a2, a3, a4); }
+pub fn printf(fmt: pchar, a1: pchar, a2: pchar, a3: int64, a4: pchar): int64 { var s3: pchar := IntToStr(a3); return PrintfCore(fmt, a1, a2, s3, a4); }
+pub fn printf(fmt: pchar, a1: pchar, a2: int64, a3: int64, a4: pchar): int64 { var s2: pchar := IntToStr(a2); var s3: pchar := IntToStr(a3); return PrintfCore(fmt, a1, s2, s3, a4); }
 
 // int64 x 4
-pub fn printf(fmt: pchar, a1: int64, a2: int64, a3: int64, a4: int64): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := int_to_str(a2); var s3: pchar := int_to_str(a3); var s4: pchar := int_to_str(a4); return printf_core(fmt, s1, s2, s3, s4); }
+pub fn printf(fmt: pchar, a1: int64, a2: int64, a3: int64, a4: int64): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := IntToStr(a2); var s3: pchar := IntToStr(a3); var s4: pchar := IntToStr(a4); return PrintfCore(fmt, s1, s2, s3, s4); }
 // f64 x 4
-pub fn printf(fmt: pchar, a1: f64, a2: f64, a3: f64, a4: f64): int64 { var s1: pchar := float_to_str(a1, 6); var s2: pchar := float_to_str(a2, 6); var s3: pchar := float_to_str(a3, 6); var s4: pchar := float_to_str(a4, 6); return printf_core(fmt, s1, s2, s3, s4); }
+pub fn printf(fmt: pchar, a1: f64, a2: f64, a3: f64, a4: f64): int64 { var s1: pchar := FloatToStr(a1, 6); var s2: pchar := FloatToStr(a2, 6); var s3: pchar := FloatToStr(a3, 6); var s4: pchar := FloatToStr(a4, 6); return PrintfCore(fmt, s1, s2, s3, s4); }
 // bool x 4
-pub fn printf(fmt: pchar, a1: bool, a2: bool, a3: bool, a4: bool): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := bool_to_str(a2); var s3: pchar := bool_to_str(a3); var s4: pchar := bool_to_str(a4); return printf_core(fmt, s1, s2, s3, s4); }
+pub fn printf(fmt: pchar, a1: bool, a2: bool, a3: bool, a4: bool): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := BoolToStr(a2); var s3: pchar := BoolToStr(a3); var s4: pchar := BoolToStr(a4); return PrintfCore(fmt, s1, s2, s3, s4); }
 
 // Mixed arity-4 combinations
-pub fn printf(fmt: pchar, a1: int64, a2: f64, a3: pchar, a4: bool): int64 { var s1: pchar := int_to_str(a1); var s2: pchar := float_to_str(a2, 6); var s4: pchar := bool_to_str(a4); return printf_core(fmt, s1, s2, a3, s4); }
-pub fn printf(fmt: pchar, a1: pchar, a2: f64, a3: int64, a4: bool): int64 { var s2: pchar := float_to_str(a2, 6); var s3: pchar := int_to_str(a3); var s4: pchar := bool_to_str(a4); return printf_core(fmt, a1, s2, s3, s4); }
-pub fn printf(fmt: pchar, a1: bool, a2: int64, a3: f64, a4: pchar): int64 { var s1: pchar := bool_to_str(a1); var s2: pchar := int_to_str(a2); var s3: pchar := float_to_str(a3, 6); return printf_core(fmt, s1, s2, s3, a4); }
+pub fn printf(fmt: pchar, a1: int64, a2: f64, a3: pchar, a4: bool): int64 { var s1: pchar := IntToStr(a1); var s2: pchar := FloatToStr(a2, 6); var s4: pchar := BoolToStr(a4); return PrintfCore(fmt, s1, s2, a3, s4); }
+pub fn printf(fmt: pchar, a1: pchar, a2: f64, a3: int64, a4: bool): int64 { var s2: pchar := FloatToStr(a2, 6); var s3: pchar := IntToStr(a3); var s4: pchar := BoolToStr(a4); return PrintfCore(fmt, a1, s2, s3, s4); }
+pub fn printf(fmt: pchar, a1: bool, a2: int64, a3: f64, a4: pchar): int64 { var s1: pchar := BoolToStr(a1); var s2: pchar := IntToStr(a2); var s3: pchar := FloatToStr(a3, 6); return PrintfCore(fmt, s1, s2, s3, a4); }
 
 // End of std/io.lyx

@@ -1,9 +1,9 @@
 fn main(): int64 {
-  print_int(0);
-  print_str("\n");
-  print_int(12345);
-  print_str("\n");
-  print_int(-42);
-  print_str("\n");
+  PrintInt(0);
+  PrintStr("\n");
+  PrintInt(12345);
+  PrintStr("\n");
+  PrintInt(-42);
+  PrintStr("\n");
   return 0;
 }

@@ -10,8 +10,8 @@ fn main(): int64 {
         sum := sum + i;
         i := i + 1;
     }
-    print_int(sum);  // Erwartet: 15
-    print_str("\n");
+    PrintInt(sum);  // Erwartet: 15
+    PrintStr("\n");
 
     // Abwärts zählen
     sum := 0;
@@ -20,8 +20,8 @@ fn main(): int64 {
         sum := sum + i;
         i := i - 1;
     }
-    print_int(sum);  // Erwartet: 15
-    print_str("\n");
+    PrintInt(sum);  // Erwartet: 15
+    PrintStr("\n");
 
     return 0;
 }

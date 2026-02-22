@@ -10,7 +10,7 @@ fn main(): int64 {
   // Achtung: set_raw_mode ist ein Platzhalter und möglicherweise nicht implementiert.
   var ok: int64 := set_raw_mode(true);
   if (ok == 0) {
-    print_str("Raw mode enabled. Press keys (ESC to exit)\n");
+    PrintStr("Raw mode enabled. Press keys (ESC to exit)\n");
     var running: bool := true;
     while (running) {
       if (key_pressed()) {
@@ -20,15 +20,15 @@ fn main(): int64 {
           running := false;
         } else {
           // show hex code
-          print_str("Key: ");
-          print_int(k);
-          print_str("\n");
+          PrintStr("Key: ");
+          PrintInt(k);
+          PrintStr("\n");
         }
       }
     }
     set_raw_mode(false);
   } else {
-    print_str("set_raw_mode not available on this platform or not implemented.\n");
+    PrintStr("set_raw_mode not available on this platform or not implemented.\n");
   }
   return 0;
 }

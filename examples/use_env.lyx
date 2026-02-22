@@ -4,9 +4,9 @@ import std.io;
 
 fn main(argc: int64, argv: pchar): int64 {
   init(argc, argv);
-  // print arg count
+  // Print arg count
   print_intln(arg_count());
-  // print first arg (program name) if present
+  // Print first arg (program name) if present
   if arg_count() > 0 {
     print_str(arg(0));
     print_str("\n");

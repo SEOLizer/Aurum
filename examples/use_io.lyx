@@ -2,7 +2,7 @@
 import std.io;
 
 fn main(): int64 {
-  println("hello from std.io");
-  print_intln(42);
+  PrintLn("hello from std.io");
+  PrintIntLn(42);
   return 0;
 }

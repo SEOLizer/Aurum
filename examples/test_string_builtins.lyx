@@ -1,27 +1,27 @@
 // Test für String-Builtins
 fn main(): int64 {
-  // Test 1: str_length
-  var len: int64 := str_length("Hello");
-  print_str("Length of Hello: ");
-  print_int(len);
-  print_str("\n");
+  // Test 1: StrLength
+  var len: int64 := StrLength("Hello");
+  PrintStr("Length of Hello: ");
+  PrintInt(len);
+  PrintStr("\n");
   
-  // Test 2: str_char_at
-  var c: int64 := str_char_at("Hello", 1);
-  print_str("Second character of Hello: ");
-  print_int(c);
-  print_str(" (ASCII)\n");
+  // Test 2: StrCharAt
+  var c: int64 := StrCharAt("Hello", 1);
+  PrintStr("Second character of Hello: ");
+  PrintInt(c);
+  PrintStr(" (ASCII)\n");
   
   // Test 3: str_compare
   var cmp: int64 := str_compare("abc", "abc");
-  print_str("Compare abc with abc: ");
-  print_int(cmp);
-  print_str(" (should be 0)\n");
+  PrintStr("Compare abc with abc: ");
+  PrintInt(cmp);
+  PrintStr(" (should be 0)\n");
   
   var cmp2: int64 := str_compare("abc", "def");
-  print_str("Compare abc with def: ");
-  print_int(cmp2);
-  print_str(" (should be negative)\n");
+  PrintStr("Compare abc with def: ");
+  PrintInt(cmp2);
+  PrintStr(" (should be negative)\n");
   
   return 0;
 }

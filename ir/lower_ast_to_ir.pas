@@ -740,11 +740,11 @@ function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
           argTemps[i] := LowerExpr(TAstCall(expr).Args[i]);
 
         // Check for builtins
-        if TAstCall(expr).Name = 'print_str' then
+        if TAstCall(expr).Name = 'PrintStr' then
         begin
           instr.Op := irCallBuiltin;
           instr.Dest := -1;
-          instr.ImmStr := 'print_str';
+          instr.ImmStr := 'PrintStr';
           if argCount >= 1 then
             instr.Src1 := argTemps[0]
           else
@@ -756,11 +756,11 @@ function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
           Emit(instr);
           Result := -1;
         end
-        else if TAstCall(expr).Name = 'print_int' then
+        else if TAstCall(expr).Name = 'PrintInt' then
         begin
           instr.Op := irCallBuiltin;
           instr.Dest := -1;
-          instr.ImmStr := 'print_int';
+          instr.ImmStr := 'PrintInt';
           if argCount >= 1 then
             instr.Src1 := argTemps[0]
           else
