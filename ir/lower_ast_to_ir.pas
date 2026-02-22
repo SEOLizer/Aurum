@@ -27,6 +27,7 @@ type
     FLocalTypes: array of TAurumType; // index -> declared local type
     FLocalElemSize: array of Integer; // index -> element size in bytes for dynamic array locals (0 if not array)
     FLocalIsStruct: array of Boolean; // index -> true if this local is a struct (need address, not value)
+    FLocalSlotCount: array of Integer; // index -> number of slots this variable occupies (for structs)
     FConstMap: TStringList; // name -> TConstValue (compile-time constants)
     FLocalConst: array of TConstValue; // per-function local constant values (or nil)
     FBreakStack: TStringList; // stack of break labels
@@ -88,6 +89,7 @@ constructor TIRLowering.Create(modul: TIRModule; diag: TDiagnostics);
     SetLength(FLocalTypes, 0);
     SetLength(FLocalElemSize, 0);
     SetLength(FLocalIsStruct, 0);
+    SetLength(FLocalSlotCount, 0);
     SetLength(FLocalConst, 0);
   end;
 
@@ -172,6 +174,11 @@ begin
   SetLength(FLocalIsStruct, FCurrentFunc.LocalCount);
   for i := 0 to count - 1 do
     FLocalIsStruct[base + i] := isStruct and (i = 0); // only mark first slot as struct
+  // ensure FLocalSlotCount has same length
+  SetLength(FLocalSlotCount, FCurrentFunc.LocalCount);
+  FLocalSlotCount[base] := count; // store slot count on first slot
+  for i := 1 to count - 1 do
+    FLocalSlotCount[base + i] := 0; // other slots don't need count
   Result := base;
 end;
 
@@ -495,6 +502,7 @@ function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
     fa: TAstFieldAssign;
     fldOffset: Integer;
     ownerName: string;
+    slotCount: Integer;
   begin
   Result := -1;
   if not Assigned(expr) then
@@ -604,11 +612,18 @@ function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
             // Check if this local is a struct - if so, load address instead of value
             if (loc < Length(FLocalIsStruct)) and FLocalIsStruct[loc] then
             begin
-              // Struct local: load address of the stack slot
+              // Struct local: load base address for field access
+              // Need to know struct size to calculate correct base address
+              slotCount := 1;
+              if loc < Length(FLocalSlotCount) then
+                slotCount := FLocalSlotCount[loc];
+              if slotCount < 1 then slotCount := 1;
+              
               t0 := NewTemp;
-              instr.Op := irLoadLocalAddr;
+              instr.Op := irLoadStructAddr;
               instr.Dest := t0;
               instr.Src1 := loc;
+              instr.StructSize := slotCount * 8; // size in bytes
               Emit(instr);
               Result := t0;
             end
@@ -1027,7 +1042,7 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     thenLabel, elseLabel, endLabel: string;
     whileNode: TAstWhile;
     startLabel, bodyLabel, exitLabel: string;
-    i: Integer;
+    i, k: Integer;
     sw: TAstSwitch;
     switchTmp: Integer;
     endLbl, defaultLbl: string;
@@ -1048,6 +1063,9 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
     elemSize: Integer;
     fa: TAstFieldAssign;
     retStructDecl: TAstStructDecl;
+    call: TAstCall;
+    argCount: Integer;
+    argTemps: array of Integer;
   begin
   instr := Default(TIRInstr);
   Result := True;
@@ -1154,16 +1172,23 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
         end
         else if vd.InitExpr is TAstCall then
         begin
-          // Call returning struct: call function and store result(s) into local
-          // For small structs (<=8 bytes), result is in RAX
-          // For medium structs (9-16 bytes), result is in RAX:RDX
-          // Call expression returns temp that holds the value
-          t0 := LowerExpr(vd.InitExpr);
-          // Now t0 holds the returned struct value (for <=8 bytes it's the actual value)
-          // Store into the struct variable's slot
-          instr.Op := irStoreLocal;
-          instr.Dest := loc;
-          instr.Src1 := t0;
+          // Call returning struct: use irCallStruct to handle RAX+RDX properly
+          call := TAstCall(vd.InitExpr);
+          argCount := Length(call.Args);
+          SetLength(argTemps, argCount);
+          for k := 0 to argCount - 1 do
+            argTemps[k] := LowerExpr(call.Args[k]);
+          
+          // Emit irCallStruct with struct size info
+          instr.Op := irCallStruct;
+          instr.Dest := loc;  // destination is the struct variable slot
+          instr.ImmStr := call.Name;
+          instr.ImmInt := argCount;
+          instr.StructSize := TAstStructDecl(FStructTypes.Objects[i]).Size;
+          instr.CallMode := cmInternal;
+          SetLength(instr.ArgTemps, argCount);
+          for k := 0 to argCount - 1 do
+            instr.ArgTemps[k] := argTemps[k];
           Emit(instr);
         end;
         Exit(True);

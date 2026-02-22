@@ -351,8 +351,10 @@ procedure TX86_64Emitter.EmitFromIR(module: TIRModule);
   ppos, ai: Integer;
   // for call extra
   extraCount: Integer;
-  // function context
-  isEntryFunction: Boolean;
+   // function context
+   isEntryFunction: Boolean;
+   structBaseOff: Int64;
+   negOffset: Int64;
   frameBytes: Integer;
   framePad: Integer;
   callPad: Integer;
@@ -1262,6 +1264,28 @@ begin
             // Store result in destination temp slot
             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
           end;
+        irLoadStructAddr:
+          begin
+            // Load base address of struct local for field access
+            // With negative field offsets, base is simply SlotOffset(loc)
+            // Field access: [base - offset] gives correct slot
+            structBaseOff := SlotOffset(instr.Src1);
+            // LEA rax, [rbp + structBaseOff]
+            EmitU8(FCode, $48); // REX.W
+            EmitU8(FCode, $8D); // LEA opcode
+            if (structBaseOff >= -128) and (structBaseOff <= 127) then
+            begin
+              EmitU8(FCode, $45); // ModR/M: [rbp + disp8], reg=rax
+              EmitU8(FCode, Byte(structBaseOff));
+            end
+            else
+            begin
+              EmitU8(FCode, $85); // ModR/M: [rbp + disp32], reg=rax
+              EmitU32(FCode, Cardinal(structBaseOff));
+            end;
+            // Store result in destination temp slot
+            WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+          end;
         irAdd:
           begin
             // dest = src1 + src2
@@ -1662,6 +1686,72 @@ begin
                WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
 
           end;
+        irCallStruct:
+          begin
+            // Call function returning struct - handle RAX+RDX for 9-16 byte structs
+            // Same setup as irCall for arguments
+            argCount := instr.ImmInt;
+            SetLength(argTemps, argCount);
+            for k := 0 to argCount - 1 do
+              argTemps[k] := -1;
+            
+            // Use ArgTemps array from IR
+            if Length(instr.ArgTemps) > 0 then
+            begin
+              for k := 0 to argCount - 1 do
+                if k <= High(instr.ArgTemps) then argTemps[k] := instr.ArgTemps[k];
+            end;
+            
+            // Move args into registers (SysV: RDI, RSI, RDX, RCX, R8, R9)
+            if argCount > 0 then
+            begin
+              if (argCount >= 1) and (argTemps[0] >= 0) then WriteMovRegMem(FCode, RDI, RBP, SlotOffset(localCnt + argTemps[0]));
+              if (argCount >= 2) and (argTemps[1] >= 0) then WriteMovRegMem(FCode, RSI, RBP, SlotOffset(localCnt + argTemps[1]));
+              if (argCount >= 3) and (argTemps[2] >= 0) then WriteMovRegMem(FCode, RDX, RBP, SlotOffset(localCnt + argTemps[2]));
+              if (argCount >= 4) and (argTemps[3] >= 0) then WriteMovRegMem(FCode, RCX, RBP, SlotOffset(localCnt + argTemps[3]));
+              if (argCount >= 5) and (argTemps[4] >= 0) then WriteMovRegMem(FCode, R8, RBP, SlotOffset(localCnt + argTemps[4]));
+              if (argCount >= 6) and (argTemps[5] >= 0) then WriteMovRegMem(FCode, R9, RBP, SlotOffset(localCnt + argTemps[5]));
+            end;
+            
+            // Stack alignment
+            callPad := 8;
+            EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $EC); EmitU8(FCode, Byte(callPad));
+            
+            // Emit call
+            SetLength(FJumpPatches, Length(FJumpPatches) + 1);
+            FJumpPatches[High(FJumpPatches)].Pos := FCode.Size;
+            FJumpPatches[High(FJumpPatches)].LabelName := instr.ImmStr;
+            FJumpPatches[High(FJumpPatches)].JmpSize := 5;
+            EmitU8(FCode, $E8);
+            EmitU32(FCode, 0);
+            
+            // Restore stack
+            EmitU8(FCode, $48); EmitU8(FCode, $83); EmitU8(FCode, $C4); EmitU8(FCode, Byte(callPad));
+            
+            // Store result based on struct size
+            // Note: instr.Dest is a LOCAL index (not a temp), so don't add localCnt
+            if instr.Dest >= 0 then
+            begin
+              if instr.StructSize <= 8 then
+              begin
+                // Small struct: result in RAX only
+                WriteMovMemReg(FCode, RBP, SlotOffset(instr.Dest), RAX);
+              end
+              else if instr.StructSize <= 16 then
+              begin
+                // Medium struct: result in RAX + RDX
+                // Store RAX to first slot, RDX to second slot
+                WriteMovMemReg(FCode, RBP, SlotOffset(instr.Dest), RAX);
+                WriteMovMemReg(FCode, RBP, SlotOffset(instr.Dest + 1), RDX);
+              end
+              else
+              begin
+                // Large struct: hidden pointer - not implemented yet
+                // For now, just store RAX (the pointer)
+                WriteMovMemReg(FCode, RBP, SlotOffset(instr.Dest), RAX);
+              end;
+            end;
+          end;
         irStackAlloc:
           begin
             // Allocate stack space for array: alloc_size = ImmInt bytes
@@ -1754,22 +1844,25 @@ begin
 
         irLoadField:
           begin
-            // Load field from struct: Dest = *(Src1 + ImmInt)
-            // Src1 = temp holding struct base address
+            // Load field from struct: Dest = *(Src1 - ImmInt)
+            // Stack slots grow negative, so we SUBTRACT the field offset
+            // Src1 = temp holding struct base address (lowest slot address)
             // ImmInt = field offset in bytes
             // Load struct base address into RAX
             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
-            // Load field value: mov rcx, [rax + offset]
-            if (instr.ImmInt >= -128) and (instr.ImmInt <= 127) then
+            // Load field value: mov rcx, [rax - offset]
+            // Note: We subtract because stack grows down but field offsets grow up
+            negOffset := -instr.ImmInt;
+            if (negOffset >= -128) and (negOffset <= 127) then
             begin
               // mov rcx, [rax + disp8]
-              EmitU8(FCode, $48); EmitU8(FCode, $8B); EmitU8(FCode, $48); EmitU8(FCode, Byte(instr.ImmInt));
+              EmitU8(FCode, $48); EmitU8(FCode, $8B); EmitU8(FCode, $48); EmitU8(FCode, Byte(negOffset));
             end
             else
             begin
               // mov rcx, [rax + disp32]
               EmitU8(FCode, $48); EmitU8(FCode, $8B); EmitU8(FCode, $88);
-              EmitU32(FCode, Cardinal(instr.ImmInt));
+              EmitU32(FCode, Cardinal(negOffset));
             end;
             // Store result in destination temp slot
             WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RCX);
@@ -1777,7 +1870,8 @@ begin
 
         irStoreField:
           begin
-            // Store field into struct: *(Src1 + ImmInt) = Src2
+            // Store field into struct: *(Src1 - ImmInt) = Src2
+            // Stack slots grow negative, so we SUBTRACT the field offset
             // Src1 = temp holding struct base address
             // Src2 = temp holding value to store
             // ImmInt = field offset in bytes
@@ -1785,17 +1879,18 @@ begin
             WriteMovRegMem(FCode, RAX, RBP, SlotOffset(localCnt + instr.Src1));
             // Load value to store into RCX
             WriteMovRegMem(FCode, RCX, RBP, SlotOffset(localCnt + instr.Src2));
-            // Store field value: mov [rax + offset], rcx
-            if (instr.ImmInt >= -128) and (instr.ImmInt <= 127) then
+            // Store field value: mov [rax - offset], rcx
+            negOffset := -instr.ImmInt;
+            if (negOffset >= -128) and (negOffset <= 127) then
             begin
               // mov [rax + disp8], rcx
-              EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $48); EmitU8(FCode, Byte(instr.ImmInt));
+              EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $48); EmitU8(FCode, Byte(negOffset));
             end
             else
             begin
               // mov [rax + disp32], rcx
               EmitU8(FCode, $48); EmitU8(FCode, $89); EmitU8(FCode, $88);
-              EmitU32(FCode, Cardinal(instr.ImmInt));
+              EmitU32(FCode, Cardinal(negOffset));
             end;
           end;
       end;

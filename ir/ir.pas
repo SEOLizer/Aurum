@@ -25,7 +25,8 @@ type
     // float comparisons
     irFCmpEq, irFCmpNeq, irFCmpLt, irFCmpLe, irFCmpGt, irFCmpGe,
     irNot, irAnd, irOr, irNor, irXor,
-    irLoadLocal, irStoreLocal, irLoadLocalAddr,
+     irLoadLocal, irStoreLocal, irLoadLocalAddr,
+     irLoadStructAddr,  // load base address of struct local (needs StructSize for correct calculation)
     // width/sign helpers
     irSExt,    // sign-extend Src1 to ImmInt bits -> Dest
     irZExt,    // zero-extend Src1 to ImmInt bits -> Dest
@@ -35,7 +36,7 @@ type
      irIToF,    // int to float conversion
      // type casting
      irCast,    // type cast: Dest = cast(Src1, CastFromType, CastToType)
-     irCallBuiltin, irCall, irVarCall,
+     irCallBuiltin, irCall, irCallStruct, irVarCall,
     irJmp, irBrTrue, irBrFalse,
     irLabel,
     irReturn,
