@@ -1,4 +1,4 @@
-# Lyx v0.1.5 – Mini-Spezifikation
+# Lyx v0.1.6 – Sprachspezifikation
 
 Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar durch saubere Trennung von Frontend/IR/Backend.
 
@@ -31,7 +31,7 @@ Ziel: Minimaler, nativer Compiler für **Linux x86_64 (ELF64)**, erweiterbar dur
 
 ### Keywords (reserviert)
 
-`fn var let co con if else while switch case break default return true false extern unit import pub as array struct self`
+`fn var let co con if else while switch case break default return true false extern unit import pub as array struct static self Self`
 
 > Reserviert für kommende Phasen (noch ohne Semantik): `class`, `extends`, `virtual`.
 
@@ -246,8 +246,10 @@ ArrayType      := 'array' ;                      // Stack-allokiertes Array
 StructType     := 'struct' '{' { StructMember } '}' ;
 StructMember   := FieldDecl | MethodDecl ;
 FieldDecl      := Ident ':' Type ';' ;
-MethodDecl     := 'fn' Ident '(' [ ParamList ] ')' [ ':' RetType ] Block ;
+MethodDecl     := [ 'static' ] 'fn' Ident '(' [ ParamList ] ')' [ ':' RetType ] Block ;
 > Hinweis: Der implizite Parameter `self` ist nicht Teil von `ParamList`.
+> Statische Methoden mit 'static' haben keinen self-Parameter.
+> In Methoden kann 'Self' als Rückgabetyp verwendet werden (wird zum Struct-Typ aufgelöst).
 ```
 
 ### Struktur- und Array-Literale
@@ -319,7 +321,7 @@ ConstPrimary   := IntLit | FloatLit | BoolLit | StringLit | CharLit | '(' ConstE
 
 ---
 
-## 7) Semantikregeln (v0.1.5)
+## 7) Semantikregeln (v0.1.6)
 
 ### Namespaces / Scopes
 
@@ -333,7 +335,20 @@ ConstPrimary   := IntLit | FloatLit | BoolLit | StringLit | CharLit | '(' ConstE
 * `expr.field` greift auf ein Datenfeld des Struct-Typs zu (Offset-Berechnung zur Compilezeit).
 * `expr.method(args…)` wird in einen Funktionsaufruf desugart: `_L_<Struct>_<Method>(&expr, args…)`.
 * Der Compiler injiziert den impliziten `self`-Pointer als ersten Parameter; `self` zeigt immer auf die Adresse der Instanz.
-* Methoden sind statisch gebunden – es existiert kein virtuelles Dispatching in Phase A.
+* Methoden sind statisch gebunden – es existiert kein virtuelles Dispatching.
+
+### Statische Methoden
+
+* Statische Methoden werden mit `static fn` deklariert.
+* Sie haben keinen impliziten `self`-Parameter.
+* Aufruf erfolgt mit `TypeName.method(args…)`.
+* Der Compiler entfernt den Typnamen aus den Argumenten und ruft `_L_<Struct>_<Method>(args…)` auf.
+
+### Der `Self`-Typ
+
+* `Self` kann in Methoden als Rückgabetyp verwendet werden.
+* Wird zur Compilezeit zum umschließenden Struct-Typ aufgelöst.
+* Beispiel: `fn new(x: int64): Self { … }` → Rückgabetyp ist der Struct-Typ.
 
 ### Zuweisungsregeln
 
@@ -369,7 +384,7 @@ ConstPrimary   := IntLit | FloatLit | BoolLit | StringLit | CharLit | '(' ConstE
 
 ---
 
-## 8) Codegen-Anforderungen (Backend v0.1.3)
+## 8) Codegen-Anforderungen (Backend v0.1.6)
 
 ### Output
 

@@ -238,7 +238,9 @@ var
   name: string;
   params: TAstParamList;
   retType: TAurumType;
+  retTypeName: string;
   body: TAstBlock;
+  arrLen: Integer;
 begin
   // fn
   Expect(tkFn);
@@ -262,13 +264,17 @@ begin
   Expect(tkRParen);
 
   // optional : RetType
+  retTypeName := '';
   if Accept(tkColon) then
-    retType := ParseType
+  begin
+    retType := ParseTypeEx(arrLen, retTypeName);
+  end
   else
     retType := atVoid; // default
 
   body := ParseBlock;
   Result := TAstFuncDecl.Create(name, params, retType, body, FCurTok.Span, isPub);
+  Result.ReturnTypeName := retTypeName;
 end;
 
 function TParser.ParseConDecl(isPub: Boolean): TAstConDecl;
@@ -305,6 +311,13 @@ var
   fld: TStructField;
   m: TAstFuncDecl;
   fldTypeName: string;
+  mName: string;
+  mParams: TAstParamList;
+  mRetType: TAurumType;
+  mRetTypeName: string;
+  mBody: TAstBlock;
+  dummy: Integer;
+  isStatic: Boolean;
 begin
   Expect(tkType);
   if Check(tkIdent) then
@@ -335,15 +348,41 @@ begin
     methods := nil;
     while not Check(tkRBrace) and not Check(tkEOF) do
     begin
-      if Check(tkFn) then
+      if Check(tkFn) or Check(tkStatic) then
       begin
-        // parse method declaration; ParseFuncDecl expects 'fn' at current token
-        m := ParseFuncDecl(False);
-        if Assigned(m) then
+        // parse method declaration
+        // check for static modifier
+        isStatic := Accept(tkStatic);
+        Expect(tkFn);
+        // parse method name, params, return type, body inline (similar to ParseFuncDecl but without the 'fn' expect)
+        if Check(tkIdent) then
         begin
-          SetLength(methods, Length(methods) + 1);
-          methods[High(methods)] := m;
+          mName := FCurTok.Value;
+          Advance;
+        end
+        else
+        begin
+          mName := '<anon>';
+          FDiag.Error('expected method name', FCurTok.Span);
         end;
+        Expect(tkLParen);
+        if not Check(tkRParen) then
+          mParams := ParseParamList
+        else
+          mParams := nil;
+        Expect(tkRParen);
+        // optional return type
+        mRetTypeName := '';
+        if Accept(tkColon) then
+          mRetType := ParseTypeEx(dummy, mRetTypeName)
+        else
+          mRetType := atVoid;
+        mBody := ParseBlock;
+        m := TAstFuncDecl.Create(mName, mParams, mRetType, mBody, FCurTok.Span, False);
+        m.ReturnTypeName := mRetTypeName;
+        m.IsStatic := isStatic;
+        SetLength(methods, Length(methods) + 1);
+        methods[High(methods)] := m;
       end
       else if Check(tkIdent) then
       begin

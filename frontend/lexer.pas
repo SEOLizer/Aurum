@@ -15,7 +15,7 @@ type
     tkFn, tkVar, tkLet, tkCo, tkCon,
     tkIf, tkElse, tkWhile, tkReturn,
     tkTrue, tkFalse, tkExtern, tkCase, tkSwitch, tkBreak, tkDefault,
-    tkUnit, tkImport, tkPub, tkAs, tkType, tkStruct, tkArray,
+    tkUnit, tkImport, tkPub, tkAs, tkType, tkStruct, tkArray, tkStatic,
     tkFor, tkTo, tkDownto, tkDo, tkRepeat, tkUntil,
     tkTry, tkCatch, tkThrow, tkFinally,
     // Operatoren
@@ -107,6 +107,7 @@ begin
     tkType:      Result := 'type';
     tkStruct:    Result := 'struct';
     tkArray:     Result := 'array';
+    tkStatic:    Result := 'static';
     tkFor:       Result := 'for';
     tkTo:        Result := 'to';
     tkDownto:    Result := 'downto';
@@ -434,6 +435,7 @@ begin
     'type':    Result := tkType;
     'struct':  Result := tkStruct;
     'array':   Result := tkArray;
+    'static':  Result := tkStatic;
     'for':     Result := tkFor;
     'to':      Result := tkTo;
     'downto':  Result := tkDownto;

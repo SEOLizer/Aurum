@@ -4,13 +4,14 @@
 Er erzeugt direkt ausführbare **Linux x86_64 ELF64-Binaries** — ohne libc, ohne Linker, rein über Syscalls.
 
 ```
-Lyx Compiler v0.1.5
+Lyx Compiler v0.1.6
 Copyright (c) 2026 Andreas Röne. Alle Rechte vorbehalten.
 
 ✅ Vollständiges Module System mit Import/Export
 ✅ Cross-Unit Function Calls und Symbol Resolution  
 ✅ Standard Library (std.math, std.io)
 ✅ Robuste Parser mit While/If/Function Support
+✅ OOP-light: Struct Literals, Instanz-Methoden, Statische Methoden
 ```
 
 ---
@@ -194,15 +195,15 @@ Alle Elemente eines Arrays müssen denselben Typ haben (derzeit `int64`).
 
 ### Structs (Records)
 
-Structs werden mit `type Name := struct { ... };` definiert und mit `TypeName { field: value, ... }` instanziiert:
+Structs werden mit `type Name = struct { ... };` definiert und mit `TypeName { field: value, ... }` instanziiert:
 
 ```lyx
-type Point := struct {
+type Point = struct {
   x: int64;
   y: int64;
 };
 
-type Rect := struct {
+type Rect = struct {
   left: int64;
   top: int64;
   right: int64;
@@ -233,6 +234,84 @@ fn main(): int64 {
 ```
 
 Structs werden auf dem Stack allokiert (8 Bytes pro Feld). Der Zugriff erfolgt direkt über Offset-Berechnung.
+
+#### Instanz-Methoden und `self`
+
+Structs können Methoden enthalten, die über `self` auf die Instanz zugreifen:
+
+```lyx
+type Counter = struct {
+  count: int64;
+  
+  fn increment(): int64 {
+    self.count := self.count + 1;
+    return self.count;
+  }
+  
+  fn get(): int64 {
+    return self.count;
+  }
+};
+
+fn main(): int64 {
+  var c: Counter := 0;
+  c.count := 10;
+  c.increment();     // count ist jetzt 11
+  return c.get();    // gibt 11 zurück
+}
+```
+
+**Wichtig:**
+- `self` ist automatisch in Instanz-Methoden verfügbar
+- `self` ist ein Pointer auf die Struct-Instanz
+- Methoden werden intern als `_L_<Struct>_<Method>(self, ...)` gemangled
+
+#### Statische Methoden mit `static`
+
+Statische Methoden haben keinen `self`-Parameter und werden mit `Type.method()` aufgerufen:
+
+```lyx
+type Math = struct {
+  dummy: int64;   // Platzhalter-Feld
+  
+  static fn add(a: int64, b: int64): int64 {
+    return a + b;
+  }
+  
+  static fn mul(a: int64, b: int64): int64 {
+    return a * b;
+  }
+};
+
+fn main(): int64 {
+  var sum: int64 := Math.add(30, 12);   // 42
+  var prod: int64 := Math.mul(6, 7);    // 42
+  return sum;
+}
+```
+
+**Statische Methoden:**
+- Werden mit `static fn` deklariert
+- Haben keinen impliziten `self`-Parameter
+- Werden mit `TypeName.method()` aufgerufen
+- Nützlich für Utility-Funktionen und "Konstruktoren"
+
+#### Der `Self`-Typ
+
+In Methoden kann `Self` als Rückgabetyp verwendet werden (wird zum Struct-Typ aufgelöst):
+
+```lyx
+type Point = struct {
+  x: int64;
+  y: int64;
+  
+  static fn origin(): Self {
+    return Point { x: 0, y: 0 };
+  }
+};
+```
+
+**Hinweis:** Struct-Rückgabe by-value ist noch eingeschränkt. Aktuell können statische Methoden primitive Typen zurückgeben, aber keine Structs.
 
 ### Operatoren
 
@@ -635,13 +714,16 @@ fn main(): int64 {
 ### Reservierte Keywords
 
 ```
-fn  var  let  co  con  if  else  while  switch  case  break  default  return  true  false  extern  array  as  import  pub  unit  type  struct
+fn  var  let  co  con  if  else  while  switch  case  break  default  return  true  false  extern  array  as  import  pub  unit  type  struct  static  self  Self
 ```
 
 - `extern` wird für externe Funktionsdeklarationen verwendet
 - `as` wird für Type-Casting verwendet
 - `import`, `pub`, `unit` werden für das Module-System verwendet
 - `type`, `struct` werden für benutzerdefinierte Typen verwendet
+- `static` markiert statische Methoden (ohne `self`-Parameter)
+- `self` referenziert die aktuelle Instanz in Methoden
+- `Self` als Rückgabetyp in Methoden (wird zum Struct-Typ aufgelöst)
 
 ---
 
@@ -954,8 +1036,8 @@ FloatLit    := [0-9]+ '.' [0-9]+ ;
 | **v0.1.3** | ✅ Float-Literale (`f32`, `f64`), ✅ Arrays (Literale, Indexing, Zuweisung) |
 | **v0.1.4** | ✅ SO-Library Integration, ✅ Dynamic ELF, ✅ PLT/GOT, ✅ Extern Functions, ✅ Varargs, ✅ Module System |
 | **v0.1.5** | ✅ String-Library (20+ Funktionen), ✅ Math-Builtins (22 Funktionen), ✅ Type-Casting (`as`), ✅ String-Konvertierung |
-| **v0.1.5** | ✅ String-Library (20+ Funktionen), ✅ Math-Builtins (22 Funktionen), ✅ Type-Casting (`as`), ✅ String-Konvertierung |
-| **v0.2** | Erweiterte Funktionen, bessere Diagnostik |
+| **v0.1.6** | ✅ Struct-Literale (`Point { x: 10, y: 20 }`), ✅ Instanz-Methoden mit `self`, ✅ Statische Methoden (`static fn`), ✅ `Self`-Typ, ✅ Feld-Zuweisung (`p.x := value`), ✅ Index-Zuweisung (`arr[i] := value`) |
+| **v0.2** | Struct by-value Rückgabe, Pointer-Typen, Heap-Allokation |
 | **v1** | Objektdateien, Multi-Unit Linking, Package Manager |
 
 ---

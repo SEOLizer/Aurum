@@ -163,6 +163,7 @@ type
     destructor Destroy; override;
     procedure SetName(const aName: string);
     procedure SetArgs(const aArgs: TAstExprList);
+    procedure ReplaceArgs(const aArgs: TAstExprList); // replaces without freeing old args
     property Name: string read FName;
     property Args: TAstExprList read FArgs;
   end;
@@ -444,21 +445,25 @@ type
     FName: string;
     FParams: TAstParamList;
     FReturnType: TAurumType;
+    FReturnTypeName: string; // for named return types like Self or struct names
     FBody: TAstBlock;
     FIsPublic: Boolean;
     FIsExtern: Boolean;
     FIsVarArgs: Boolean;
+    FIsStatic: Boolean; // true for static methods (no self parameter)
   public
     constructor Create(const aName: string; const aParams: TAstParamList;
       aReturnType: TAurumType; aBody: TAstBlock; aSpan: TSourceSpan; aIsPublic: Boolean = False);
     destructor Destroy; override;
     property Name: string read FName;
     property Params: TAstParamList read FParams;
-    property ReturnType: TAurumType read FReturnType;
+    property ReturnType: TAurumType read FReturnType write FReturnType;
+    property ReturnTypeName: string read FReturnTypeName write FReturnTypeName;
     property Body: TAstBlock read FBody write FBody;
     property IsPublic: Boolean read FIsPublic;
     property IsExtern: Boolean read FIsExtern write FIsExtern;
     property IsVarArgs: Boolean read FIsVarArgs write FIsVarArgs;
+    property IsStatic: Boolean read FIsStatic write FIsStatic;
   end;
 
   { Con-Deklaration (Top-Level): con NAME: type := constExpr; }
@@ -804,6 +809,12 @@ begin
   // free previous args
   for i := 0 to High(FArgs) do
     FArgs[i].Free;
+  FArgs := aArgs;
+end;
+
+procedure TAstCall.ReplaceArgs(const aArgs: TAstExprList);
+begin
+  // Replace args without freeing old ones (caller is responsible)
   FArgs := aArgs;
 end;
 
@@ -1277,8 +1288,10 @@ begin
   FName := aName;
   FParams := aParams;
   FReturnType := aReturnType;
+  FReturnTypeName := '';
   FBody := aBody;
   FIsPublic := aIsPublic;
+  FIsStatic := False;
 end;
 
 destructor TAstFuncDecl.Destroy;

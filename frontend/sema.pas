@@ -304,6 +304,7 @@ var
   recv: TAstExpr;
   mName: string;
   mangledName: string;
+  args: TAstExprList;
 begin
   if expr = nil then
   begin
@@ -491,6 +492,7 @@ begin
     nkCall:
       begin
         call := TAstCall(expr);
+        s := nil; // Initialize to nil
         // rewrite nested args first (non-method calls too)
         for i := 0 to High(call.Args) do
           call.Args[i] := RewriteExpr(call.Args[i]);
@@ -507,27 +509,73 @@ begin
           end;
           recv := call.Args[0];
           sSym := nil;
+          
+          // Check if receiver is a type name (static method call)
           if recv is TAstIdent then
+          begin
             sSym := ResolveSymbol(TAstIdent(recv).Name);
-          if (sSym = nil) or (not Assigned(sSym.StructDecl)) then
+            // If not found as symbol, check if it's a struct type name
+            if (sSym = nil) and Assigned(FStructTypes) then
+            begin
+              fi := FStructTypes.IndexOf(TAstIdent(recv).Name);
+              if fi >= 0 then
+              begin
+                // Static method call: Type.method(args)
+                mangledName := '_L_' + TAstIdent(recv).Name + '_' + mName;
+                s := ResolveSymbol(mangledName);
+                if s = nil then
+                begin
+                  FDiag.Error('call to undeclared static method: ' + mangledName, call.Span);
+                  Result := atUnresolved;
+                  Exit;
+                end;
+                // Rewrite call: remove the type name from args, just use the mangled name
+                call.SetName(mangledName);
+                // Remove the first argument (the type name identifier)
+                if Length(call.Args) > 0 then
+                begin
+                  // Free the type name identifier (first arg)
+                  call.Args[0].Free;
+                  // Shift remaining args down
+                  SetLength(args, Length(call.Args) - 1);
+                  for i := 1 to High(call.Args) do
+                    args[i-1] := call.Args[i];
+                  // Replace args without freeing (we already freed the type name)
+                  call.ReplaceArgs(args);
+                end;
+                // Continue with normal function call checking
+                // s is already set to the static method symbol
+              end;
+            end;
+          end;
+          
+          // Instance method call (receiver is a variable with struct type)
+          if (s = nil) and Assigned(sSym) and Assigned(sSym.StructDecl) then
+          begin
+            mangledName := '_L_' + sSym.StructDecl.Name + '_' + mName;
+            s := ResolveSymbol(mangledName);
+            if s = nil then
+            begin
+              FDiag.Error('call to undeclared method: ' + mangledName, call.Span);
+              Result := atUnresolved;
+              Exit;
+            end;
+            // perform in-place rewrite of call node to point to mangled function
+            call.SetName(mangledName);
+            // no change to args (receiver stays as first param)
+          end
+          else if (s = nil) and Assigned(sSym) and (not Assigned(sSym.StructDecl)) then
+          begin
+            // sSym found but StructDecl is nil - this is a bug in registration
+            FDiag.Error('internal error: variable ' + TAstIdent(recv).Name + ' has no StructDecl', call.Span);
+          end;
+          
+          if s = nil then
           begin
             FDiag.Error('cannot resolve method receiver type for ' + mName, call.Span);
             Result := atUnresolved;
             Exit;
           end;
-          mangledName := '_L_' + sSym.StructDecl.Name + '_' + mName;
-          s := ResolveSymbol(mangledName);
-          if s = nil then
-          begin
-            // Try qualified lookup in imports
-            // (not implemented yet)
-            FDiag.Error('call to undeclared method: ' + mangledName, call.Span);
-            Result := atUnresolved;
-            Exit;
-          end;
-          // perform in-place rewrite of call node to point to mangled function
-          call.SetName(mangledName);
-          // no change to args (receiver stays as first param)
         end
         else
         begin
@@ -1216,15 +1264,28 @@ begin
        for j := 0 to High(TAstStructDecl(node).Methods) do
        begin
          m := TAstStructDecl(node).Methods[j];
+         
          sym := TSymbol.Create('_L_' + TAstStructDecl(node).Name + '_' + m.Name);
          sym.Kind := symFunc;
          sym.DeclType := m.ReturnType;
-         // first param is implicit self (type unresolved for now)
-         sym.ParamCount := Length(m.Params) + 1;
-         SetLength(sym.ParamTypes, sym.ParamCount);
-         sym.ParamTypes[0] := atUnresolved;
-        for k := 0 to High(m.Params) do
-            sym.ParamTypes[k+1] := m.Params[k].ParamType;
+         
+         if m.IsStatic then
+         begin
+           // Static method: no implicit self parameter
+           sym.ParamCount := Length(m.Params);
+           SetLength(sym.ParamTypes, sym.ParamCount);
+           for k := 0 to High(m.Params) do
+             sym.ParamTypes[k] := m.Params[k].ParamType;
+         end
+         else
+         begin
+           // Instance method: first param is implicit self
+           sym.ParamCount := Length(m.Params) + 1;
+           SetLength(sym.ParamTypes, sym.ParamCount);
+           sym.ParamTypes[0] := atUnresolved;
+           for k := 0 to High(m.Params) do
+             sym.ParamTypes[k+1] := m.Params[k].ParamType;
+         end;
 
          AddSymbolToCurrent(sym, m.Span);
        end;
@@ -1291,15 +1352,28 @@ begin
       for j := 0 to High(TAstStructDecl(node).Methods) do
       begin
         m := TAstStructDecl(node).Methods[j];
+        
+        // Resolve 'Self' return type to the owning struct type
+        if (m.ReturnTypeName = 'Self') or (m.ReturnTypeName = 'self') then
+        begin
+          m.ReturnTypeName := TAstStructDecl(node).Name;
+          // ReturnType stays atUnresolved since it's a named struct type
+        end;
+        
         // enter method scope
         PushScope;
-        // implicit self parameter - link to the owning struct
-        sym := TSymbol.Create('self');
-        sym.Kind := symVar;
-        sym.DeclType := atUnresolved; // primitive type is unresolved
-        sym.TypeName := TAstStructDecl(node).Name; // but we know the struct name
-        sym.StructDecl := TAstStructDecl(node); // and the struct declaration
-        AddSymbolToCurrent(sym, m.Span);
+        
+        // For non-static methods, add implicit self parameter
+        if not m.IsStatic then
+        begin
+          sym := TSymbol.Create('self');
+          sym.Kind := symVar;
+          sym.DeclType := atUnresolved; // primitive type is unresolved
+          sym.TypeName := TAstStructDecl(node).Name; // but we know the struct name
+          sym.StructDecl := TAstStructDecl(node); // and the struct declaration
+          AddSymbolToCurrent(sym, m.Span);
+        end;
+        
         // declare method params
         for k := 0 to High(m.Params) do
         begin

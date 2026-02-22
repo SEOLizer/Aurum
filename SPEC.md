@@ -216,6 +216,45 @@ Anmerkungen / offene Feinheiten:
 
 Kurz: v0.1.5 ist inhaltlich implementiert; verbleiben Test‑Härtung und CI‑Verifikation, danach Release‑Tag möglich.
 
+
+### v0.1.6 ✅ ABGESCHLOSSEN — "OOP-light"
+
+- ✅ **Struct Literals**: `TypeName { field: value, ... }` Syntax für direkte Struct-Initialisierung
+- ✅ **Instance Methods mit `self`**: Methoden in Structs erhalten impliziten `self`-Parameter (Pointer auf Instanz)
+- ✅ **Static Methods**: `static fn` Keyword für Methoden ohne `self`-Parameter
+- ✅ **`Self` Return Type**: `Self` als Rückgabetyp in Methoden resolves zum umschließenden Struct-Typ
+- ✅ **Index Assignment**: `arr[idx] := value` Syntax mit `TAstIndexAssign` AST-Knoten
+- ✅ **Bugfix**: Uninitialisierte Variable `s` in `CheckExpr` (sema.pas) behoben — verursachte zufälliges Verhalten bei Method Calls
+
+**Neue Syntax-Elemente**:
+
+```lyx
+// Struct Literal
+var p: Point := Point { x: 10, y: 20 };
+
+// Instance Method (implizites self)
+type Counter = struct {
+  count: int64;
+  fn get(): int64 { return self.count; }
+  fn inc() { self.count := self.count + 1; }
+};
+
+// Static Method (kein self)
+type Math = struct {
+  static fn add(a: int64, b: int64): int64 { return a + b; }
+};
+
+// Aufruf
+var result: int64 := Math.add(10, 32);  // Static: TypeName.method()
+var c: Counter := 0;
+c.count := 5;
+var v: int64 := c.get();                // Instance: instance.method()
+```
+
+**Method Mangling**: `_L_<Struct>_<Method>` (z.B. `_L_Counter_get`)
+
+**Bekannte Einschränkung**: Struct Return-by-Value nicht vollständig unterstützt (Stack Lifetime Issue).
+
 0.2.0 — “Stabilisierung: Calls, Imports, Relocs”
 
 Ziel: euer aktuelles Known Issue wird endgültig erschlagen, und ihr könnt extern+cross-unit vertrauen.

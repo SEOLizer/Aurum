@@ -250,29 +250,54 @@ begin
         FCurrentFunc := fn;
         FLocalMap.Clear;
         FTempCounter := 0;
-        fn.ParamCount := Length(m.Params) + 1; // first param = self
-        fn.LocalCount := fn.ParamCount;
-        SetLength(FLocalTypes, fn.LocalCount);
-        SetLength(FLocalConst, fn.LocalCount);
-        SetLength(FLocalIsStruct, fn.LocalCount);
-        SetLength(FLocalElemSize, fn.LocalCount);
-        // implicit self param at index 0
-        // Note: self is a pointer to struct passed by caller, NOT a struct on stack
-        // So we should NOT mark it as FLocalIsStruct - it's already an address
-        FLocalMap.AddObject('self', IntToObj(0));
-        FLocalTypes[0] := atUnresolved;
-        FLocalConst[0] := nil;
-        FLocalIsStruct[0] := False; // self holds address, don't use LEA
-        FLocalElemSize[0] := 0;
-        // method parameters follow
-        for k := 0 to High(m.Params) do
+        
+        if m.IsStatic then
         begin
-          FLocalMap.AddObject(m.Params[k].Name, IntToObj(k+1));
-          FLocalTypes[k+1] := m.Params[k].ParamType;
-          FLocalConst[k+1] := nil;
-          FLocalIsStruct[k+1] := False;
-          FLocalElemSize[k+1] := 0;
+          // Static method: no implicit self parameter
+          fn.ParamCount := Length(m.Params);
+          fn.LocalCount := fn.ParamCount;
+          SetLength(FLocalTypes, fn.LocalCount);
+          SetLength(FLocalConst, fn.LocalCount);
+          SetLength(FLocalIsStruct, fn.LocalCount);
+          SetLength(FLocalElemSize, fn.LocalCount);
+          // method parameters (no self)
+          for k := 0 to High(m.Params) do
+          begin
+            FLocalMap.AddObject(m.Params[k].Name, IntToObj(k));
+            FLocalTypes[k] := m.Params[k].ParamType;
+            FLocalConst[k] := nil;
+            FLocalIsStruct[k] := False;
+            FLocalElemSize[k] := 0;
+          end;
+        end
+        else
+        begin
+          // Instance method: first param = self
+          fn.ParamCount := Length(m.Params) + 1;
+          fn.LocalCount := fn.ParamCount;
+          SetLength(FLocalTypes, fn.LocalCount);
+          SetLength(FLocalConst, fn.LocalCount);
+          SetLength(FLocalIsStruct, fn.LocalCount);
+          SetLength(FLocalElemSize, fn.LocalCount);
+          // implicit self param at index 0
+          // Note: self is a pointer to struct passed by caller, NOT a struct on stack
+          // So we should NOT mark it as FLocalIsStruct - it's already an address
+          FLocalMap.AddObject('self', IntToObj(0));
+          FLocalTypes[0] := atUnresolved;
+          FLocalConst[0] := nil;
+          FLocalIsStruct[0] := False; // self holds address, don't use LEA
+          FLocalElemSize[0] := 0;
+          // method parameters follow
+          for k := 0 to High(m.Params) do
+          begin
+            FLocalMap.AddObject(m.Params[k].Name, IntToObj(k+1));
+            FLocalTypes[k+1] := m.Params[k].ParamType;
+            FLocalConst[k+1] := nil;
+            FLocalIsStruct[k+1] := False;
+            FLocalElemSize[k+1] := 0;
+          end;
         end;
+        
         // lower body
         for k := 0 to High(m.Body.Stmts) do
           LowerStmt(m.Body.Stmts[k]);
