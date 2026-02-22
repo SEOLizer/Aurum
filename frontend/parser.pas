@@ -318,6 +318,7 @@ var
   mBody: TAstBlock;
   dummy: Integer;
   isStatic: Boolean;
+  baseClassName: string;
 begin
   Expect(tkType);
   if Check(tkIdent) then
@@ -338,8 +339,85 @@ begin
     FDiag.Error('expected ''='' in type declaration', FCurTok.Span);
   end;
 
+  // class [extends BaseClass] { ... }
+  if Check(tkClass) then
+  begin
+    Advance; // class
+    baseClassName := '';
+    // Check for extends
+    if Check(tkExtends) then
+    begin
+      Advance; // extends
+      if Check(tkIdent) then
+      begin
+        baseClassName := FCurTok.Value;
+        Advance;
+      end
+      else
+        FDiag.Error('expected base class name after ''extends''', FCurTok.Span);
+    end;
+    Expect(tkLBrace);
+    fields := nil;
+    methods := nil;
+    while not Check(tkRBrace) and not Check(tkEOF) do
+    begin
+      if Check(tkFn) or Check(tkStatic) then
+      begin
+        // parse method declaration
+        isStatic := Accept(tkStatic);
+        Expect(tkFn);
+        if Check(tkIdent) then
+        begin
+          mName := FCurTok.Value;
+          Advance;
+        end
+        else
+        begin
+          mName := '<anon>';
+          FDiag.Error('expected method name', FCurTok.Span);
+        end;
+        Expect(tkLParen);
+        if not Check(tkRParen) then
+          mParams := ParseParamList
+        else
+          mParams := nil;
+        Expect(tkRParen);
+        mRetTypeName := '';
+        if Accept(tkColon) then
+          mRetType := ParseTypeEx(dummy, mRetTypeName)
+        else
+          mRetType := atVoid;
+        mBody := ParseBlock;
+        m := TAstFuncDecl.Create(mName, mParams, mRetType, mBody, FCurTok.Span, False);
+        m.ReturnTypeName := mRetTypeName;
+        m.IsStatic := isStatic;
+        SetLength(methods, Length(methods) + 1);
+        methods[High(methods)] := m;
+      end
+      else if Check(tkIdent) then
+      begin
+        // field: name : Type ;
+        fld.Name := FCurTok.Value; Advance;
+        Expect(tkColon);
+        fld.FieldType := ParseTypeEx(fld.ArrayLen, fldTypeName);
+        fld.FieldTypeName := fldTypeName;
+        Expect(tkSemicolon);
+        SetLength(fields, Length(fields) + 1);
+        fields[High(fields)] := fld;
+      end
+      else
+      begin
+        FDiag.Error('unexpected token in class body', FCurTok.Span);
+        Advance;
+      end;
+    end;
+    Expect(tkRBrace);
+    Expect(tkSemicolon);
+    Result := TAstClassDecl.Create(name, baseClassName, fields, methods, isPub, FCurTok.Span);
+    Exit;
+  end
   // struct { ... }  or simple type
-  if Check(tkStruct) then
+  else if Check(tkStruct) then
   begin
     // parse inline struct definition
     Advance; // struct
@@ -652,6 +730,15 @@ begin
     end;
   end;
 
+  // dispose expr; - free heap-allocated class instance
+  if Check(tkDispose) then
+  begin
+    Advance; // consume 'dispose'
+    vExpr := ParseExpr;
+    Expect(tkSemicolon);
+    Exit(TAstDispose.Create(vExpr, FCurTok.Span));
+  end;
+
   if Check(tkLBrace) then
     Exit(ParseBlock);
 
@@ -926,11 +1013,14 @@ var
   v: Int64;
   span: TSourceSpan;
   s: string;
+  name: string;
+  mName: string;
   b: Boolean;
   e: TAstExpr;
+  a: TAstExpr;
   dummy: TAstIntLit;
   items: TAstExprList;
-  a: TAstExpr;
+  args: TAstExprList;
 begin
   if Check(tkIntLit) then
   begin
@@ -969,6 +1059,54 @@ begin
 
   if Check(tkIdent) then
     Exit(ParseCallOrIdent);
+
+  // new ClassName() - heap allocation for classes
+  if Check(tkNew) then
+  begin
+    Advance; // consume 'new'
+    if not Check(tkIdent) then
+    begin
+      FDiag.Error('expected class name after ''new''', FCurTok.Span);
+      Exit(TAstIntLit.Create(0, FCurTok.Span)); // dummy
+    end;
+    span := FCurTok.Span;
+    name := FCurTok.Value;
+    Advance;
+    // Optional: new ClassName() - we accept empty parens
+    if Accept(tkLParen) then
+      Expect(tkRParen);
+    Exit(TAstNewExpr.Create(name, span));
+  end;
+
+  // super.method() - call to base class method
+  if Check(tkSuper) then
+  begin
+    Advance; // consume 'super'
+    Expect(tkDot);
+    if not Check(tkIdent) then
+    begin
+      FDiag.Error('expected method name after ''super.''''', FCurTok.Span);
+      Exit(TAstIntLit.Create(0, FCurTok.Span)); // dummy
+    end;
+    mName := FCurTok.Value;
+    span := FCurTok.Span;
+    Advance;
+    Expect(tkLParen);
+    args := nil;
+    if not Check(tkRParen) then
+    begin
+      while True do
+      begin
+        a := ParseExpr;
+        SetLength(args, Length(args) + 1);
+        args[High(args)] := a;
+        if Accept(tkComma) then Continue;
+        Break;
+      end;
+    end;
+    Expect(tkRParen);
+    Exit(TAstSuperCall.Create(mName, args, span));
+  end;
 
   if Accept(tkLBracket) then
   begin

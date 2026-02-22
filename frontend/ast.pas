@@ -38,13 +38,14 @@ type
     nkIntLit, nkStrLit, nkBoolLit, nkCharLit, nkIdent,
     nkBinOp, nkUnaryOp, nkCall, nkArrayLit, nkStructLit,
     nkFieldAccess, nkIndexAccess,
+    nkNewExpr, nkSuperCall,  // OOP expressions
     // Statements
     nkVarDecl, nkAssign, nkFieldAssign, nkIndexAssign,
     nkIf, nkWhile, nkFor, nkRepeatUntil,
     nkReturn, nkBreak, nkSwitch,
-    nkBlock, nkExprStmt,
+    nkBlock, nkExprStmt, nkDispose,  // OOP statement
     // Top-Level
-    nkFuncDecl, nkConDecl, nkTypeDecl, nkStructDecl,
+    nkFuncDecl, nkConDecl, nkTypeDecl, nkStructDecl, nkClassDecl,
     nkUnitDecl, nkImportDecl,
     nkProgram
   );
@@ -55,6 +56,7 @@ type
   TAstExpr = class;
   TAstStmt = class;
   TAstStructDecl = class;
+  TAstClassDecl = class;
 
   { --- Knotenlisten --- }
 
@@ -529,6 +531,67 @@ type
     procedure SetLayout(aSize, aAlign: Integer);
   end;
 
+  { Class-Deklaration mit Vererbung }
+  TAstClassDecl = class(TAstNode)
+  private
+    FName: string;
+    FBaseClassName: string; // nil/empty if no base class
+    FFields: TStructFieldList;
+    FMethods: TMethodList;
+    FIsPublic: Boolean;
+    // layout info (computed by sema)
+    FFieldOffsets: array of Integer;
+    FSize: Integer;  // total size including base class fields
+    FAlign: Integer;
+    FBaseSize: Integer; // size of base class fields
+  public
+    constructor Create(const aName, aBaseClass: string;
+      const aFields: TStructFieldList; const aMethods: TMethodList;
+      aPublic: Boolean; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property Name: string read FName;
+    property BaseClassName: string read FBaseClassName;
+    property Fields: TStructFieldList read FFields;
+    property Methods: TMethodList read FMethods;
+    property IsPublic: Boolean read FIsPublic;
+    property FieldOffsets: TIntArray read FFieldOffsets;
+    property Size: Integer read FSize;
+    property Align: Integer read FAlign;
+    property BaseSize: Integer read FBaseSize;
+    procedure SetLayout(aSize, aAlign, aBaseSize: Integer);
+  end;
+
+  { new Ausdruck: new ClassName() }
+  TAstNewExpr = class(TAstExpr)
+  private
+    FClassName: string;
+  public
+    constructor Create(const aClassName: string; aSpan: TSourceSpan);
+    property ClassName: string read FClassName;
+  end;
+
+  { dispose Statement: dispose expr; }
+  TAstDispose = class(TAstStmt)
+  private
+    FExpr: TAstExpr;
+  public
+    constructor Create(aExpr: TAstExpr; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property Expr: TAstExpr read FExpr;
+  end;
+
+  { super.method() Aufruf }
+  TAstSuperCall = class(TAstExpr)
+  private
+    FMethodName: string;
+    FArgs: TAstExprList;
+  public
+    constructor Create(const aMethodName: string; const aArgs: TAstExprList; aSpan: TSourceSpan);
+    destructor Destroy; override;
+    property MethodName: string read FMethodName;
+    property Args: TAstExprList read FArgs;
+  end;
+
   { Unit-Deklaration: unit path.to.name; }
   TAstUnitDecl = class(TAstNode)
   private
@@ -656,6 +719,8 @@ begin
     nkStructLit:   Result := 'StructLit';
     nkFieldAccess: Result := 'FieldAccess';
     nkIndexAccess: Result := 'IndexAccess';
+    nkNewExpr:     Result := 'NewExpr';
+    nkSuperCall:   Result := 'SuperCall';
     nkVarDecl:     Result := 'VarDecl';
     nkAssign:      Result := 'Assign';
     nkFieldAssign: Result := 'FieldAssign';
@@ -669,10 +734,12 @@ begin
     nkSwitch:      Result := 'Switch';
     nkBlock:       Result := 'Block';
     nkExprStmt:    Result := 'ExprStmt';
+    nkDispose:     Result := 'Dispose';
     nkFuncDecl:    Result := 'FuncDecl';
     nkConDecl:     Result := 'ConDecl';
     nkTypeDecl:    Result := 'TypeDecl';
     nkStructDecl:  Result := 'StructDecl';
+    nkClassDecl:   Result := 'ClassDecl';
     nkUnitDecl:     Result := 'UnitDecl';
     nkImportDecl:  Result := 'ImportDecl';
     nkProgram:     Result := 'Program';
@@ -1218,6 +1285,91 @@ procedure TAstStructDecl.SetLayout(aSize, aAlign: Integer);
 begin
   FSize := aSize;
   FAlign := aAlign;
+end;
+
+{ TAstClassDecl }
+
+constructor TAstClassDecl.Create(const aName, aBaseClass: string;
+  const aFields: TStructFieldList; const aMethods: TMethodList;
+  aPublic: Boolean; aSpan: TSourceSpan);
+var i: Integer;
+begin
+  inherited Create(nkClassDecl, aSpan);
+  FName := aName;
+  FBaseClassName := aBaseClass;
+  FFields := aFields;
+  SetLength(FMethods, Length(aMethods));
+  for i := 0 to High(aMethods) do
+    FMethods[i] := aMethods[i];
+  FIsPublic := aPublic;
+  FSize := 0;
+  FAlign := 0;
+  FBaseSize := 0;
+  SetLength(FFieldOffsets, Length(FFields));
+  for i := 0 to High(FFieldOffsets) do
+    FFieldOffsets[i] := -1;
+end;
+
+destructor TAstClassDecl.Destroy;
+var i: Integer;
+begin
+  for i := 0 to High(FMethods) do
+    if Assigned(FMethods[i]) then
+      FMethods[i].Free;
+  FMethods := nil;
+  SetLength(FFields, 0);
+  SetLength(FFieldOffsets, 0);
+  inherited Destroy;
+end;
+
+procedure TAstClassDecl.SetLayout(aSize, aAlign, aBaseSize: Integer);
+begin
+  FSize := aSize;
+  FAlign := aAlign;
+  FBaseSize := aBaseSize;
+end;
+
+{ TAstNewExpr }
+
+constructor TAstNewExpr.Create(const aClassName: string; aSpan: TSourceSpan);
+begin
+  inherited Create(nkNewExpr, aSpan);
+  FClassName := aClassName;
+end;
+
+{ TAstDispose }
+
+constructor TAstDispose.Create(aExpr: TAstExpr; aSpan: TSourceSpan);
+begin
+  inherited Create(nkDispose, aSpan);
+  FExpr := aExpr;
+end;
+
+destructor TAstDispose.Destroy;
+begin
+  if Assigned(FExpr) then FExpr.Free;
+  inherited Destroy;
+end;
+
+{ TAstSuperCall }
+
+constructor TAstSuperCall.Create(const aMethodName: string; const aArgs: TAstExprList; aSpan: TSourceSpan);
+var i: Integer;
+begin
+  inherited Create(nkSuperCall, aSpan);
+  FMethodName := aMethodName;
+  SetLength(FArgs, Length(aArgs));
+  for i := 0 to High(aArgs) do
+    FArgs[i] := aArgs[i];
+end;
+
+destructor TAstSuperCall.Destroy;
+var i: Integer;
+begin
+  for i := 0 to High(FArgs) do
+    if Assigned(FArgs[i]) then FArgs[i].Free;
+  FArgs := nil;
+  inherited Destroy;
 end;
 
 constructor TAstFieldAssign.Create(aTarget: TAstFieldAccess; aValue: TAstExpr; aSpan: TSourceSpan);

@@ -18,6 +18,8 @@ type
     tkUnit, tkImport, tkPub, tkAs, tkType, tkStruct, tkArray, tkStatic,
     tkFor, tkTo, tkDownto, tkDo, tkRepeat, tkUntil,
     tkTry, tkCatch, tkThrow, tkFinally,
+    // OOP Keywords
+    tkClass, tkExtends, tkSuper, tkNew, tkDispose,
     // Operatoren
     tkPlus, tkMinus, tkStar, tkSlash, tkPercent,
     tkAssign, tkSingleEq,
@@ -118,6 +120,11 @@ begin
     tkCatch:      Result := 'catch';
     tkThrow:      Result := 'throw';
     tkFinally:    Result := 'finally';
+    tkClass:      Result := 'class';
+    tkExtends:    Result := 'extends';
+    tkSuper:      Result := 'super';
+    tkNew:        Result := 'new';
+    tkDispose:    Result := 'dispose';
     tkPlus:       Result := '+';
     tkMinus:     Result := '-';
     tkStar:      Result := '*';
@@ -446,6 +453,12 @@ begin
     'catch':      Result := tkCatch;
     'throw':      Result := tkThrow;
     'finally':    Result := tkFinally;
+    // OOP Keywords
+    'class':      Result := tkClass;
+    'extends':    Result := tkExtends;
+    'super':      Result := tkSuper;
+    'new':        Result := tkNew;
+    'dispose':    Result := tkDispose;
   else
     Result := tkIdent;
   end;

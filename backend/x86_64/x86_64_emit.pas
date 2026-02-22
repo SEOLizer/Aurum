@@ -1893,6 +1893,54 @@ begin
               EmitU32(FCode, Cardinal(negOffset));
             end;
           end;
+
+        irAlloc:
+          begin
+            // Heap allocation: Dest = alloc(ImmInt bytes)
+            // Use mmap syscall: sys_mmap(addr=0, len=ImmInt, prot=3, flags=34, fd=-1, off=0)
+            // syscall number 9 on x86_64
+            
+            // Save current RAX if needed
+            // mov rax, 9 (sys_mmap)
+            WriteMovRegImm64(FCode, RAX, 9);
+            // mov rdi, 0 (addr = NULL)
+            WriteMovRegImm64(FCode, RDI, 0);
+            // mov rsi, ImmInt (length = size)
+            WriteMovRegImm64(FCode, RSI, UInt64(instr.ImmInt));
+            // mov rdx, 3 (prot = PROT_READ | PROT_WRITE)
+            WriteMovRegImm64(FCode, RDX, 3);
+            // mov r10, 34 (flags = MAP_PRIVATE | MAP_ANONYMOUS)
+            WriteMovRegImm64(FCode, R10, 34);
+            // mov r8, -1 (fd = -1)
+            WriteMovRegImm64(FCode, R8, High(UInt64)); // -1 as unsigned
+            // mov r9, 0 (offset = 0)
+            WriteMovRegImm64(FCode, R9, 0);
+            // syscall
+            WriteSyscall(FCode);
+            // Result (pointer) is now in RAX, store to Dest temp slot
+            WriteMovMemReg(FCode, RBP, SlotOffset(localCnt + instr.Dest), RAX);
+          end;
+
+        irFree:
+          begin
+            // Heap deallocation: free(Src1)
+            // Use munmap syscall: sys_munmap(addr=Src1, len=0) - we don't track size, just free the page
+            // Actually, we need to be more careful here. For now, just skip freeing.
+            // A proper implementation would track allocation sizes.
+            // Alternative: Use brk for smaller allocations
+            
+            // For now, load pointer and call munmap with a reasonable size
+            // syscall number 11 on x86_64 (munmap)
+            // Load pointer into RDI
+            WriteMovRegMem(FCode, RDI, RBP, SlotOffset(localCnt + instr.Src1));
+            // mov rax, 11 (sys_munmap)
+            WriteMovRegImm64(FCode, RAX, 11);
+            // mov rsi, 4096 (length - assume page-sized allocation for now)
+            WriteMovRegImm64(FCode, RSI, 4096);
+            // syscall
+            WriteSyscall(FCode);
+            // Ignore result for now
+          end;
       end;
     end;
   end;

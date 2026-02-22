@@ -1,0 +1,47 @@
+// Simple OOP inheritance test
+// Note: This is Phase 1 - no vtable, static method binding
+
+type Entity = class {
+  id: int64;
+  
+  fn Init(entityId: int64) {
+    self.id := entityId;
+  }
+  
+  fn Dump() {
+    PrintStr("Entity id: ");
+    PrintInt(self.id);
+    PrintStr("\n");
+  }
+};
+
+type Player = class extends Entity {
+  health: int64;
+  
+  fn InitPlayer(entityId: int64, initialHealth: int64) {
+    self.id := entityId;
+    self.health := initialHealth;
+  }
+  
+  fn Dump() {
+    PrintStr("Player id: ");
+    PrintInt(self.id);
+    PrintStr(" health: ");
+    PrintInt(self.health);
+    PrintStr("\n");
+  }
+};
+
+fn main(): int64 {
+  var e: Entity := new Entity();
+  _L_Entity_Init(e, 1);
+  _L_Entity_Dump(e);
+  dispose e;
+  
+  var p: Player := new Player();
+  _L_Player_InitPlayer(p, 2, 100);
+  _L_Player_Dump(p);
+  dispose p;
+  
+  return 0;
+}

@@ -212,13 +212,16 @@ var
   instr: TIRInstr;
 begin
   instr := Default(TIRInstr);
-  // First pass: collect all struct declarations for size lookups
+  // First pass: collect all struct and class declarations for size lookups
   FStructTypes.Clear;
   for i := 0 to High(prog.Decls) do
   begin
     node := prog.Decls[i];
     if node is TAstStructDecl then
-      FStructTypes.AddObject(TAstStructDecl(node).Name, TObject(node));
+      FStructTypes.AddObject(TAstStructDecl(node).Name, TObject(node))
+    else if node is TAstClassDecl then
+      // Classes are stored in the same map - they have the same field layout logic
+      FStructTypes.AddObject(TAstClassDecl(node).Name, TObject(node));
   end;
 
   // iterate top-level decls, create functions
@@ -311,6 +314,83 @@ begin
           FLocalTypes[0] := atUnresolved;
           FLocalConst[0] := nil;
           FLocalIsStruct[0] := False; // self holds address, don't use LEA
+          FLocalElemSize[0] := 0;
+          // method parameters follow
+          for k := 0 to High(m.Params) do
+          begin
+            FLocalMap.AddObject(m.Params[k].Name, IntToObj(k+1));
+            FLocalTypes[k+1] := m.Params[k].ParamType;
+            FLocalConst[k+1] := nil;
+            FLocalIsStruct[k+1] := False;
+            FLocalElemSize[k+1] := 0;
+          end;
+        end;
+        
+        // lower body
+        for k := 0 to High(m.Body.Stmts) do
+          LowerStmt(m.Body.Stmts[k]);
+        
+        // Emit implicit return for void methods if last statement wasn't a return
+        if (Length(FCurrentFunc.Instructions) = 0) or 
+           (FCurrentFunc.Instructions[High(FCurrentFunc.Instructions)].Op <> irReturn) then
+        begin
+          instr.Op := irReturn;
+          instr.Src1 := -1;
+          Emit(instr);
+        end;
+        
+        FCurrentFunc := nil;
+        FCurrentFuncDecl := nil;
+      end;
+    end
+    else if node is TAstClassDecl then
+    begin
+      // Lower each class method as a top-level mangled function: _L_<Class>_<Method>
+      for j := 0 to High(TAstClassDecl(node).Methods) do
+      begin
+        m := TAstClassDecl(node).Methods[j];
+        mangled := '_L_' + TAstClassDecl(node).Name + '_' + m.Name;
+        // create function
+        fn := FModule.AddFunction(mangled);
+        FCurrentFunc := fn;
+        FCurrentFuncDecl := m;  // set current func decl for return type info
+        FLocalMap.Clear;
+        FTempCounter := 0;
+        
+        if m.IsStatic then
+        begin
+          // Static method: no implicit self parameter
+          fn.ParamCount := Length(m.Params);
+          fn.LocalCount := fn.ParamCount;
+          SetLength(FLocalTypes, fn.LocalCount);
+          SetLength(FLocalConst, fn.LocalCount);
+          SetLength(FLocalIsStruct, fn.LocalCount);
+          SetLength(FLocalElemSize, fn.LocalCount);
+          // method parameters (no self)
+          for k := 0 to High(m.Params) do
+          begin
+            FLocalMap.AddObject(m.Params[k].Name, IntToObj(k));
+            FLocalTypes[k] := m.Params[k].ParamType;
+            FLocalConst[k] := nil;
+            FLocalIsStruct[k] := False;
+            FLocalElemSize[k] := 0;
+          end;
+        end
+        else
+        begin
+          // Instance method: first param = self (pointer to class instance)
+          fn.ParamCount := Length(m.Params) + 1;
+          fn.LocalCount := fn.ParamCount;
+          SetLength(FLocalTypes, fn.LocalCount);
+          SetLength(FLocalConst, fn.LocalCount);
+          SetLength(FLocalIsStruct, fn.LocalCount);
+          SetLength(FLocalElemSize, fn.LocalCount);
+          // implicit self param at index 0
+          // For classes, self is a pointer (8 bytes), not a struct on stack
+          FLocalMap.AddObject('self', IntToObj(0));
+          FLocalTypes[0] := atUnresolved;
+          FLocalConst[0] := nil;
+          FLocalIsStruct[0] := False; // self holds pointer address
           FLocalElemSize[0] := 0;
           // method parameters follow
           for k := 0 to High(m.Params) do
@@ -886,6 +966,52 @@ function TIRLowering.LowerExpr(expr: TAstExpr): Integer;
         // Struct literal: TypeName { field1: val1, field2: val2, ... }
         // Allocate stack space for the struct, initialize fields, return address
         Result := LowerStructLit(TAstStructLit(expr));
+      end;
+
+    nkNewExpr:
+      begin
+        // new ClassName() - allocate heap memory for class
+        // Look up class type to get size
+        i := FStructTypes.IndexOf(TAstNewExpr(expr).ClassName);
+        if i < 0 then
+        begin
+          FDiag.Error('unknown class type: ' + TAstNewExpr(expr).ClassName, expr.Span);
+          Exit;
+        end;
+        
+        // Allocate temp for pointer, emit irAlloc with size
+        t0 := NewTemp;
+        instr.Op := irAlloc;
+        instr.Dest := t0;
+        instr.ImmInt := TAstStructDecl(FStructTypes.Objects[i]).Size;
+        if instr.ImmInt = 0 then
+          instr.ImmInt := 8; // minimum allocation
+        Emit(instr);
+        Result := t0;
+      end;
+
+    nkSuperCall:
+      begin
+        // super.method(args) - call base class method
+        // For now, treat as a regular call (super resolution happens in sema)
+        // The method name should have been resolved to a mangled name
+        argCount := Length(TAstSuperCall(expr).Args);
+        SetLength(argTemps, argCount);
+        for i := 0 to argCount - 1 do
+          argTemps[i] := LowerExpr(TAstSuperCall(expr).Args[i]);
+        
+        t0 := NewTemp;
+        instr.Op := irCall;
+        instr.Dest := t0;
+        // Method name will be resolved by sema to the base class mangled name
+        instr.ImmStr := '_SUPER_' + TAstSuperCall(expr).MethodName;
+        instr.ImmInt := argCount;
+        instr.CallMode := cmInternal;
+        SetLength(instr.ArgTemps, argCount);
+        for i := 0 to argCount - 1 do
+          instr.ArgTemps[i] := argTemps[i];
+        Emit(instr);
+        Result := t0;
       end;
 
   else
@@ -1524,6 +1650,17 @@ function TIRLowering.LowerStmt(stmt: TAstStmt): Boolean;
    begin
      for i := 0 to High(TAstBlock(stmt).Stmts) do
        LowerStmt(TAstBlock(stmt).Stmts[i]);
+     Exit(True);
+   end;
+
+   if stmt is TAstDispose then
+   begin
+     // dispose expr; - free heap memory
+     t1 := LowerExpr(TAstDispose(stmt).Expr);
+     if t1 < 0 then Exit(False);
+     instr.Op := irFree;
+     instr.Src1 := t1;
+     Emit(instr);
      Exit(True);
    end;
 

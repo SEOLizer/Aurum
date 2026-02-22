@@ -14,8 +14,9 @@ type
     Name: string;
     Kind: TSymbolKind;
     DeclType: TAurumType;
-    TypeName: string; // for named types (structs)
+    TypeName: string; // for named types (structs/classes)
     StructDecl: TAstStructDecl; // if this symbol refers to an instance of a struct type
+    ClassDecl: TAstClassDecl; // if this symbol refers to an instance of a class type
     ReturnTypeName: string; // for functions: name of return type if struct
     ReturnStructDecl: TAstStructDecl; // for functions: struct decl if returns struct
     ArrayLen: Integer; // 0 = not array, >0 = static length, -1 = dynamic
@@ -35,6 +36,8 @@ type
     FUnitManager: TUnitManager;
     FImportedUnits: TStringList; // Alias -> UnitPath for resolving qualified names
     FStructTypes: TStringList; // name -> TAstStructDecl as object
+    FClassTypes: TStringList; // name -> TAstClassDecl as object
+    FCurrentClass: TAstClassDecl; // current class being analyzed (for super resolution)
     procedure PushScope;
     procedure PopScope;
     procedure AddSymbolToCurrent(sym: TSymbol; span: TSourceSpan);
@@ -54,6 +57,8 @@ type
     procedure AnalyzeWithUnits(prog: TAstProgram; um: TUnitManager);
     // Struct layout
     procedure ComputeStructLayouts;
+    // Class layout
+    procedure ComputeClassLayouts;
     // AST rewrite helpers
     function RewriteExpr(expr: TAstExpr): TAstExpr;
     function RewriteStmt(stmt: TAstStmt): TAstStmt;
@@ -72,6 +77,7 @@ begin
   DeclType := atUnresolved;
   TypeName := '';
   StructDecl := nil;
+  ClassDecl := nil;
   ReturnTypeName := '';
   ReturnStructDecl := nil;
   ArrayLen := 0;
@@ -298,7 +304,7 @@ var
   call: TAstCall;
   s: TSymbol;
   sSym: TSymbol;
-  i, fi: Integer;
+  i, fi, baseIdx, fldOffset: Integer;
   lt, rt, ot, atype: TAurumType;
   qualifier: string;
   identName: string;
@@ -309,6 +315,7 @@ var
   mName: string;
   mangledName: string;
   args: TAstExprList;
+  cd: TAstClassDecl;
 begin
   if expr = nil then
   begin
@@ -331,36 +338,98 @@ begin
         begin
           ident := TAstIdent(recv);
           sSym := ResolveSymbol(ident.Name);
-          if Assigned(sSym) and Assigned(sSym.StructDecl) then
+          if Assigned(sSym) then
           begin
-            // lookup field in struct decl
-            fName := TAstFieldAccess(expr).Field;
-            found := False;
-            fldType := atUnresolved;
-            for fi := 0 to High(sSym.StructDecl.Fields) do
+            // Check for struct type
+            if Assigned(sSym.StructDecl) then
             begin
-              if sSym.StructDecl.Fields[fi].Name = fName then
+              // lookup field in struct decl
+              fName := TAstFieldAccess(expr).Field;
+              found := False;
+              fldType := atUnresolved;
+              for fi := 0 to High(sSym.StructDecl.Fields) do
               begin
-                found := True;
-                fldType := sSym.StructDecl.Fields[fi].FieldType;
-                // if field has named type, we could set more info later
-                Break;
+                if sSym.StructDecl.Fields[fi].Name = fName then
+                begin
+                  found := True;
+                  fldType := sSym.StructDecl.Fields[fi].FieldType;
+                  Break;
+                end;
               end;
-            end;
-            if not found then
-              FDiag.Error('unknown field ' + fName + ' in type ' + sSym.StructDecl.Name, expr.Span)
-            else
+              if not found then
+                FDiag.Error('unknown field ' + fName + ' in type ' + sSym.StructDecl.Name, expr.Span)
+              else
+              begin
+                Result := fldType;
+                // annotate AST node with offset + owner
+                if expr is TAstFieldAccess then
+                begin
+                  TAstFieldAccess(expr).SetFieldOffset(sSym.StructDecl.FieldOffsets[fi]);
+                  TAstFieldAccess(expr).SetOwnerName(sSym.StructDecl.Name);
+                end;
+              end;
+              expr.ResolvedType := Result;
+              Exit;
+            end
+            // Check for class type
+            else if Assigned(sSym.ClassDecl) then
             begin
-              Result := fldType;
-              // annotate AST node with offset + owner
-              if expr is TAstFieldAccess then
+              // lookup field in class decl (and base classes)
+              fName := TAstFieldAccess(expr).Field;
+              found := False;
+              fldType := atUnresolved;
+              
+              // Walk up the class hierarchy
+              cd := sSym.ClassDecl;
+              while Assigned(cd) do
               begin
-                TAstFieldAccess(expr).SetFieldOffset(sSym.StructDecl.FieldOffsets[fi]);
-                TAstFieldAccess(expr).SetOwnerName(sSym.StructDecl.Name);
+                for fi := 0 to High(cd.Fields) do
+                begin
+                  if cd.Fields[fi].Name = fName then
+                  begin
+                    found := True;
+                    fldType := cd.Fields[fi].FieldType;
+                    // Calculate absolute field offset (base class size + local offset)
+                    if cd = sSym.ClassDecl then
+                      fldOffset := cd.FieldOffsets[fi]
+                    else
+                    begin
+                      // Field from base class - offset is relative to base, no adjustment needed
+                      fldOffset := cd.FieldOffsets[fi];
+                    end;
+                    Break;
+                  end;
+                end;
+                if found then Break;
+                
+                // Check base class
+                if cd.BaseClassName <> '' then
+                begin
+                  baseIdx := FClassTypes.IndexOf(cd.BaseClassName);
+                  if baseIdx >= 0 then
+                    cd := TAstClassDecl(FClassTypes.Objects[baseIdx])
+                  else
+                    cd := nil;
+                end
+                else
+                  cd := nil;
               end;
+              
+              if not found then
+                FDiag.Error('unknown field ' + fName + ' in class ' + sSym.ClassDecl.Name, expr.Span)
+              else
+              begin
+                Result := fldType;
+                // annotate AST node with offset + owner
+                if expr is TAstFieldAccess then
+                begin
+                  TAstFieldAccess(expr).SetFieldOffset(fldOffset);
+                  TAstFieldAccess(expr).SetOwnerName(sSym.ClassDecl.Name);
+                end;
+              end;
+              expr.ResolvedType := Result;
+              Exit;
             end;
-            expr.ResolvedType := Result;
-            Exit;
           end;
         end;
         // fallback: unresolved
@@ -638,6 +707,57 @@ begin
             end;
           end;
           Result := s.DeclType;
+        end;
+      end;
+    nkNewExpr:
+      begin
+        // new ClassName() - returns a pointer to the class instance
+        if not Assigned(FClassTypes) or (FClassTypes.IndexOf(TAstNewExpr(expr).ClassName) < 0) then
+        begin
+          FDiag.Error('unknown class type: ' + TAstNewExpr(expr).ClassName, expr.Span);
+          Result := atUnresolved;
+        end
+        else
+        begin
+          // Classes are reference types (pointers)
+          Result := atUnresolved; // Named class type, resolved as pointer
+        end;
+      end;
+    nkSuperCall:
+      begin
+        // super.method(args) - call to base class method
+        // Requires FCurrentClass to be set
+        if not Assigned(FCurrentClass) or (FCurrentClass.BaseClassName = '') then
+        begin
+          FDiag.Error('super call outside of derived class method', expr.Span);
+          Result := atUnresolved;
+        end
+        else
+        begin
+          // Find base class and look up method
+          i := FClassTypes.IndexOf(FCurrentClass.BaseClassName);
+          if i < 0 then
+          begin
+            FDiag.Error('unknown base class: ' + FCurrentClass.BaseClassName, expr.Span);
+            Result := atUnresolved;
+          end
+          else
+          begin
+            // Look up the method in base class and get its return type
+            s := ResolveSymbol('_L_' + FCurrentClass.BaseClassName + '_' + TAstSuperCall(expr).MethodName);
+            if s = nil then
+            begin
+              FDiag.Error('unknown super method: ' + TAstSuperCall(expr).MethodName, expr.Span);
+              Result := atUnresolved;
+            end
+            else
+            begin
+              // Check arguments (first arg is self)
+              for i := 0 to High(TAstSuperCall(expr).Args) do
+                CheckExpr(TAstSuperCall(expr).Args[i]);
+              Result := s.DeclType;
+            end;
+          end;
         end;
       end;
   else
@@ -941,6 +1061,12 @@ begin
           CheckStmt(bs.Stmts[i]);
         PopScope;
       end;
+    nkDispose:
+      begin
+        // dispose expr; - free heap-allocated class instance
+        // Just check the expression
+        CheckExpr(TAstDispose(stmt).Expr);
+      end;
     nkFuncDecl:
       begin
         // nested function? not supported yet
@@ -958,6 +1084,11 @@ begin
   FUnitManager := um;
   FImportedUnits := TStringList.Create;
   FImportedUnits.Sorted := False;
+  FStructTypes := TStringList.Create;
+  FStructTypes.Sorted := False;
+  FClassTypes := TStringList.Create;
+  FClassTypes.Sorted := False;
+  FCurrentClass := nil;
   SetLength(FScopes, 0);
   // create global scope
   PushScope;
@@ -973,6 +1104,12 @@ begin
   // (die gehören dem UnitManager)
   if Assigned(FImportedUnits) then
     FImportedUnits.Free;
+  
+  // FClassTypes und FStructTypes nicht freigeben - sie halten AST-Referenzen
+  if Assigned(FClassTypes) then
+    FClassTypes.Free;
+  if Assigned(FStructTypes) then
+    FStructTypes.Free;
 
   // Freigabe aller verbleibenden Scopes (insbesondere globaler Scope)
   while Length(FScopes) > 0 do
@@ -1075,7 +1212,7 @@ begin
           // final struct align = maxAlign, size rounded up
           sd.SetLayout(off, maxAlign);
           if (off mod sd.Align) <> 0 then
-            off := ((off + sd.Align - 1) div sd.Align) * sd.Align;
+            off := ((off + sd.Align - 1) div sd.Align) * off;
           sd.SetLayout(off, sd.Align);
           Inc(changed);
         end;
@@ -1088,6 +1225,136 @@ begin
     sd := TAstStructDecl(FStructTypes.Objects[i]);
     if sd.Size = 0 then
       FDiag.Error('cannot compute layout for struct: ' + sd.Name, sd.Span);
+  end;
+end;
+
+procedure TSema.ComputeClassLayouts;
+var
+  i, pass, changed, fldIdx: Integer;
+  cd: TAstClassDecl;
+  baseCd: TAstClassDecl;
+  baseIdx: Integer;
+  totalSize, maxAlign, off, fsize, falign, baseSize: Integer;
+  f: TStructField;
+  ok: Boolean;
+  // helper function
+  function TypeSizeAndAlign(t: TAurumType; out asz, aalign: Integer): Boolean;
+  begin
+    case t of
+      atInt8, atUInt8, atChar, atBool: asz := 1;
+      atInt16, atUInt16: asz := 2;
+      atInt32, atUInt32, atF32: asz := 4;
+      atInt64, atUInt64, atISize, atUSize, atF64, atPChar: asz := 8;
+    else
+      begin
+        asz := 0;
+        aalign := 0;
+        Exit(False);
+      end;
+    end;
+    aalign := asz;
+    Result := True;
+  end;
+begin
+  if not Assigned(FClassTypes) then Exit;
+  
+  // Iterative fixed-point: compute layouts in dependency order
+  pass := 0;
+  repeat
+    changed := 0;
+    Inc(pass);
+    for i := 0 to FClassTypes.Count - 1 do
+    begin
+      cd := TAstClassDecl(FClassTypes.Objects[i]);
+      // Skip if already computed
+      if cd.Size <> 0 then Continue;
+      
+      // Check base class
+      baseSize := 0;
+      maxAlign := 8; // Pointer alignment for classes
+      if cd.BaseClassName <> '' then
+      begin
+        baseIdx := FClassTypes.IndexOf(cd.BaseClassName);
+        if baseIdx < 0 then
+        begin
+          FDiag.Error('unknown base class: ' + cd.BaseClassName, cd.Span);
+          Continue;
+        end;
+        baseCd := TAstClassDecl(FClassTypes.Objects[baseIdx]);
+        if baseCd.Size = 0 then
+        begin
+          // Base class not yet computed, try again later
+          Continue;
+        end;
+        baseSize := baseCd.Size;
+        maxAlign := baseCd.Align;
+      end;
+      
+      // Compute field offsets starting at baseSize
+      off := baseSize;
+      ok := True;
+      
+      for fldIdx := 0 to High(cd.Fields) do
+      begin
+        f := cd.Fields[fldIdx];
+        // Determine field size/alignment
+        if f.FieldType <> atUnresolved then
+        begin
+          if not TypeSizeAndAlign(f.FieldType, fsize, falign) then
+          begin
+            ok := False;
+            Break;
+          end;
+        end
+        else if f.FieldTypeName <> '' then
+        begin
+          // Look up named type (struct or class)
+          baseIdx := FStructTypes.IndexOf(f.FieldTypeName);
+          if baseIdx >= 0 then
+          begin
+            fsize := TAstStructDecl(FStructTypes.Objects[baseIdx]).Size;
+            falign := TAstStructDecl(FStructTypes.Objects[baseIdx]).Align;
+          end
+          else
+          begin
+            // Unknown type
+            ok := False;
+            Break;
+          end;
+        end
+        else
+        begin
+          ok := False;
+          Break;
+        end;
+        
+        // Align current offset
+        if falign > maxAlign then maxAlign := falign;
+        if (off mod falign) <> 0 then
+          off := ((off + falign - 1) div falign) * falign;
+        cd.FieldOffsets[fldIdx] := off;
+        off := off + fsize;
+      end;
+      
+      if ok then
+      begin
+        // Classes are always pointer-sized (8 bytes) as values
+        // But we track the full object size for allocation
+        totalSize := off;
+        if (totalSize mod maxAlign) <> 0 then
+          totalSize := ((totalSize + maxAlign - 1) div maxAlign) * maxAlign;
+        cd.SetLayout(totalSize, maxAlign, baseSize);
+        Inc(changed);
+      end;
+    end;
+  until (changed = 0) or (pass > 100);
+  
+  // Report errors for uncomputed classes
+  for i := 0 to FClassTypes.Count - 1 do
+  begin
+    cd := TAstClassDecl(FClassTypes.Objects[i]);
+    if cd.Size = 0 then
+      FDiag.Error('cannot compute layout for class: ' + cd.Name, cd.Span);
   end;
 end;
 
@@ -1313,10 +1580,62 @@ begin
              sym.ParamTypes[k+1] := m.Params[k].ParamType;
          end;
 
-         AddSymbolToCurrent(sym, m.Span);
-       end;
-     end
-     else if node is TAstTypeDecl then
+          AddSymbolToCurrent(sym, m.Span);
+        end;
+      end
+      else if node is TAstClassDecl then
+      begin
+        // Register class type and its methods as top-level functions (mangled)
+        if not Assigned(FClassTypes) then
+        begin
+          FClassTypes := TStringList.Create;
+          FClassTypes.Sorted := False;
+        end;
+        if FClassTypes.IndexOf(TAstClassDecl(node).Name) >= 0 then
+        begin
+          FDiag.Error('redeclaration of class: ' + TAstClassDecl(node).Name, node.Span);
+          Continue;
+        end;
+        FClassTypes.AddObject(TAstClassDecl(node).Name, TObject(node));
+        
+        // Register methods as functions with mangled names
+        for j := 0 to High(TAstClassDecl(node).Methods) do
+        begin
+          m := TAstClassDecl(node).Methods[j];
+          
+          sym := TSymbol.Create('_L_' + TAstClassDecl(node).Name + '_' + m.Name);
+          sym.Kind := symFunc;
+          sym.DeclType := m.ReturnType;
+          sym.ReturnTypeName := m.ReturnTypeName;
+          // Handle 'Self' return type
+          if (m.ReturnTypeName = 'Self') or (m.ReturnTypeName = 'self') then
+          begin
+            sym.ReturnTypeName := TAstClassDecl(node).Name;
+            // Classes are reference types, so no StructDecl needed
+          end;
+          
+          if m.IsStatic then
+          begin
+            // Static method: no implicit self parameter
+            sym.ParamCount := Length(m.Params);
+            SetLength(sym.ParamTypes, sym.ParamCount);
+            for k := 0 to High(m.Params) do
+              sym.ParamTypes[k] := m.Params[k].ParamType;
+          end
+          else
+          begin
+            // Instance method: first param is implicit self (pointer)
+            sym.ParamCount := Length(m.Params) + 1;
+            SetLength(sym.ParamTypes, sym.ParamCount);
+            sym.ParamTypes[0] := atUnresolved; // self is a class pointer
+            for k := 0 to High(m.Params) do
+              sym.ParamTypes[k+1] := m.Params[k].ParamType;
+          end;
+          
+          AddSymbolToCurrent(sym, m.Span);
+        end;
+      end
+      else if node is TAstTypeDecl then
      begin
        // type declarations: register as named types (future work)
        // for now, skip
@@ -1342,6 +1661,7 @@ begin
 
   // After registration pass, compute struct layouts before checking bodies
   ComputeStructLayouts;
+  ComputeClassLayouts;
 
   // Second pass: check function bodies
   for i := 0 to High(prog.Decls) do
@@ -1415,6 +1735,56 @@ begin
         CheckStmt(m.Body);
         PopScope;
       end;
+    end;
+  end;
+
+  // Also process methods defined inside classes
+  for i := 0 to High(prog.Decls) do
+  begin
+    node := prog.Decls[i];
+    if node is TAstClassDecl then
+    begin
+      FCurrentClass := TAstClassDecl(node);
+      for j := 0 to High(TAstClassDecl(node).Methods) do
+      begin
+        m := TAstClassDecl(node).Methods[j];
+        
+        // Resolve 'Self' return type to the owning class type
+        if (m.ReturnTypeName = 'Self') or (m.ReturnTypeName = 'self') then
+        begin
+          m.ReturnTypeName := TAstClassDecl(node).Name;
+        end;
+        
+        // enter method scope
+        PushScope;
+        
+        // For non-static methods, add implicit self parameter
+        if not m.IsStatic then
+        begin
+          sym := TSymbol.Create('self');
+          sym.Kind := symVar;
+          sym.DeclType := atUnresolved; // self is a class pointer
+          sym.TypeName := TAstClassDecl(node).Name; // class name
+          sym.ClassDecl := TAstClassDecl(node); // class declaration for field resolution
+          AddSymbolToCurrent(sym, m.Span);
+        end;
+        
+        // declare method params
+        for k := 0 to High(m.Params) do
+        begin
+          p := m.Params[k];
+          sym := TSymbol.Create(p.Name);
+          sym.Kind := symVar;
+          sym.DeclType := p.ParamType;
+          AddSymbolToCurrent(sym, p.Span);
+        end;
+        // set return type
+        FCurrentReturn := m.ReturnType;
+        // check body
+        CheckStmt(m.Body);
+        PopScope;
+      end;
+      FCurrentClass := nil;
     end;
   end;
 end;

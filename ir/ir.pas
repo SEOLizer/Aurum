@@ -49,6 +49,9 @@ type
      // struct field operations
      irLoadField,   // load field: Dest = *(Src1 + fieldOffset)
     irStoreField,   // store field: *(Src1 + fieldOffset) = Src2
+    // heap allocation (for classes)
+    irAlloc,        // heap allocate: Dest = alloc(ImmInt bytes) -> pointer in Dest
+    irFree,         // heap free: free(Src1) - frees memory at pointer
     // exception handler ops
     irPushHandler,  // push handler frame: Src1 = handler_addr, LabelName = catch_label
     irPopHandler,   // pop handler frame: Src1 = handler_addr
